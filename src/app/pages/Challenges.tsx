@@ -125,7 +125,7 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
 
   return (
     <div className={`flex flex-col rounded-xl border transition-all duration-300 overflow-hidden ${
-      isExpanded ? 'bg-[#1e1e1e] border-[#444] shadow-lg' : 'bg-[#161616] border-[#333] hover:border-[#555] hover:bg-[#1a1a1a]'
+      isExpanded ? 'bg-white dark:bg-[#1e1e1e] border-gray-300 dark:border-[#444] shadow-lg' : 'bg-gray-50 dark:bg-[#161616] border-gray-200 dark:border-[#333] hover:border-gray-300 dark:hover:border-[#555] hover:bg-white dark:hover:bg-[#1a1a1a]'
     }`}>
       {/* Header section (always visible) */}
       <div className="p-5 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -143,14 +143,14 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
               </span>
             ))}
           </div>
-          <h3 className="text-xl font-bold text-white mb-2">{challenge.title}</h3>
-          <p className="text-sm text-gray-400 line-clamp-2">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{challenge.title}</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
             {challenge.description}
           </p>
         </div>
         
         <div className="flex items-center gap-4 shrink-0 justify-end md:justify-start mt-2 md:mt-0">
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
                   onClick={(e) => { 
                     e.stopPropagation(); 
                     // IDE 화면으로 이동하면서 상태로 challenge 정보를 넘깁니다.
@@ -159,7 +159,7 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
             <PlayCircle size={16} />
             문제 풀기
           </button>
-          <div className="text-gray-500 p-2 rounded-full hover:bg-[#333] transition-colors">
+          <div className="text-gray-500 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#333] transition-colors">
             {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </div>
         </div>
@@ -167,25 +167,25 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
 
       {/* Expanded details section */}
       {isExpanded && (
-        <div className="px-5 pb-5 border-t border-[#333] bg-[#1a1a1a] pt-4 flex flex-col gap-5 animate-in slide-in-from-top-2 fade-in duration-200">
+        <div className="px-5 pb-5 border-t border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a] pt-4 flex flex-col gap-5 animate-in slide-in-from-top-2 fade-in duration-200 transition-colors">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Target size={16} className="text-blue-400" />
-              <h4 className="text-sm font-bold text-gray-200 uppercase tracking-wider">기대 출력</h4>
+              <Target size={16} className="text-blue-600 dark:text-blue-400" />
+              <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">기대 출력</h4>
             </div>
-            <div className="bg-[#0d0d0d] border border-[#333] rounded-lg p-3 font-mono text-sm text-green-400 break-words">
+            <div className="bg-white dark:bg-[#0d0d0d] border border-gray-200 dark:border-[#333] rounded-lg p-3 font-mono text-sm text-green-600 dark:text-green-400 break-words shadow-inner">
               {challenge.expectedOutput}
             </div>
           </div>
           
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle size={16} className="text-red-400" />
-              <h4 className="text-sm font-bold text-gray-200 uppercase tracking-wider">자주 틀리는 포인트</h4>
+              <AlertTriangle size={16} className="text-red-600 dark:text-red-400" />
+              <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">자주 틀리는 포인트</h4>
             </div>
             <ul className="space-y-2">
               {challenge.failurePoints.map((point, idx) => (
-                <li key={idx} className="flex items-start gap-2 text-sm text-gray-400">
+                <li key={idx} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
                   <span className="text-red-500 mt-0.5">•</span>
                   <span>{point}</span>
                 </li>
@@ -211,27 +211,27 @@ export function Challenges() {
   }, [filterDifficulty, filterTag]);
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#121212] overflow-hidden">
+    <div className="w-full h-full flex flex-col bg-white dark:bg-[#121212] overflow-hidden transition-colors duration-200">
       {/* Header */}
-      <div className="flex flex-col items-center justify-center py-8 bg-[#1e1e1e] border-b border-[#333] shrink-0 relative">
+      <div className="flex flex-col items-center justify-center py-8 bg-gray-50 dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shrink-0 relative transition-colors duration-200">
         <div className="flex items-center gap-3 mb-3">
-          <BookOpen className="text-blue-500" size={32} />
-          <h1 className="text-2xl font-bold text-white tracking-wide">챌린지 허브</h1>
+          <BookOpen className="text-blue-600 dark:text-blue-500" size={32} />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-wide">챌린지 허브</h1>
         </div>
-        <p className="text-gray-400 text-sm mb-6 max-w-lg text-center leading-relaxed">
+        <p className="text-gray-600 dark:text-gray-400 text-sm mb-6 max-w-lg text-center leading-relaxed">
           엄선된 문제들을 통해 B++ 실력을 향상시키세요.<br/>
           난이도나 주제별로 필터링하고, 자주 틀리는 부분을 확인하며 언어를 마스터해보세요.
         </p>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center justify-center gap-4">
-          <div className="flex items-center gap-2 bg-[#0d0d0d] p-1 rounded-lg border border-[#333]">
+          <div className="flex items-center gap-2 bg-white dark:bg-[#0d0d0d] p-1 rounded-lg border border-gray-200 dark:border-[#333] transition-colors">
             <span className="px-3 text-xs font-semibold text-gray-500 uppercase">난이도</span>
-            <div className="h-4 w-px bg-[#333]" />
+            <div className="h-4 w-px bg-gray-200 dark:bg-[#333]" />
             <select 
               value={filterDifficulty} 
               onChange={(e) => setFilterDifficulty(e.target.value as any)}
-              className="bg-transparent text-sm text-gray-300 px-2 py-1 outline-none cursor-pointer"
+              className="bg-transparent text-sm text-gray-700 dark:text-gray-300 px-2 py-1 outline-none cursor-pointer"
             >
               <option value="all">모든 난이도</option>
               <option value="beginner">초급</option>
@@ -240,13 +240,13 @@ export function Challenges() {
             </select>
           </div>
 
-          <div className="flex items-center gap-2 bg-[#0d0d0d] p-1 rounded-lg border border-[#333]">
+          <div className="flex items-center gap-2 bg-white dark:bg-[#0d0d0d] p-1 rounded-lg border border-gray-200 dark:border-[#333] transition-colors">
             <span className="px-3 text-xs font-semibold text-gray-500 uppercase">태그</span>
-            <div className="h-4 w-px bg-[#333]" />
+            <div className="h-4 w-px bg-gray-200 dark:bg-[#333]" />
             <select 
               value={filterTag} 
               onChange={(e) => setFilterTag(e.target.value as any)}
-              className="bg-transparent text-sm text-gray-300 px-2 py-1 outline-none cursor-pointer"
+              className="bg-transparent text-sm text-gray-700 dark:text-gray-300 px-2 py-1 outline-none cursor-pointer"
             >
               <option value="all">모든 주제</option>
               <option value="io">입출력</option>
@@ -266,12 +266,12 @@ export function Challenges() {
             ))
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <Code2 size={48} className="text-[#333] mb-4" />
-              <h3 className="text-lg font-bold text-gray-300 mb-2">조건에 맞는 챌린지가 없습니다</h3>
+              <Code2 size={48} className="text-gray-300 dark:text-[#333] mb-4" />
+              <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">조건에 맞는 챌린지가 없습니다</h3>
               <p className="text-gray-500 text-sm">필터를 조정하여 다른 결과를 확인해보세요.</p>
               <button 
                 onClick={() => { setFilterDifficulty('all'); setFilterTag('all'); }}
-                className="mt-6 px-4 py-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-white rounded-lg text-sm transition-colors border border-[#444]"
+                className="mt-6 px-4 py-2 bg-white dark:bg-[#2d2d2d] hover:bg-gray-50 dark:hover:bg-[#3d3d3d] text-gray-700 dark:text-white rounded-lg text-sm transition-colors border border-gray-200 dark:border-[#444] shadow-sm"
               >
                 필터 초기화
               </button>

@@ -2,10 +2,12 @@ import Editor, { useMonaco } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
 import { FileCode2, Copy, Check, BookOpen, ChevronDown, ChevronUp, Target, Send, Award, Loader2 } from "lucide-react";
 import { useLocation } from "react-router";
+import { useCompilerStore } from "../store/compilerStore";
 
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
   const location = useLocation();
+  const { setSelectedText } = useCompilerStore();
   const [copied, setCopied] = useState(false);
   const [isChallengeOpen, setIsChallengeOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,6 +78,8 @@ int main() {
     if (onCodeChange) onCodeChange(defaultCode);
   }, [defaultCode, onCodeChange]);
 
+  const { theme } = useCompilerStore();
+
   useEffect(() => {
     if (monaco) {
       // Register custom B++ language if needed, for now we'll just map it to C++
@@ -89,9 +93,18 @@ int main() {
           'editor.lineHighlightBackground': '#1e1e1e',
         }
       });
-      monaco.editor.setTheme('bpp-dark');
+      monaco.editor.defineTheme('bpp-light', {
+        base: 'vs',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': '#ffffff',
+          'editor.lineHighlightBackground': '#f3f4f6',
+        }
+      });
+      monaco.editor.setTheme(theme === 'dark' ? 'bpp-dark' : 'bpp-light');
     }
-  }, [monaco]);
+  }, [monaco, theme]);
 
   const handleCopy = async () => {
     if (editorRef.current) {
@@ -123,16 +136,16 @@ int main() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0d0d0d] relative group">
-      <div className="flex items-center justify-between px-4 py-2 bg-[#1e1e1e] border-b border-[#333] shadow-sm shrink-0">
-        <div className="flex items-center gap-2 text-gray-400">
+    <div className="flex flex-col h-full bg-white dark:bg-[#0d0d0d] relative group transition-colors duration-200">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shadow-sm shrink-0 transition-colors duration-200">
+        <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
           <FileCode2 size={16} className="text-blue-500" />
-          <span className="text-xs font-mono tracking-wider text-gray-300">main.bpp</span>
+          <span className="text-xs font-mono tracking-wider text-gray-700 dark:text-gray-300">main.bpp</span>
         </div>
         
         <button 
           onClick={handleCopy}
-          className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-[#2d2d2d] rounded-md transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+          className="p-1.5 text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#2d2d2d] rounded-md transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
           title="코드 복사"
         >
           {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
@@ -141,14 +154,14 @@ int main() {
 
       {/* 챌린지가 있을 경우 표시되는 접이식 패널 */}
       {challenge && (
-        <div className="flex flex-col bg-[#161616] border-b border-[#333] shrink-0">
+        <div className="flex flex-col bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333] shrink-0 transition-colors duration-200">
           <button
             onClick={() => setIsChallengeOpen(!isChallengeOpen)}
-            className="flex items-center justify-between px-4 py-2.5 hover:bg-[#1a1a1a] transition-colors focus:outline-none"
+            className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition-colors focus:outline-none"
           >
             <div className="flex items-center gap-2">
-              <BookOpen size={16} className="text-blue-400" />
-              <span className="text-sm font-bold text-gray-200">현재 챌린지: {challenge.title}</span>
+              <BookOpen size={16} className="text-blue-500 dark:text-blue-400" />
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-200">현재 챌린지: {challenge.title}</span>
             </div>
             {isChallengeOpen ? (
               <ChevronUp size={16} className="text-gray-500" />
@@ -159,15 +172,15 @@ int main() {
           
           {isChallengeOpen && (
             <div className="px-4 pb-4 pt-1 flex flex-col gap-3 animate-in slide-in-from-top-2 fade-in duration-200">
-              <p className="text-sm text-gray-400 leading-relaxed">
+              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
                 {challenge.description}
               </p>
               <div>
-                <div className="flex items-center gap-1.5 mb-1.5 text-xs font-bold text-gray-300 uppercase tracking-wider">
-                  <Target size={14} className="text-green-400" />
+                <div className="flex items-center gap-1.5 mb-1.5 text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+                  <Target size={14} className="text-green-600 dark:text-green-400" />
                   기대 출력
                 </div>
-                <div className="bg-[#0d0d0d] border border-[#333] rounded p-2.5 font-mono text-xs text-green-400 break-words">
+                <div className="bg-white dark:bg-[#0d0d0d] border border-gray-200 dark:border-[#333] rounded p-2.5 font-mono text-xs text-green-600 dark:text-green-400 break-words">
                   {challenge.expectedOutput}
                 </div>
               </div>
@@ -219,13 +232,23 @@ int main() {
         </div>
       )}
       
-      <div className="flex-1 w-full pt-2">
+      <div className="flex-1 w-full pt-2 bg-white dark:bg-transparent transition-colors duration-200">
         <Editor
           height="100%"
           defaultLanguage="cpp"
           defaultValue={defaultCode}
-          theme="bpp-dark"
-          onMount={(editor) => editorRef.current = editor}
+          theme={theme === 'dark' ? "bpp-dark" : "bpp-light"}
+          onMount={(editor) => {
+            editorRef.current = editor;
+            editor.onDidChangeCursorSelection((e: any) => {
+              const selection = e.selection;
+              const model = editor.getModel();
+              if (model) {
+                const selectedStr = model.getValueInRange(selection);
+                setSelectedText(selectedStr);
+              }
+            });
+          }}
           onChange={(value) => onCodeChange && onCodeChange(value || "")}
           options={{
             minimap: { enabled: false },

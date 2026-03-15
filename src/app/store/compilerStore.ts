@@ -18,6 +18,10 @@ interface CompilerState {
   setGraphViewerOpen: (isOpen: boolean) => void;
   activeGraphTab: 'AST' | 'SSA' | 'IR' | 'ASM';
   setActiveGraphTab: (tab: 'AST' | 'SSA' | 'IR' | 'ASM') => void;
+  selectedText: string;
+  setSelectedText: (text: string) => void;
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
 }
 
 export const useCompilerStore = create<CompilerState>((set, get) => ({
@@ -42,6 +46,10 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   setGraphViewerOpen: (isOpen) => set({ isGraphViewerOpen: isOpen }),
   activeGraphTab: 'AST',
   setActiveGraphTab: (tab) => set({ activeGraphTab: tab }),
+  selectedText: '',
+  setSelectedText: (text) => set({ selectedText: text }),
+  theme: 'dark',
+  toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
   runCode: () => {
     const { code, addOutput } = get();
     
