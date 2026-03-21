@@ -1,19 +1,22 @@
 import Editor, { useMonaco } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
-import { FileCode2, Copy, Check, BookOpen, ChevronDown, ChevronUp, Target, Send, Award, Loader2 } from "lucide-react";
+import { FileCode2, Copy, Check, BookOpen, ChevronDown, ChevronUp, Target, Send, Award, Loader2, Clock } from "lucide-react";
 import { useLocation } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
 
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
   const location = useLocation();
-  const { setSelectedText } = useCompilerStore();
+  const { setSelectedText, autoSaveEnabled, lastSavedTime, saveCode, loadCode } = useCompilerStore();
   const [copied, setCopied] = useState(false);
   const [isChallengeOpen, setIsChallengeOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [earnedPoints, setEarnedPoints] = useState<number | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const editorRef = useRef<any>(null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   
   // URL 상태에서 challenge 전체 정보를 받아옵니다.
   const challenge = location.state?.challenge;
@@ -50,7 +53,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
 }
 `;
 
-  // 챌린지를 눌러서 왔을 때, 해당하는 기초 뼈대 ��드를 삽입해줄 수 있습니다.
+  // 챌린지를 눌러서 왔을 때, 해당하는 기초 뼈대 드를 삽입해줄 수 있습니다.
   if (challengeId === 'c1') {
     defaultCode = `// 챌린지: B++로 "Hello, World!" 출력하기
 #include <iostream>
@@ -135,6 +138,94 @@ int main() {
     }
   };
 
+  const handleSave = () => {
+    if (editorRef.current) {
+      const code = editorRef.current.getValue();
+      saveCode(code);
+      setSaveStatus('saved');
+    }
+  };
+
+  // 저장된 코드 불러오기
+  useEffect(() => {
+    if (!challengeId && editorRef.current && !initialLoadDone) {
+      const savedCode = loadCode();
+      if (savedCode) {
+        editorRef.current.setValue(savedCode);
+        if (onCodeChange) onCodeChange(savedCode);
+      }
+      setInitialLoadDone(true);
+    }
+  }, [challengeId, loadCode, onCodeChange]);
+
+  // 자동저장 - debounce 방식으로 코드 변경 후 2초 뒤 저장
+  useEffect(() => {
+    if (!autoSaveEnabled || !initialLoadDone) return;
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    if (saveStatus === 'unsaved') {
+      setSaveStatus('saving');
+      autoSaveTimerRef.current = setTimeout(() => {
+        if (editorRef.current) {
+          const code = editorRef.current.getValue();
+          saveCode(code);
+          setSaveStatus('saved');
+        }
+      }, 2000);
+    }
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [autoSaveEnabled, saveStatus, saveCode, initialLoadDone]);
+
+  // 마지막 저장 시간 포맷팅
+  const getLastSavedText = () => {
+    if (!lastSavedTime) return '';
+    const now = Date.now();
+    const diff = now - lastSavedTime;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    
+    if (seconds < 5) return '방금 전';
+    if (seconds < 60) return `${seconds}초 전`;
+    if (minutes < 60) return `${minutes}분 전`;
+    return new Date(lastSavedTime).toLocaleTimeString('ko-KR');
+  };
+
+  // 키보드 단축키 (Ctrl+S) 처리
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        // Ctrl+S 눌러도 자동저장 시스템 활용
+        if (editorRef.current && saveStatus !== 'saved') {
+          const code = editorRef.current.getValue();
+          saveCode(code);
+          setSaveStatus('saved');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [saveStatus, saveCode]);
+
+  // 마지막 저장 시간 업데이트 (1초마다)
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    if (!lastSavedTime) return;
+    const interval = setInterval(() => {
+      forceUpdate(n => n + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lastSavedTime]);
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#0d0d0d] relative group transition-colors duration-200">
       <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shadow-sm shrink-0 transition-colors duration-200">
@@ -152,7 +243,7 @@ int main() {
         </button>
       </div>
 
-      {/* 챌린지가 있을 경우 표시되는 접이식 패널 */}
+      {/* 챌���지가 있을 경우 표시되는 접이식 패널 */}
       {challenge && (
         <div className="flex flex-col bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333] shrink-0 transition-colors duration-200">
           <button
@@ -249,7 +340,14 @@ int main() {
               }
             });
           }}
-          onChange={(value) => onCodeChange && onCodeChange(value || "")}
+          onChange={(value) => {
+            if (!initialLoadDone) {
+              setInitialLoadDone(true);
+              return;
+            }
+            onCodeChange && onCodeChange(value || "");
+            setSaveStatus('unsaved');
+          }}
           options={{
             minimap: { enabled: false },
             fontSize: 14,
@@ -267,6 +365,42 @@ int main() {
             }
           }}
         />
+      </div>
+
+      {/* 저장 상태 표시 바 */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-[#1e1e1e] border-t border-gray-200 dark:border-[#333] shadow-sm shrink-0 transition-colors duration-200">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+            {saveStatus === 'saving' ? (
+              <>
+                <Loader2 size={14} className="text-blue-500 animate-spin" />
+                <span className="text-xs font-mono text-blue-500">저장 중...</span>
+              </>
+            ) : saveStatus === 'saved' ? (
+              <>
+                <Check size={14} className="text-green-500" />
+                <span className="text-xs font-mono text-green-600 dark:text-green-400">모든 변경사항 저장됨</span>
+              </>
+            ) : (
+              <>
+                <Clock size={14} className="text-yellow-500" />
+                <span className="text-xs font-mono text-yellow-600 dark:text-yellow-400">변경사항 있음</span>
+              </>
+            )}
+          </div>
+          {lastSavedTime && saveStatus === 'saved' && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              • {getLastSavedText()}
+            </span>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+            자동저장 활성화
+          </span>
+          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+        </div>
       </div>
     </div>
   );

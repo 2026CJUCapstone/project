@@ -22,7 +22,15 @@ interface CompilerState {
   setSelectedText: (text: string) => void;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
+  // 자동저장 관련 상태
+  lastSavedTime: number | null;
+  autoSaveEnabled: boolean;
+  setAutoSaveEnabled: (enabled: boolean) => void;
+  saveCode: (code: string) => void;
+  loadCode: () => string | null;
 }
+
+const STORAGE_KEY = 'bpp-editor-code';
 
 export const useCompilerStore = create<CompilerState>((set, get) => ({
   code: '',
@@ -50,6 +58,30 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   setSelectedText: (text) => set({ selectedText: text }),
   theme: 'dark',
   toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
+  
+  // 자동저장 관련 상태 및 함수
+  lastSavedTime: null,
+  autoSaveEnabled: true,
+  setAutoSaveEnabled: (enabled) => set({ autoSaveEnabled: enabled }),
+  
+  saveCode: (code) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, code);
+      set({ lastSavedTime: Date.now() });
+    } catch (error) {
+      console.error('코드 저장 실패:', error);
+    }
+  },
+  
+  loadCode: () => {
+    try {
+      return localStorage.getItem(STORAGE_KEY);
+    } catch (error) {
+      console.error('코드 불러오기 실패:', error);
+      return null;
+    }
+  },
+  
   runCode: () => {
     const { code, addOutput } = get();
     
