@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Node / React
+frontend/node_modules/
+frontend/build/
+frontend/.env
+
+# Docker
+*.tar
+
+# Editor
+.vscode/
+.idea/
+*.swp
