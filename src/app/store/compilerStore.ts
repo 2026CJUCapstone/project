@@ -30,7 +30,7 @@ interface CompilerState {
   loadCode: () => string | null;
 }
 
-const STORAGE_KEY = 'bpp-editor-code';
+const STORAGE_KEY = 'b-compiler-editor-code';
 
 export const useCompilerStore = create<CompilerState>((set, get) => ({
   code: '',
