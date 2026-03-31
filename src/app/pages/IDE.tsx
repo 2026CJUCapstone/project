@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { CodeEditor } from "../components/CodeEditor";
 import { OutputConsole } from "../components/OutputConsole";
@@ -6,8 +5,7 @@ import { CompilerGraphViewer } from "../components/CompilerGraphViewer";
 import { useCompilerStore } from "../store/compilerStore";
 
 export function IDE() {
-  const [code, setCode] = useState("");
-  const { isGraphViewerOpen } = useCompilerStore();
+  const { code, setCode, isGraphViewerOpen } = useCompilerStore();
 
   return (
     <div className="relative w-full h-full bg-white dark:bg-[#0d0d0d] transition-colors duration-200">

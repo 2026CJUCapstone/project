@@ -7,7 +7,7 @@ import { useCompilerStore } from "../store/compilerStore";
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
   const location = useLocation();
-  const { setSelectedText, autoSaveEnabled, lastSavedTime, saveCode, loadCode } = useCompilerStore();
+  const { setSelectedText, autoSaveEnabled, lastSavedTime, saveCode, loadCode, setCode, runCode } = useCompilerStore();
   const [copied, setCopied] = useState(false);
   const [isChallengeOpen, setIsChallengeOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -79,7 +79,8 @@ int main() {
   // 초기 코드 설정
   useEffect(() => {
     if (onCodeChange) onCodeChange(defaultCode);
-  }, [defaultCode, onCodeChange]);
+    setCode(defaultCode);
+  }, [defaultCode, onCodeChange, setCode]);
 
   const { theme } = useCompilerStore();
 
@@ -153,10 +154,11 @@ int main() {
       if (savedCode) {
         editorRef.current.setValue(savedCode);
         if (onCodeChange) onCodeChange(savedCode);
+        setCode(savedCode);
       }
       setInitialLoadDone(true);
     }
-  }, [challengeId, loadCode, onCodeChange]);
+  }, [challengeId, loadCode, onCodeChange, setCode]);
 
   // 자동저장 - debounce 방식으로 코드 변경 후 2초 뒤 저장
   useEffect(() => {
@@ -210,11 +212,16 @@ int main() {
           setSaveStatus('saved');
         }
       }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        void runCode();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveStatus, saveCode]);
+  }, [runCode, saveStatus, saveCode]);
 
   // 마지막 저장 시간 업데이트 (1초마다)
   const [, forceUpdate] = useState(0);
@@ -345,7 +352,9 @@ int main() {
               setInitialLoadDone(true);
               return;
             }
-            onCodeChange && onCodeChange(value || "");
+            const nextCode = value || "";
+            onCodeChange && onCodeChange(nextCode);
+            setCode(nextCode);
             setSaveStatus('unsaved');
           }}
           options={{

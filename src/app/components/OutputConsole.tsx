@@ -1,27 +1,8 @@
 import { Terminal as TerminalIcon, XCircle, RefreshCw, Network, Maximize2 } from "lucide-react";
-import { useState } from "react";
 import { useCompilerStore } from "../store/compilerStore";
 
 export function OutputConsole() {
-  const { isGraphViewerOpen, setGraphViewerOpen } = useCompilerStore();
-
-  const [output, setOutput] = useState([
-    { type: 'info', text: 'B++ 컴파일러 v1.0.0 초기화 중...' },
-    { type: 'success', text: '컴파일러 환경이 준비되었습니다.' },
-    { type: 'input', text: '> _' }
-  ]);
-
-  const handleClear = () => {
-    setOutput([{ type: 'input', text: '> _' }]);
-  };
-
-  const handleRestart = () => {
-    setOutput([
-      { type: 'info', text: '컴파일러 환경 재시작 중...' },
-      { type: 'success', text: '컴파일러 환경이 준비되었습니다.' },
-      { type: 'input', text: '> _' }
-    ]);
-  };
+  const { isGraphViewerOpen, setGraphViewerOpen, output, clearOutput, restartConsole, backendStatus, isRunning } = useCompilerStore();
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-[#0d0d0d] font-mono text-sm shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] transition-colors duration-200">
@@ -46,7 +27,7 @@ export function OutputConsole() {
         
         <div className="flex items-center gap-3 px-4">
           <button 
-            onClick={handleRestart}
+            onClick={restartConsole}
             className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             title="콘솔 재시작"
           >
@@ -54,13 +35,18 @@ export function OutputConsole() {
           </button>
           <div className="w-[1px] h-3.5 bg-gray-300 dark:bg-[#444]" />
           <button 
-            onClick={handleClear}
+            onClick={clearOutput}
             className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
             title="콘솔 지우기"
           >
             <XCircle size={14} /> 지우기
           </button>
         </div>
+      </div>
+
+      <div className="px-4 py-2 border-b border-gray-200 dark:border-[#222] text-[11px] uppercase tracking-widest text-gray-500 dark:text-gray-400 bg-gray-50/80 dark:bg-[#121212] flex items-center justify-between">
+        <span>Backend: {backendStatus}</span>
+        <span>{isRunning ? 'Running' : 'Idle'}</span>
       </div>
       
       <div className="flex-1 p-5 overflow-auto">

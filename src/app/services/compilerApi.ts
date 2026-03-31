@@ -1,7 +1,26 @@
 // API 기본 설정 및 타입 정의
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '10000');
+const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '10000', 10);
+
+export type CompilerLanguage = 'python' | 'c' | 'cpp' | 'java' | 'javascript';
+
+interface RequestOptions {
+  signal?: AbortSignal;
+  timeout?: number;
+}
+
+interface BackendErrorResponse {
+  detail?: string;
+  message?: string;
+}
+
+interface BackendRunResponse {
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  execution_time: number;
+}
 
 // ==================== 타입 정의 ====================
 
@@ -101,6 +120,7 @@ export interface CompileResponse {
 
 export interface ExecuteRequest {
   code: string;
+  language?: CompilerLanguage;
   input?: string;
   timeout?: number; // ms
 }
@@ -131,106 +151,102 @@ export interface AnalyzeSelectionResponse {
   affectedBlocks?: string[]; // SSA 블록 ID들
 }
 
+async function requestJson<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? API_TIMEOUT);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      signal: options.signal ?? controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init.headers ?? {}),
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as BackendErrorResponse;
+      throw new Error(errorData.detail || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('요청이 취소되었거나 시간 초과되었습니다.');
+    }
+
+    throw error instanceof Error ? error : new Error('알 수 없는 API 오류가 발생했습니다.');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ==================== API 호출 함수 ====================
 
 /**
  * 코드 컴파일 및 중간 표현 생성
  */
-export async function compileCode(request: CompileRequest): Promise<CompileResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+export async function compileCode(request: CompileRequest, options: RequestOptions = {}): Promise<CompileResponse> {
+  const response = await executeCode(
+    {
+      code: request.code,
+      language: 'cpp',
+      timeout: options.timeout,
+    },
+    options,
+  );
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/compile`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      throw new Error('컴파일 요청이 타임아웃되었습니다.');
-    }
-    throw new Error(`컴파일 API 오류: ${error.message}`);
-  }
+  return {
+    success: response.success,
+    errors: response.stderr
+      ? [
+          {
+            line: 0,
+            column: 0,
+            message: response.stderr,
+            severity: response.exitCode === 0 ? 'warning' : 'error',
+          },
+        ]
+      : [],
+    executionTime: response.executionTime,
+  };
 }
 
 /**
  * 코드 실행
  */
-export async function executeCode(request: ExecuteRequest): Promise<ExecuteResponse> {
-  const controller = new AbortController();
-  const timeout = request.timeout || API_TIMEOUT;
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/execute`, {
+export async function executeCode(request: ExecuteRequest, options: RequestOptions = {}): Promise<ExecuteResponse> {
+  const response = await requestJson<BackendRunResponse>(
+    '/api/v1/compiler/run',
+    {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      signal: controller.signal,
-    });
+      body: JSON.stringify({
+        language: request.language ?? 'cpp',
+        source_code: request.code,
+        stdin: request.input,
+      }),
+    },
+    {
+      ...options,
+      timeout: request.timeout ?? options.timeout,
+    },
+  );
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      throw new Error('코드 실행이 타임아웃되었습니다.');
-    }
-    throw new Error(`실행 API 오류: ${error.message}`);
-  }
+  return {
+    success: response.exit_code === 0,
+    stdout: response.stdout,
+    stderr: response.stderr,
+    exitCode: response.exit_code,
+    executionTime: response.execution_time,
+  };
 }
 
 /**
  * 선택된 코드 영역 분석
  */
-export async function analyzeSelection(request: AnalyzeSelectionRequest): Promise<AnalyzeSelectionResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/analyze-selection`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      throw new Error('분석 요청이 타임아웃되었습니다.');
-    }
-    throw new Error(`분석 API 오류: ${error.message}`);
-  }
+export async function analyzeSelection(_request: AnalyzeSelectionRequest): Promise<AnalyzeSelectionResponse> {
+  throw new Error('선택 영역 분석 API는 아직 백엔드에 구현되지 않았습니다.');
 }
 
 /**
@@ -238,16 +254,15 @@ export async function analyzeSelection(request: AnalyzeSelectionRequest): Promis
  */
 export async function checkHealth(): Promise<{ status: string; version?: string }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/health`, {
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      throw new Error('Backend is not healthy');
-    }
-
-    return await response.json();
-  } catch (error) {
+    return await requestJson<{ status: string; version?: string }>(
+      '/health',
+      {
+        method: 'GET',
+        headers: {},
+      },
+      { timeout: 3000 },
+    );
+  } catch (_error) {
     throw new Error('백엔드 서버에 연결할 수 없습니다.');
   }
 }

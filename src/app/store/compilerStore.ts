@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { checkHealth, executeCode, type CompilerLanguage, type ExecuteResponse } from '../services/compilerApi';
 
 export type OutputLine = {
   type: 'info' | 'success' | 'error' | 'input' | 'warning' | 'normal';
@@ -11,9 +12,15 @@ interface CompilerState {
   output: OutputLine[];
   addOutput: (line: OutputLine) => void;
   clearOutput: () => void;
-  runCode: () => void;
+  runCode: () => Promise<void>;
+  cancelRun: () => void;
   restartConsole: () => void;
   isRunning: boolean;
+  backendStatus: 'idle' | 'checking' | 'online' | 'offline';
+  lastExecution: ExecuteResponse | null;
+  lastError: string | null;
+  language: CompilerLanguage;
+  setLanguage: (language: CompilerLanguage) => void;
   isGraphViewerOpen: boolean;
   setGraphViewerOpen: (isOpen: boolean) => void;
   activeGraphTab: 'AST' | 'SSA' | 'IR' | 'ASM';
@@ -31,25 +38,53 @@ interface CompilerState {
 }
 
 const STORAGE_KEY = 'b-compiler-editor-code';
+let activeRunController: AbortController | null = null;
+
+const INITIAL_OUTPUT: OutputLine[] = [
+  { type: 'info', text: 'B++ 컴파일러 v1.0.0 초기화 중...' },
+  { type: 'success', text: '컴파일러 환경이 준비되었습니다.' },
+  { type: 'input', text: '> _' },
+];
+
+function appendPrompt(lines: OutputLine[]): OutputLine[] {
+  return [...lines, { type: 'input', text: '> _' }];
+}
 
 export const useCompilerStore = create<CompilerState>((set, get) => ({
   code: '',
   setCode: (code) => set({ code }),
-  output: [
-    { type: 'info', text: 'B++ 컴파일러 v1.0.0 초기화 중...' },
-    { type: 'success', text: '컴파일러 환경이 준비되었습니다.' },
-    { type: 'input', text: '> _' }
-  ],
+  output: INITIAL_OUTPUT,
   addOutput: (line) => set((state) => ({ output: [...state.output, line] })),
   clearOutput: () => set({ output: [{ type: 'input', text: '> _' }] }),
   restartConsole: () => set({ 
     output: [
       { type: 'info', text: '컴파일러 환경 재시작 중...' },
       { type: 'success', text: '컴파일러 환경이 준비되었습니다.' },
-      { type: 'input', text: '> _' }
-    ] 
+      { type: 'input', text: '> _' },
+    ],
+    lastError: null,
   }),
   isRunning: false,
+  cancelRun: () => {
+    if (activeRunController) {
+      activeRunController.abort();
+      activeRunController = null;
+    }
+
+    set((state) => ({
+      isRunning: false,
+      lastError: '실행이 사용자에 의해 취소되었습니다.',
+      output: appendPrompt([
+        ...state.output.filter((line) => line.type !== 'input'),
+        { type: 'warning', text: '> 실행이 취소되었습니다.' },
+      ]),
+    }));
+  },
+  backendStatus: 'idle',
+  lastExecution: null,
+  lastError: null,
+  language: 'cpp',
+  setLanguage: (language) => set({ language }),
   isGraphViewerOpen: true,
   setGraphViewerOpen: (isOpen) => set({ isGraphViewerOpen: isOpen }),
   activeGraphTab: 'AST',
@@ -82,61 +117,89 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
     }
   },
   
-  runCode: () => {
-    const { code, addOutput } = get();
-    
-    if (get().isRunning) return;
-    set({ isRunning: true });
-    
-    // 기존 출력에 실행 로그 추가 (새로 지우기보다는 이어서 표시)
-    const newOutput: OutputLine[] = [
-      ...get().output.filter(o => o.type !== 'input'),
-      { type: 'info', text: '\n> 컴파일 시작...' }
-    ];
-    set({ output: newOutput });
+  runCode: async () => {
+    const { code, language, isRunning } = get();
 
-    setTimeout(() => {
-      // 구문 에러 체크 (간단한 시뮬레이션: 세미콜론 누락 등)
-      if (code.includes('main()') && !code.includes('{')) {
-        addOutput({ type: 'error', text: 'SyntaxError: Expected "{" after main()' });
-        addOutput({ type: 'info', text: '프로그램이 비정상 종료되었습니다. (코드: 1)' });
-        addOutput({ type: 'input', text: '> _' });
-        set({ isRunning: false });
-        return;
+    if (isRunning) {
+      return;
+    }
+
+    if (!code.trim()) {
+      set((state) => ({
+        output: appendPrompt([
+          ...state.output.filter((line) => line.type !== 'input'),
+          { type: 'warning', text: '> 실행할 코드가 없습니다.' },
+        ]),
+      }));
+      return;
+    }
+
+    activeRunController = new AbortController();
+
+    set((state) => ({
+      isRunning: true,
+      backendStatus: 'checking',
+      lastError: null,
+      output: [
+        ...state.output.filter((line) => line.type !== 'input'),
+        { type: 'info', text: '> 백엔드 연결 확인 중...' },
+        { type: 'info', text: `> ${language.toUpperCase()} 코드 실행 요청 중...` },
+      ],
+    }));
+
+    try {
+      await checkHealth();
+      set({ backendStatus: 'online' });
+
+      const result = await executeCode(
+        {
+          code,
+          language,
+        },
+        { signal: activeRunController.signal },
+      );
+
+      activeRunController = null;
+
+      const nextOutput: OutputLine[] = [
+        ...get().output.filter((line) => line.type !== 'input'),
+        {
+          type: result.success ? 'success' : 'error',
+          text: `> 실행 완료 (${result.executionTime}s, exit code ${result.exitCode})`,
+        },
+      ];
+
+      if (result.stdout.trim()) {
+        nextOutput.push({ type: 'normal', text: result.stdout.trimEnd() });
       }
 
-      addOutput({ type: 'success', text: '> 빌드 성공 (0ms)' });
-      addOutput({ type: 'info', text: '> 프로그램 실행 중...' });
+      if (result.stderr.trim()) {
+        nextOutput.push({ type: result.success ? 'warning' : 'error', text: result.stderr.trimEnd() });
+      }
 
-      setTimeout(() => {
-        // 출력 시뮬레이션
-        let outputText = '';
-        
-        // cout 추출 (여러 줄 지원)
-        const coutRegex = /cout\s*<<\s*"([^"]*)"/g;
-        let match;
-        let hasOutput = false;
-        
-        while ((match = coutRegex.exec(code)) !== null) {
-          outputText += match[1];
-          hasOutput = true;
-          // 간단하게 endl 처리
-          if (code.substring(match.index).split(';')[0].includes('endl')) {
-             outputText += '\n';
-          }
-        }
+      if (!result.stdout.trim() && !result.stderr.trim()) {
+        nextOutput.push({ type: 'warning', text: '(출력된 내용이 없습니다)' });
+      }
 
-        if (hasOutput) {
-          addOutput({ type: 'normal', text: outputText });
-        } else {
-          addOutput({ type: 'warning', text: '(출력된 내용이 없습니다)' });
-        }
+      set({
+        isRunning: false,
+        lastExecution: result,
+        lastError: result.success ? null : result.stderr || `프로그램이 ${result.exitCode} 코드로 종료되었습니다.`,
+        output: appendPrompt(nextOutput),
+      });
+    } catch (error) {
+      activeRunController = null;
+      const message = error instanceof Error ? error.message : '실행 중 알 수 없는 오류가 발생했습니다.';
 
-        addOutput({ type: 'info', text: '\n> 프로그램이 0 상태 코드로 종료되었습니다.' });
-        addOutput({ type: 'input', text: '> _' });
-        set({ isRunning: false });
-      }, 600); // 실행 시간
-      
-    }, 400); // 빌드 시간
-  }
+      set((state) => ({
+        isRunning: false,
+        backendStatus: message.includes('백엔드') ? 'offline' : state.backendStatus,
+        lastError: message,
+        output: appendPrompt([
+          ...state.output.filter((line) => line.type !== 'input'),
+          { type: 'error', text: `> ${message}` },
+        ]),
+      }));
+    }
+  },
 }));

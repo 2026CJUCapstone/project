@@ -13,7 +13,7 @@ export function Header() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [user, setUser] = useState<{name: string, avatar: string} | null>(null);
   
-  const { theme, toggleTheme } = useCompilerStore();
+  const { theme, toggleTheme, code, saveCode, runCode, cancelRun, isRunning } = useCompilerStore();
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -51,13 +51,29 @@ export function Header() {
 
           {isIdeMode && (
             <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#252525] p-1 rounded-md border border-gray-200 dark:border-[#333] transition-colors duration-200">
-              <button className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors" title="저장">
+              <button
+                onClick={() => saveCode(code)}
+                className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors"
+                title="저장"
+              >
                 <Save size={16} />
               </button>
-              <button className="p-1.5 text-green-600 dark:text-green-500 hover:text-green-700 dark:hover:text-green-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors" title="코드 실행">
+              <button
+                onClick={() => {
+                  void runCode();
+                }}
+                disabled={isRunning}
+                className="p-1.5 text-green-600 dark:text-green-500 hover:text-green-700 dark:hover:text-green-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="코드 실행"
+              >
                 <Play size={16} className="fill-current" />
               </button>
-              <button className="p-1.5 text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors" title="중지">
+              <button
+                onClick={cancelRun}
+                disabled={!isRunning}
+                className="p-1.5 text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="중지"
+              >
                 <Square size={16} className="fill-current" />
               </button>
             </div>

@@ -1,6 +1,11 @@
 // WebSocket을 통한 실시간 코드 실행 출력
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+type ImportMetaWithEnv = ImportMeta & {
+  env?: Record<string, string | undefined>;
+};
+
+const WS_URL =
+  (import.meta as ImportMetaWithEnv).env?.VITE_WS_URL ?? 'ws://localhost:8000';
 
 export type WSMessage = 
   | { type: 'stdout'; data: string }
