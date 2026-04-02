@@ -182,35 +182,56 @@ async function requestJson<T>(path: string, init: RequestInit, options: RequestO
   }
 }
 
+// ==================== 백엔드 응답 → 프론트 변환 ====================
+
+interface BackendCompileResponse {
+  success: boolean;
+  ast?: ASTGraph;
+  ssa?: SSAGraph;
+  ir?: { instructions: IRInstruction[] };
+  asm?: { lines: ASMLine[] };
+  errors?: CompileError[];
+  warnings?: CompileError[];
+  execution_time: number;
+  metadata?: { node_count?: number; optimization_level?: number };
+}
+
+function mapCompileResponse(r: BackendCompileResponse): CompileResponse {
+  return {
+    success: r.success,
+    ast: r.ast,
+    ssa: r.ssa,
+    ir: r.ir,
+    asm: r.asm,
+    errors: r.errors,
+    warnings: r.warnings,
+    executionTime: r.execution_time,
+    metadata: r.metadata
+      ? { nodeCount: r.metadata.node_count, optimizationLevel: r.metadata.optimization_level }
+      : undefined,
+  };
+}
+
 // ==================== API 호출 함수 ====================
 
 /**
  * 코드 컴파일 및 중간 표현 생성
+ * 백엔드 POST /api/v1/compiler/compile
  */
 export async function compileCode(request: CompileRequest, options: RequestOptions = {}): Promise<CompileResponse> {
-  const response = await executeCode(
+  const response = await requestJson<BackendCompileResponse>(
+    '/api/v1/compiler/compile',
     {
-      code: request.code,
-      language: 'cpp',
-      timeout: options.timeout,
+      method: 'POST',
+      body: JSON.stringify({
+        code: request.code,
+        options: request.options ?? { optimize: false, target: 'all' },
+      }),
     },
     options,
   );
 
-  return {
-    success: response.success,
-    errors: response.stderr
-      ? [
-          {
-            line: 0,
-            column: 0,
-            message: response.stderr,
-            severity: response.exitCode === 0 ? 'warning' : 'error',
-          },
-        ]
-      : [],
-    executionTime: response.executionTime,
-  };
+  return mapCompileResponse(response);
 }
 
 /**

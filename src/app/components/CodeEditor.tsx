@@ -7,7 +7,7 @@ import { useCompilerStore } from "../store/compilerStore";
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
   const location = useLocation();
-  const { setSelectedText, autoSaveEnabled, lastSavedTime, saveCode, loadCode, setCode, runCode } = useCompilerStore();
+  const { setSelectedText, autoSaveEnabled, lastSavedTime, saveCode, loadCode, setCode, compileAndRun, compile } = useCompilerStore();
   const [copied, setCopied] = useState(false);
   const [isChallengeOpen, setIsChallengeOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -15,7 +15,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const [earnedPoints, setEarnedPoints] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const editorRef = useRef<any>(null);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   
   // URL 상태에서 challenge 전체 정보를 받아옵니다.
@@ -213,15 +213,20 @@ int main() {
         }
       }
 
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'B') {
+        e.preventDefault();
+        void compile();
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        void runCode();
+        void compileAndRun();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [runCode, saveStatus, saveCode]);
+  }, [compileAndRun, compile, saveStatus, saveCode]);
 
   // 마지막 저장 시간 업데이트 (1초마다)
   const [, forceUpdate] = useState(0);

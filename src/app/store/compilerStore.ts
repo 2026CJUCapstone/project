@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { checkHealth, executeCode, type CompilerLanguage, type ExecuteResponse } from '../services/compilerApi';
+import { checkHealth, compileCode, executeCode, type CompileResponse, type CompilerLanguage, type ExecuteResponse } from '../services/compilerApi';
 
 export type OutputLine = {
   type: 'info' | 'success' | 'error' | 'input' | 'warning' | 'normal';
@@ -29,6 +29,11 @@ interface CompilerState {
   setSelectedText: (text: string) => void;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
+  // 컴파일 관련 상태
+  isCompiling: boolean;
+  lastCompile: CompileResponse | null;
+  compileAndRun: () => Promise<void>;
+  compile: () => Promise<void>;
   // 자동저장 관련 상태
   lastSavedTime: number | null;
   autoSaveEnabled: boolean;
@@ -94,6 +99,92 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   theme: 'dark',
   toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
   
+  // 컴파일 관련 상태 및 함수
+  isCompiling: false,
+  lastCompile: null,
+
+  compile: async () => {
+    const { code, isCompiling } = get();
+    if (isCompiling) return;
+
+    if (!code.trim()) {
+      set((state) => ({
+        output: appendPrompt([
+          ...state.output.filter((line) => line.type !== 'input'),
+          { type: 'warning', text: '> 컴파일할 코드가 없습니다.' },
+        ]),
+      }));
+      return;
+    }
+
+    set((state) => ({
+      isCompiling: true,
+      lastError: null,
+      output: [
+        ...state.output.filter((line) => line.type !== 'input'),
+        { type: 'info', text: '> 코드 컴파일 중...' },
+      ],
+    }));
+
+    try {
+      const result = await compileCode({ code, options: { optimize: false, target: 'all' } });
+
+      const nextOutput: OutputLine[] = [
+        ...get().output.filter((line) => line.type !== 'input'),
+      ];
+
+      if (result.success) {
+        nextOutput.push({ type: 'success', text: `> 컴파일 성공 (${result.executionTime}ms)` });
+      } else {
+        nextOutput.push({ type: 'error', text: `> 컴파일 실패 (${result.executionTime}ms)` });
+      }
+
+      if (result.errors?.length) {
+        for (const err of result.errors) {
+          nextOutput.push({
+            type: 'error',
+            text: `  [${err.severity}] Line ${err.line}:${err.column} — ${err.message}`,
+          });
+        }
+      }
+
+      if (result.warnings?.length) {
+        for (const warn of result.warnings) {
+          nextOutput.push({
+            type: 'warning',
+            text: `  [warning] Line ${warn.line}:${warn.column} — ${warn.message}`,
+          });
+        }
+      }
+
+      set({
+        isCompiling: false,
+        lastCompile: result,
+        lastError: result.success ? null : '컴파일 오류가 발생했습니다.',
+        output: appendPrompt(nextOutput),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '컴파일 중 알 수 없는 오류가 발생했습니다.';
+      set((state) => ({
+        isCompiling: false,
+        lastError: message,
+        output: appendPrompt([
+          ...state.output.filter((line) => line.type !== 'input'),
+          { type: 'error', text: `> ${message}` },
+        ]),
+      }));
+    }
+  },
+
+  compileAndRun: async () => {
+    const { compile, runCode } = get();
+    await compile();
+    const { lastCompile } = get();
+    if (lastCompile?.success) {
+      await runCode();
+    }
+  },
+
   // 자동저장 관련 상태 및 함수
   lastSavedTime: null,
   autoSaveEnabled: true,

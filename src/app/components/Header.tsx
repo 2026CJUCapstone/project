@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { Terminal, Play, Save, Square, Swords, Trophy, Settings, Sun, Moon } from 'lucide-react';
+import { Terminal, Play, Save, Square, Swords, Trophy, Settings, Sun, Moon, Hammer } from 'lucide-react';
 import { UserProfile } from './UserProfile';
 import { AuthModal } from './AuthModal';
 import { useCompilerStore } from '../store/compilerStore';
@@ -13,7 +13,7 @@ export function Header() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [user, setUser] = useState<{name: string, avatar: string} | null>(null);
   
-  const { theme, toggleTheme, code, saveCode, runCode, cancelRun, isRunning } = useCompilerStore();
+  const { theme, toggleTheme, code, saveCode, runCode, cancelRun, isRunning, compile, compileAndRun, isCompiling } = useCompilerStore();
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -59,12 +59,20 @@ export function Header() {
                 <Save size={16} />
               </button>
               <button
+                onClick={() => { void compile(); }}
+                disabled={isCompiling || isRunning}
+                className="p-1.5 text-orange-600 dark:text-orange-500 hover:text-orange-700 dark:hover:text-orange-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="컴파일 (Ctrl+Shift+B)"
+              >
+                <Hammer size={16} />
+              </button>
+              <button
                 onClick={() => {
-                  void runCode();
+                  void compileAndRun();
                 }}
-                disabled={isRunning}
+                disabled={isRunning || isCompiling}
                 className="p-1.5 text-green-600 dark:text-green-500 hover:text-green-700 dark:hover:text-green-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="코드 실행"
+                title="컴파일 & 실행 (Ctrl+Enter)"
               >
                 <Play size={16} className="fill-current" />
               </button>
