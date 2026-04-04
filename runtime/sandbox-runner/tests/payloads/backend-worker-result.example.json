@@ -1,0 +1,22 @@
+{
+  "jobId": "11111111-2222-3333-4444-555555555555",
+  "status": "failed",
+  "runtimeOutcome": "timeout",
+  "runtimeErrorReason": "",
+  "stdout": "",
+  "stderr": "",
+  "exitCode": 124,
+  "signal": "",
+  "durationMs": 3000,
+  "violationReason": "wall_time_limit_exceeded",
+  "resourceSummary": {
+    "cpuTimeMs": 2900,
+    "peakMemoryKb": 16384
+  },
+  "metadata": {
+    "requestId": "demo-run-001",
+    "traceId": "trace-11111111-2222-3333-4444-555555555555",
+    "policyVersion": "official-v1",
+    "engine": "local"
+  }
+}

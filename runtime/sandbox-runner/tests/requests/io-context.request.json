@@ -1,0 +1,28 @@
+{
+  "requestId": "req-io-context-001",
+  "sampleName": "io-context",
+  "executablePath": "/home/ssw/compiler/sandbox-runner/build/samples/io-context",
+  "args": [
+    "alpha"
+  ],
+  "stdinData": "hello-input\n",
+  "workingDirectory": "/tmp",
+  "limits": {
+    "timeoutMs": 3000,
+    "cpuQuotaCores": 1,
+    "cpuTimeMs": 3000,
+    "memoryLimitMB": 256,
+    "processLimit": 64,
+    "maxThreads": 8,
+    "stdoutBufferBytes": 65536,
+    "stderrBufferBytes": 65536,
+    "maxOpenFiles": 32,
+    "networkMode": "no-network",
+    "filesystemMode": "isolated",
+    "syscallProfile": "minimal-runtime"
+  },
+  "traceMode": "none",
+  "metadata": {
+    "executionMode": "poc-local"
+  }
+}

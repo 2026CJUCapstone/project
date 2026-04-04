@@ -1,0 +1,23 @@
+{
+  "jobId": "11111111-2222-3333-4444-555555555555",
+  "requestType": "run",
+  "artifactId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  "executablePath": "/sandbox/artifacts/aaaaaaaa/run.bin",
+  "stdin": "",
+  "args": [],
+  "workingDirectory": "/sandbox/workdir",
+  "policy": {
+    "timeoutMs": 3000,
+    "cpuQuota": 1,
+    "memoryLimitMB": 256,
+    "processLimit": 64,
+    "networkMode": "no-network"
+  },
+  "metadata": {
+    "traceId": "trace-11111111-2222-3333-4444-555555555555",
+    "compilerContractVersion": "2.0.0",
+    "target": "native",
+    "optLevel": "O0",
+    "preset": "safe-default"
+  }
+}

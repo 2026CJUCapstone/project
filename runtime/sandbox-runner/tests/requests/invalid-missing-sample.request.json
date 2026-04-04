@@ -1,0 +1,26 @@
+{
+  "requestId": "req-invalid-001",
+  "sampleName": "",
+  "executablePath": "/home/ssw/compiler/sandbox-runner/build/samples/hello",
+  "args": [],
+  "stdinData": "",
+  "workingDirectory": "/home/ssw/compiler/sandbox-runner/build/samples",
+  "limits": {
+    "timeoutMs": 3000,
+    "cpuQuotaCores": 1,
+    "cpuTimeMs": 3000,
+    "memoryLimitMB": 256,
+    "processLimit": 64,
+    "maxThreads": 8,
+    "stdoutBufferBytes": 65536,
+    "stderrBufferBytes": 65536,
+    "maxOpenFiles": 32,
+    "networkMode": "no-network",
+    "filesystemMode": "isolated",
+    "syscallProfile": "minimal-runtime"
+  },
+  "traceMode": "none",
+  "metadata": {
+    "executionMode": "poc-local"
+  }
+}

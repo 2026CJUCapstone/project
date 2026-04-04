@@ -1,0 +1,14 @@
+{
+  "code": "fn main() { return 0; }",
+  "stdin": "",
+  "options": {
+    "emitAst": true,
+    "emitCfg": true,
+    "emitSsa": true,
+    "emitAsm": true,
+    "profile": true,
+    "target": "native",
+    "optLevel": "O2",
+    "preset": "safe-default"
+  }
+}
