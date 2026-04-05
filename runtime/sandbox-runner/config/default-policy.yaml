@@ -1,0 +1,44 @@
+policy_version: 0.1
+
+execution_limits:
+  wall_time_ms: 3000
+  cpu_quota_cores: 1
+  cpu_time_ms: 3000
+  memory_mb: 256
+  max_processes: 64
+  max_threads: 8
+  stdout_buffer_kb: 64
+  stderr_buffer_kb: 64
+  max_open_files: 32
+
+filesystem:
+  root_mode: isolated
+  writable_paths:
+    - /tmp
+  readonly_paths:
+    - /runtime
+  deny_host_home: true
+
+network:
+  mode: disabled
+
+syscalls:
+  mode: allowlist
+  profile: minimal-runtime
+
+reporting:
+  capture_stdout: true
+  capture_stderr: true
+  capture_exit_code: true
+  capture_signal: true
+  capture_peak_memory: true
+  capture_duration: true
+  capture_violation_reason: true
+
+failure_mapping:
+  time_limit: Timeout
+  memory_limit: OOM
+  syscall_violation: SecurityViolation
+  filesystem_violation: SecurityViolation
+  runtime_exit_nonzero: RuntimeError
+  runner_internal_error: InternalError
