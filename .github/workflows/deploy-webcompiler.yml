@@ -31,31 +31,18 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.WEBCOMPILER_DEPLOY_PORT }}" -H "${{ secrets.WEBCOMPILER_DEPLOY_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Ensure Remote Path
+      - name: Update Remote Repository
         env:
+          DEPLOY_BRANCH: ${{ github.ref_name }}
           DEPLOY_HOST: ${{ secrets.WEBCOMPILER_DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
           DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
+          DEPLOY_REPO: ${{ github.server_url }}/${{ github.repository }}.git
           DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
         run: |
-          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "mkdir -p '${DEPLOY_PATH}'"
-
-      - name: Sync Repository
-        env:
-          DEPLOY_HOST: ${{ secrets.WEBCOMPILER_DEPLOY_HOST }}
-          DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
-          DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
-          DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
-        run: |
-          rsync -az --delete \
-            -e "ssh -p ${DEPLOY_PORT}" \
-            --exclude '.git/' \
-            --exclude '.github/' \
-            --exclude '.sandbox-work/' \
-            --exclude 'backend/.venv/' \
-            --exclude 'frontend/node_modules/' \
-            --exclude 'frontend/dist/' \
-            ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "DEPLOY_BRANCH='${DEPLOY_BRANCH}' DEPLOY_PATH='${DEPLOY_PATH}' DEPLOY_REPO='${DEPLOY_REPO}' RUN_DEPLOY_SCRIPT=0 bash -s" \
+            < scripts/sync_remote_repo.sh
 
       - name: Run Remote Deploy
         env:
