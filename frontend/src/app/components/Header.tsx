@@ -86,6 +86,7 @@ export function Header() {
               <button
                 onClick={() => { void compile(); }}
                 disabled={isCompiling || isRunning}
+                data-testid="compile-button"
                 className="p-1.5 text-orange-600 dark:text-orange-500 hover:text-orange-700 dark:hover:text-orange-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="컴파일 (Ctrl+Shift+B)"
               >
@@ -96,6 +97,7 @@ export function Header() {
                   void compileAndRun();
                 }}
                 disabled={isRunning || isCompiling}
+                data-testid="compile-run-button"
                 className="p-1.5 text-green-600 dark:text-green-500 hover:text-green-700 dark:hover:text-green-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="컴파일 & 실행 (Ctrl+Enter)"
               >

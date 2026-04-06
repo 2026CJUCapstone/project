@@ -27,7 +27,9 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const editorRef = useRef<any>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const isHydratingEditorRef = useRef(false);
+  const [hasHydratedEditor, setHasHydratedEditor] = useState(false);
+  const [editorReady, setEditorReady] = useState(false);
   
   // URL 상태에서 challenge 전체 정보를 받아옵니다.
   const challenge = location.state?.challenge;
@@ -53,10 +55,8 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     }, 1500);
   };
 
-  let defaultCode = `import emitln from std.io;
-
-func main() -> u64 {
-    emitln("Hello from B++");
+  let defaultCode = `func main() -> u64 {
+    println("Hello from B++!!");
     return 0;
 }
 `;
@@ -83,18 +83,6 @@ func main() -> u64 {
     return 0;
 }`;
   }
-
-  // 초기 코드 설정
-  useEffect(() => {
-    if (challengeId) {
-      setLanguage('bpp');
-    }
-    if (editorRef.current) {
-      editorRef.current.setValue(defaultCode);
-    }
-    if (onCodeChange) onCodeChange(defaultCode);
-    setCode(defaultCode);
-  }, [challengeId, defaultCode, onCodeChange, setCode, setLanguage]);
 
   const fileName = language === 'java' ? 'Main.java' : `main.${language === 'python' ? 'py' : language === 'javascript' ? 'js' : language}`;
   const editorLanguage = language === 'c' || language === 'bpp' ? 'cpp' : language;
@@ -156,22 +144,30 @@ func main() -> u64 {
     }
   };
 
-  // 저장된 코드 불러오기
+  // 초기 예제 또는 저장된 코드를 에디터에 주입합니다.
   useEffect(() => {
-    if (!challengeId && editorRef.current && !initialLoadDone) {
-      const savedCode = loadCode();
-      if (savedCode) {
-        editorRef.current.setValue(savedCode);
-        if (onCodeChange) onCodeChange(savedCode);
-        setCode(savedCode);
-      }
-      setInitialLoadDone(true);
+    if (!editorReady || !editorRef.current) return;
+
+    if (challengeId) {
+      setLanguage('bpp');
     }
-  }, [challengeId, loadCode, onCodeChange, setCode]);
+
+    const nextCode = challengeId ? defaultCode : loadCode() || defaultCode;
+
+    isHydratingEditorRef.current = true;
+    if (editorRef.current.getValue() !== nextCode) {
+      editorRef.current.setValue(nextCode);
+    }
+    if (onCodeChange) onCodeChange(nextCode);
+    setCode(nextCode);
+    setSaveStatus('saved');
+    isHydratingEditorRef.current = false;
+    setHasHydratedEditor(true);
+  }, [challengeId, defaultCode, editorReady, loadCode, onCodeChange, setCode, setLanguage]);
 
   // 자동저장 - debounce 방식으로 코드 변경 후 2초 뒤 저장
   useEffect(() => {
-    if (!autoSaveEnabled || !initialLoadDone) return;
+    if (!autoSaveEnabled || !hasHydratedEditor) return;
 
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
@@ -193,7 +189,7 @@ func main() -> u64 {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [autoSaveEnabled, saveStatus, saveCode, initialLoadDone]);
+  }, [autoSaveEnabled, saveStatus, saveCode, hasHydratedEditor]);
 
   // 마지막 저장 시간 포맷팅
   const getLastSavedText = () => {
@@ -352,6 +348,7 @@ func main() -> u64 {
           theme={theme === 'dark' ? "bpp-dark" : "bpp-light"}
           onMount={(editor) => {
             editorRef.current = editor;
+            setEditorReady(true);
             editor.onDidChangeCursorSelection((e: any) => {
               const selection = e.selection;
               const model = editor.getModel();
@@ -362,8 +359,7 @@ func main() -> u64 {
             });
           }}
           onChange={(value) => {
-            if (!initialLoadDone) {
-              setInitialLoadDone(true);
+            if (isHydratingEditorRef.current) {
               return;
             }
             const nextCode = value || "";
