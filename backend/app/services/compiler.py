@@ -37,6 +37,8 @@ PYTHON_LINE_RE = re.compile(r'File ".*?", line (?P<line>\d+)')
 JAVASCRIPT_LINE_RE = re.compile(r"^(?P<file>.*?):(?P<line>\d+)$")
 JAVA_CLASS_RE = re.compile(r"\bpublic\s+class\s+(?P<name>[A-Za-z_]\w*)")
 JAVA_FALLBACK_CLASS_RE = re.compile(r"\bclass\s+(?P<name>[A-Za-z_]\w*)")
+JAVA_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+JAVA_LINE_COMMENT_RE = re.compile(r"//.*$")
 BPP_DIAGNOSTIC_RE = re.compile(r"^\[(?P<severity>ERROR|WARN|WARNING|INFO)\]\s+(?P<message>.*)$")
 BPP_LINE_COL_RE = re.compile(r"\bline (?P<line>\d+), column (?P<column>\d+)\b")
 
@@ -214,7 +216,9 @@ class DockerCompilerRunner:
 
     def _resolve_filename(self, language: str, source_code: str) -> str:
         if language == "java":
-            match = JAVA_CLASS_RE.search(source_code) or JAVA_FALLBACK_CLASS_RE.search(source_code)
+            sanitized_source = JAVA_BLOCK_COMMENT_RE.sub("", source_code)
+            sanitized_source = JAVA_LINE_COMMENT_RE.sub("", sanitized_source)
+            match = JAVA_CLASS_RE.search(sanitized_source) or JAVA_FALLBACK_CLASS_RE.search(sanitized_source)
             class_name = match.group("name") if match else "Main"
             return f"{class_name}.java"
         return f"main.{EXTENSIONS[language]}"

@@ -156,14 +156,6 @@ func main() -> u64 {
     }
   };
 
-  const handleSave = () => {
-    if (editorRef.current) {
-      const code = editorRef.current.getValue();
-      saveCode(code);
-      setSaveStatus('saved');
-    }
-  };
-
   // 저장된 코드 불러오기
   useEffect(() => {
     if (!challengeId && editorRef.current && !initialLoadDone) {
