@@ -6,7 +6,7 @@ import { Challenges } from "./pages/Challenges";
 
 const routerBasePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-export const router = createBrowserRouter([
+export const routeDefinitions = [
   {
     path: "/",
     Component: Layout,
@@ -16,6 +16,8 @@ export const router = createBrowserRouter([
       { path: "challenges", Component: Challenges },
     ],
   },
-], {
+];
+
+export const router = createBrowserRouter(routeDefinitions, {
   basename: routerBasePath === "" ? "/" : routerBasePath,
 });
