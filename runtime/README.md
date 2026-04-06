@@ -22,5 +22,5 @@ runtime/
 ## 빌드 방법
 
 ```bash
-docker build -t compiler-sandbox ./docker
+docker build -t compiler-sandbox -f docker/Dockerfile .
 ```

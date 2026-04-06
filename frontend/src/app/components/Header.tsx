@@ -13,7 +13,19 @@ export function Header() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [user, setUser] = useState<{name: string, avatar: string} | null>(null);
   
-  const { theme, toggleTheme, code, saveCode, runCode, cancelRun, isRunning, compile, compileAndRun, isCompiling } = useCompilerStore();
+  const {
+    theme,
+    toggleTheme,
+    code,
+    saveCode,
+    cancelRun,
+    isRunning,
+    compile,
+    compileAndRun,
+    isCompiling,
+    language,
+    setLanguage,
+  } = useCompilerStore();
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -51,6 +63,19 @@ export function Header() {
 
           {isIdeMode && (
             <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#252525] p-1 rounded-md border border-gray-200 dark:border-[#333] transition-colors duration-200">
+              <select
+                value={language}
+                onChange={(event) => setLanguage(event.target.value as typeof language)}
+                className="bg-transparent text-xs font-medium text-gray-700 dark:text-gray-200 px-2 py-1.5 rounded outline-none"
+                title="실행 언어 선택"
+              >
+                <option value="bpp">B++</option>
+                <option value="cpp">C++</option>
+                <option value="c">C</option>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+                <option value="javascript">JavaScript</option>
+              </select>
               <button
                 onClick={() => saveCode(code)}
                 className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors"

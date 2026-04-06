@@ -1,9 +1,17 @@
 // API 기본 설정 및 타입 정의
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+function normalizeApiBaseUrl(value: string): string {
+  if (!value || value === '/') {
+    return '';
+  }
+  return value.endsWith('/') ? value.slice(0, -1) : value;
+}
+
+const apiBaseFromBaseUrl = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL.replace(/\/$/, '');
+const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL || apiBaseFromBaseUrl);
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '10000', 10);
 
-export type CompilerLanguage = 'python' | 'c' | 'cpp' | 'java' | 'javascript';
+export type CompilerLanguage = 'bpp' | 'python' | 'c' | 'cpp' | 'java' | 'javascript';
 
 interface RequestOptions {
   signal?: AbortSignal;
@@ -92,6 +100,7 @@ export interface CompileError {
 
 export interface CompileRequest {
   code: string;
+  language?: CompilerLanguage;
   options?: {
     optimize: boolean;
     target: 'ast' | 'ssa' | 'ir' | 'asm' | 'all';
@@ -225,6 +234,7 @@ export async function compileCode(request: CompileRequest, options: RequestOptio
       method: 'POST',
       body: JSON.stringify({
         code: request.code,
+        language: request.language ?? 'bpp',
         options: request.options ?? { optimize: false, target: 'all' },
       }),
     },
@@ -243,8 +253,8 @@ export async function executeCode(request: ExecuteRequest, options: RequestOptio
     {
       method: 'POST',
       body: JSON.stringify({
-        language: request.language ?? 'cpp',
-        source_code: request.code,
+        language: request.language ?? 'bpp',
+        code: request.code,
         stdin: request.input,
       }),
     },

@@ -16,6 +16,7 @@ frontend/.env
 
 # Docker
 *.tar
+.sandbox-work/
 
 # Editor
 .vscode/

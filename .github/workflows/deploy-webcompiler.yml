@@ -1,0 +1,68 @@
+name: Deploy Webcompiler
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-webcompiler
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.WEBCOMPILER_DEPLOY_SSH_KEY }}
+
+      - name: Trust Deploy Host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.WEBCOMPILER_DEPLOY_PORT }}" -H "${{ secrets.WEBCOMPILER_DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Ensure Remote Path
+        env:
+          DEPLOY_HOST: ${{ secrets.WEBCOMPILER_DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
+        run: |
+          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "mkdir -p '${DEPLOY_PATH}'"
+
+      - name: Sync Repository
+        env:
+          DEPLOY_HOST: ${{ secrets.WEBCOMPILER_DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${DEPLOY_PORT}" \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.sandbox-work/' \
+            --exclude 'backend/.venv/' \
+            --exclude 'frontend/node_modules/' \
+            --exclude 'frontend/dist/' \
+            ./ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+
+      - name: Run Remote Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.WEBCOMPILER_DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
+          DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
+        run: |
+          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash scripts/deploy_server.sh"

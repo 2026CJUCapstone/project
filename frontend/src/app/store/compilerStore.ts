@@ -51,6 +51,13 @@ const INITIAL_OUTPUT: OutputLine[] = [
   { type: 'input', text: '> _' },
 ];
 
+function formatExecutionTime(milliseconds: number): string {
+  if (milliseconds >= 1000) {
+    return `${(milliseconds / 1000).toFixed(2)}s`;
+  }
+  return `${Math.round(milliseconds)}ms`;
+}
+
 function appendPrompt(lines: OutputLine[]): OutputLine[] {
   return [...lines, { type: 'input', text: '> _' }];
 }
@@ -88,7 +95,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   backendStatus: 'idle',
   lastExecution: null,
   lastError: null,
-  language: 'cpp',
+  language: 'bpp',
   setLanguage: (language) => set({ language }),
   isGraphViewerOpen: true,
   setGraphViewerOpen: (isOpen) => set({ isGraphViewerOpen: isOpen }),
@@ -104,7 +111,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   lastCompile: null,
 
   compile: async () => {
-    const { code, isCompiling } = get();
+    const { code, isCompiling, language } = get();
     if (isCompiling) return;
 
     if (!code.trim()) {
@@ -127,16 +134,20 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
     }));
 
     try {
-      const result = await compileCode({ code, options: { optimize: false, target: 'all' } });
+      const result = await compileCode({
+        code,
+        language,
+        options: { optimize: false, target: 'all' },
+      });
 
       const nextOutput: OutputLine[] = [
         ...get().output.filter((line) => line.type !== 'input'),
       ];
 
       if (result.success) {
-        nextOutput.push({ type: 'success', text: `> 컴파일 성공 (${result.executionTime}ms)` });
+        nextOutput.push({ type: 'success', text: `> 컴파일 성공 (${formatExecutionTime(result.executionTime)})` });
       } else {
-        nextOutput.push({ type: 'error', text: `> 컴파일 실패 (${result.executionTime}ms)` });
+        nextOutput.push({ type: 'error', text: `> 컴파일 실패 (${formatExecutionTime(result.executionTime)})` });
       }
 
       if (result.errors?.length) {
@@ -256,7 +267,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
         ...get().output.filter((line) => line.type !== 'input'),
         {
           type: result.success ? 'success' : 'error',
-          text: `> 실행 완료 (${result.executionTime}s, exit code ${result.exitCode})`,
+          text: `> 실행 완료 (${formatExecutionTime(result.executionTime)}, exit code ${result.exitCode})`,
         },
       ];
 

@@ -7,7 +7,18 @@ import { useCompilerStore } from "../store/compilerStore";
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
   const location = useLocation();
-  const { setSelectedText, autoSaveEnabled, lastSavedTime, saveCode, loadCode, setCode, compileAndRun, compile } = useCompilerStore();
+  const {
+    setSelectedText,
+    autoSaveEnabled,
+    lastSavedTime,
+    saveCode,
+    loadCode,
+    setCode,
+    compileAndRun,
+    compile,
+    language,
+    setLanguage,
+  } = useCompilerStore();
   const [copied, setCopied] = useState(false);
   const [isChallengeOpen, setIsChallengeOpen] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,45 +53,51 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     }, 1500);
   };
 
-  let defaultCode = `func main(argc: i64, argv: *u64) -> i64 {
-    var sum_for: i64 = 0;
+  let defaultCode = `import emitln from std.io;
 
-    for (var i: i64 = 0; i < 6; i = i + 1) {
-        sum_for = sum_for + i;
-    }
-
+func main() -> u64 {
+    emitln("Hello from B++");
     return 0;
 }
 `;
 
   // 챌린지를 눌러서 왔을 때, 해당하는 기초 뼈대 드를 삽입해줄 수 있습니다.
   if (challengeId === 'c1') {
-    defaultCode = `// 챌린지: B++로 "Hello, World!" 출력하기
-#include <iostream>
+    defaultCode = `import emitln from std.io;
 
-int main() {
-    // 여기에 코드를 작성하세요
-    
+func main() -> u64 {
+    emitln("Hello, World!");
     return 0;
 }`;
   } else if (challengeId === 'c2') {
-    defaultCode = `// 챌린지: 홀수와 짝수
-#include <iostream>
+    defaultCode = `import emitln from std.io;
 
-int main() {
-    int num;
-    std::cin >> num;
-    // 짝수면 "Even", 홀수면 "Odd"를 출력하세요
-    
+func main() -> u64 {
+    var num: i64 = 0;
+    // TODO: 입력 처리를 추가한 뒤 짝수면 "Even", 홀수면 "Odd"를 출력하세요.
+    if ((num % 2) == 0) {
+        emitln("Even");
+    } else {
+        emitln("Odd");
+    }
     return 0;
 }`;
   }
 
   // 초기 코드 설정
   useEffect(() => {
+    if (challengeId) {
+      setLanguage('bpp');
+    }
+    if (editorRef.current) {
+      editorRef.current.setValue(defaultCode);
+    }
     if (onCodeChange) onCodeChange(defaultCode);
     setCode(defaultCode);
-  }, [defaultCode, onCodeChange, setCode]);
+  }, [challengeId, defaultCode, onCodeChange, setCode, setLanguage]);
+
+  const fileName = language === 'java' ? 'Main.java' : `main.${language === 'python' ? 'py' : language === 'javascript' ? 'js' : language}`;
+  const editorLanguage = language === 'c' || language === 'bpp' ? 'cpp' : language;
 
   const { theme } = useCompilerStore();
 
@@ -243,7 +260,7 @@ int main() {
       <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shadow-sm shrink-0 transition-colors duration-200">
         <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
           <FileCode2 size={16} className="text-blue-500" />
-          <span className="text-xs font-mono tracking-wider text-gray-700 dark:text-gray-300">main.bpp</span>
+          <span className="text-xs font-mono tracking-wider text-gray-700 dark:text-gray-300">{fileName}</span>
         </div>
         
         <button 
@@ -338,7 +355,7 @@ int main() {
       <div className="flex-1 w-full pt-2 bg-white dark:bg-transparent transition-colors duration-200">
         <Editor
           height="100%"
-          defaultLanguage="cpp"
+          language={editorLanguage}
           defaultValue={defaultCode}
           theme={theme === 'dark' ? "bpp-dark" : "bpp-light"}
           onMount={(editor) => {
