@@ -36,16 +36,12 @@
   - 내부 요청 JSON 기반 runner 프로토타입
 - `cmd/api_demo.py`
   - 공식 `run` 요청 -> adapter -> runner 흐름 데모
-- `cmd/bpp_runner.py`
-  - B++ source file 또는 JSON 요청을 받아 `bpp` CLI를 호출하는 runtime entrypoint
 - `scripts/build_samples.sh`
   - 테스트 C 샘플 빌드
 - `scripts/run_sample.sh`
   - 제한 정책을 적용한 샘플 실행
 - `tests/samples/`
   - timeout, OOM, process limit, runtime error 등 검증용 샘플
-- `tests/bpp/`
-  - B++ runtime 연결 검증용 샘플
 - `tests/requests/`
   - runner 입력 예시
 - `tests/payloads/`
@@ -71,12 +67,6 @@ python3 sandbox-runner/cmd/poc_runner.py sandbox-runner/tests/requests/hello.req
 python3 sandbox-runner/cmd/api_demo.py sandbox-runner/tests/requests/public-run.request.json hello
 ```
 
-B++ runtime 데모:
-
-```bash
-python3 sandbox-runner/cmd/bpp_runner.py --source sandbox-runner/tests/bpp/hello.bpp --mode dump-ssa
-```
-
 ## 업로드 원칙
 
 - 업로드 대상:
@@ -88,8 +78,3 @@ python3 sandbox-runner/cmd/bpp_runner.py --source sandbox-runner/tests/bpp/hello
   - `build/`
   - `reports/`
   - `__pycache__/`
-
-## 메모
-
-- `tests/samples/*.c`는 내부 sandbox 정책 검증용이다.
-- 제품 경로는 `cmd/bpp_runner.py`와 `runtime/sandbox/run.sh`를 통해 B++를 호출하는 흐름이다.
