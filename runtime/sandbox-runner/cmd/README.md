@@ -15,3 +15,5 @@
   - 내부 요청 JSON 기반 runner 프로토타입
 - `api_demo.py`
   - 공식 `run` 요청 -> adapter -> runner 흐름 데모용 CLI
+- `bpp_runner.py`
+  - B++ source 또는 JSON request를 받아 `bpp` CLI를 호출하는 runtime entrypoint

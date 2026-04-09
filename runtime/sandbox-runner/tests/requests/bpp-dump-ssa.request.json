@@ -1,0 +1,13 @@
+{
+  "requestId": "bpp-dump-ssa-001",
+  "sourcePath": "runtime/sandbox-runner/tests/bpp/hello.bpp",
+  "mode": "dump-ssa",
+  "optLevel": "O1",
+  "stdinData": "",
+  "workingDirectory": "/workspace",
+  "timeoutMs": 3000,
+  "extraArgs": [],
+  "metadata": {
+    "traceId": "trace-bpp-ssa-001"
+  }
+}

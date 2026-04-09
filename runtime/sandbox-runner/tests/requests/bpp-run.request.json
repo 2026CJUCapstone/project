@@ -1,0 +1,13 @@
+{
+  "requestId": "bpp-run-001",
+  "sourcePath": "runtime/sandbox-runner/tests/bpp/hello.bpp",
+  "mode": "run",
+  "optLevel": "O0",
+  "stdinData": "",
+  "workingDirectory": "/workspace",
+  "timeoutMs": 3000,
+  "extraArgs": [],
+  "metadata": {
+    "traceId": "trace-bpp-run-001"
+  }
+}
