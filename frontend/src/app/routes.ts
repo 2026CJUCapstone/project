@@ -3,6 +3,7 @@ import { Layout } from "./Layout";
 import { IDE } from "./pages/IDE";
 import { Leaderboard } from "./pages/Leaderboard";
 import { Challenges } from "./pages/Challenges";
+import { Admin } from "./pages/Admin";
 
 export const router = createBrowserRouter([
   {
@@ -14,4 +15,5 @@ export const router = createBrowserRouter([
       { path: "challenges", Component: Challenges },
     ],
   },
+  { path: "/admin", Component: Admin },
 ]);
