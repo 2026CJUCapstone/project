@@ -6,7 +6,11 @@ export interface JudgeResult {
   input: string;
   expectedOutput: string;
   actualOutput: string;
+  expected: string;
+  actual: string;
   passed: boolean;
+  executionTime?: number;
+  error?: string;
 }
 
 export interface JudgeSummary {
@@ -34,6 +38,8 @@ export async function judgeCode(
         input: tc.input,
         expectedOutput,
         actualOutput,
+        expected: expectedOutput,
+        actual: actualOutput,
         passed: actualOutput === expectedOutput,
       });
     } catch {
@@ -42,7 +48,10 @@ export async function judgeCode(
         input: tc.input,
         expectedOutput: tc.expectedOutput.trim(),
         actualOutput: '실행 오류',
+        expected: tc.expectedOutput.trim(),
+        actual: '실행 오류',
         passed: false,
+        error: '실행 오류',
       });
     }
   }
