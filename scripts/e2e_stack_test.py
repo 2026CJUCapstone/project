@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+ENV = {**os.environ, "PROJECT_ROOT": str(ROOT_DIR)}
+
+
+def run_command(*args: str) -> None:
+    subprocess.run(args, cwd=ROOT_DIR, env=ENV, check=True)
+
+
+def wait_for_json(url: str, timeout: float = 60.0) -> dict:
+    deadline = time.time() + timeout
+    last_error: Exception | None = None
+
+    while time.time() < deadline:
+        try:
+            with urlopen(url, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+                return payload
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            time.sleep(1)
+
+    raise RuntimeError(f"Timed out waiting for {url}: {last_error}") from last_error
+
+
+def post_json(url: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    request = Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_text(url: str) -> str:
+    with urlopen(url, timeout=10) as response:
+        return response.read().decode("utf-8")
+
+
+def main() -> int:
+    bpp_code = """import emitln from std.io;
+
+func main() -> u64 {
+    emitln("42");
+    return 0;
+}
+"""
+
+    invalid_bpp_code = """func main( -> u64 {
+    return 0;
+}
+"""
+
+    try:
+        run_command("bash", "scripts/docker_up.sh")
+
+        backend_health = wait_for_json("http://127.0.0.1:8000/health")
+        frontend_health = wait_for_json("http://127.0.0.1:5173/health")
+
+        if backend_health.get("status") != "ok" or frontend_health.get("status") != "ok":
+            raise RuntimeError("Health check failed")
+
+        index_html = fetch_text("http://127.0.0.1:5173/")
+        if '<div id="root"></div>' not in index_html:
+            raise RuntimeError("Frontend index page did not load correctly")
+
+        compile_result = post_json(
+            "http://127.0.0.1:5173/api/v1/compiler/compile",
+            {
+                "code": bpp_code,
+                "language": "bpp",
+                "options": {"optimize": False, "target": "all"},
+            },
+        )
+        if compile_result.get("success") is not True:
+            raise RuntimeError(f"Compile endpoint failed: {compile_result}")
+
+        invalid_compile_result = post_json(
+            "http://127.0.0.1:5173/api/v1/compiler/compile",
+            {
+                "code": invalid_bpp_code,
+                "language": "bpp",
+                "options": {"optimize": False, "target": "all"},
+            },
+        )
+        if invalid_compile_result.get("success") is not False or not invalid_compile_result.get("errors"):
+            raise RuntimeError(f"Compile diagnostics endpoint failed: {invalid_compile_result}")
+
+        run_result = post_json(
+            "http://127.0.0.1:5173/api/v1/compiler/run",
+            {
+                "language": "bpp",
+                "code": bpp_code,
+            },
+        )
+        if run_result.get("exit_code") != 0:
+            raise RuntimeError(f"Run endpoint failed: {run_result}")
+        if run_result.get("stdout", "").strip() != "42":
+            raise RuntimeError(f"Unexpected run output: {run_result}")
+
+        print(json.dumps({
+            "backend_health": backend_health,
+            "frontend_health": frontend_health,
+            "compile_success": compile_result.get("success"),
+            "invalid_compile_errors": len(invalid_compile_result.get("errors", [])),
+            "run_stdout": run_result.get("stdout", "").strip(),
+        }, ensure_ascii=True, indent=2))
+        return 0
+    finally:
+        try:
+            run_command("bash", "scripts/docker_down.sh")
+        except (subprocess.CalledProcessError, URLError):
+            pass
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Backend Dependencies
+        run: python -m pip install --upgrade pip && pip install -r backend/requirements.txt
+
+      - name: Run Backend Tests
+        run: pytest -q backend/tests
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Frontend Tests
+        working-directory: frontend
+        run: npm run test:run
+
+      - name: Typecheck Frontend
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+
+  compose-config:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Default Compose
+        run: PROJECT_ROOT="$GITHUB_WORKSPACE" docker compose -f docker-compose.yml config >/dev/null
+
+      - name: Validate Deploy Compose Overlay
+        run: |
+          PROJECT_ROOT="$GITHUB_WORKSPACE" \
+          WEBCOMPILER_BACKEND_PORT_MAPPING="127.0.0.1:18000:8000" \
+          WEBCOMPILER_FRONTEND_PORT_MAPPING="127.0.0.1:15173:80" \
+          WEBCOMPILER_API_BASE="/webcompiler" \
+          WEBCOMPILER_BASE_PATH="/webcompiler/" \
+          docker compose -f docker-compose.yml -f docker-compose.deploy.yml config >/dev/null
+
+  e2e-stack:
+    runs-on: ubuntu-latest
+    needs:
+      - backend-tests
+      - frontend-checks
+      - compose-config
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Docker
+        run: docker version
+
+      - name: Run Docker E2E
+        run: python3 scripts/e2e_stack_test.py
+
+      - name: Dump Container Logs On Failure
+        if: failure()
+        run: docker compose logs --no-color || true
+
+      - name: Clean Up Docker Stack
+        if: always()
+        run: bash scripts/docker_down.sh || true
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    needs:
+      - backend-tests
+      - frontend-checks
+      - compose-config
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start Webcompiler Deploy-Like Stack
+        run: bash scripts/docker_up_webcompiler.sh
+
+      - name: Run Playwright Browser E2E
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:15173
+        run: npm run e2e:playwright
+
+      - name: Dump Deploy-Like Stack Logs On Failure
+        if: failure()
+        run: |
+          PROJECT_ROOT="$GITHUB_WORKSPACE" \
+          COMPOSE_PROJECT_NAME="webcompiler-local" \
+          WEBCOMPILER_BACKEND_PORT_MAPPING="127.0.0.1:18000:8000" \
+          WEBCOMPILER_FRONTEND_PORT_MAPPING="127.0.0.1:15173:80" \
+          docker compose -f docker-compose.yml -f docker-compose.deploy.yml logs --no-color || true
+
+      - name: Upload Playwright Report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          if-no-files-found: ignore
+
+      - name: Clean Up Deploy-Like Stack
+        if: always()
+        run: bash scripts/docker_down_webcompiler.sh || true

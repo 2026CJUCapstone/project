@@ -1,17 +1,20 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
-from enum import Enum
-from datetime import datetime
+from typing import Literal
 
-class Visibility(str, Enum):
-    PUBLIC = "PUBLIC"
-    UNLISTED = "UNLISTED"
-    PRIVATE = "PRIVATE"
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+
+
+CompilerLanguage = Literal["bpp", "python", "c", "cpp", "java", "javascript"]
+CompilerTarget = Literal["ast", "ssa", "ir", "asm", "all"]
+
 
 class CodeRequest(BaseModel):
-    language: str
-    source_code: str
-    stdin: Optional[str] = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    language: CompilerLanguage
+    source_code: str = Field(validation_alias=AliasChoices("source_code", "code"))
+    stdin: str | None = None
+    optimize: bool = False
+
 
 class CodeResponse(BaseModel):
     stdout: str
@@ -19,46 +22,39 @@ class CodeResponse(BaseModel):
     exit_code: int
     execution_time: float
 
+
+class CompileOptions(BaseModel):
+    optimize: bool = False
+    target: CompilerTarget = "all"
+    debug: bool = False
+
+
 class CompileRequest(BaseModel):
-    source_code: str
-    options: List[str] =[]
+    code: str
+    language: CompilerLanguage = "bpp"
+    options: CompileOptions = Field(default_factory=CompileOptions)
+
+
+class CompileDiagnostic(BaseModel):
+    line: int = 1
+    column: int = 1
+    message: str
+    severity: Literal["error", "warning", "info"]
+    code: str | None = None
+
+
+class CompileMetadata(BaseModel):
+    node_count: int | None = None
+    optimization_level: int | None = None
+
 
 class CompileResponse(BaseModel):
-    job_id: str
-    status: str
-    message: str
-
-class SnippetCreateRequest(BaseModel):
-    job_id: str = Field(..., description="컴파일 완료된 Job ID")
-    visibility: Visibility = Field(default=Visibility.UNLISTED)
-    expire_at: Optional[datetime] = Field(default=None, description="만료 일시 (UTC)", json_schema_extra={"example": None})
-    custom_slug: Optional[str] = Field(default=None, description="사용자 지정 짧은 주소 (선택)")
-
-class SnippetResponse(BaseModel):
-    slug: str
-    job_id: str
-    visibility: Visibility
-    expire_at: Optional[datetime]
-    created_at: datetime
-
-class LabPipelineRequest(BaseModel):
-    source_code: str
-    passes: List[str] = Field(..., description="사용자가 직접 구성한 최적화 패스 순서 목록")
-
-class LabPipelineResponse(BaseModel):
-    job_id: str
-    status: str
-    message: str
-
-class LabShareRequest(BaseModel):
-    job_id: str
-    custom_slug: Optional[str] = None
-
-class VersionAddRequest(BaseModel):
-    job_id: str = Field(..., description="새로 추가할 컴파일 완료된 Job ID")
-    commit_message: str = Field(default="새로운 버전 업데이트", description="변경 사항 메모")
-
-class DiffResponse(BaseModel):
-    base_job_id: str
-    compare_job_id: str
-    source_diff: str
+    success: bool
+    ast: dict | None = None
+    ssa: dict | None = None
+    ir: dict | None = None
+    asm: dict | None = None
+    errors: list[CompileDiagnostic] = Field(default_factory=list)
+    warnings: list[CompileDiagnostic] = Field(default_factory=list)
+    execution_time: float
+    metadata: CompileMetadata | None = None

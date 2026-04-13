@@ -5,7 +5,10 @@ export function OutputConsole() {
   const { isGraphViewerOpen, setGraphViewerOpen, output, clearOutput, restartConsole, backendStatus, isRunning } = useCompilerStore();
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-[#0d0d0d] font-mono text-sm shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] transition-colors duration-200">
+    <div
+      data-testid="output-console"
+      className="flex flex-col h-full bg-gray-50 dark:bg-[#0d0d0d] font-mono text-sm shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] transition-colors duration-200"
+    >
       <div className="flex items-center justify-between bg-white dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shrink-0 sticky top-0 z-10 transition-colors duration-200">
         <div className="flex items-center">
           <div className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-blue-500 bg-gray-100 dark:bg-[#252525] transition-colors duration-200">

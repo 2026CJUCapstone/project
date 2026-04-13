@@ -23,4 +23,4 @@ app.include_router(compiler.router, prefix="/api/v1/compiler", tags=["compiler"]
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "version": settings.VERSION}

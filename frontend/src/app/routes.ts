@@ -5,7 +5,9 @@ import { Leaderboard } from "./pages/Leaderboard";
 import { Challenges } from "./pages/Challenges";
 import { Admin } from "./pages/Admin";
 
-export const router = createBrowserRouter([
+const routerBasePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+export const routeDefinitions = [
   {
     path: "/",
     Component: Layout,
@@ -16,4 +18,8 @@ export const router = createBrowserRouter([
     ],
   },
   { path: "/admin", Component: Admin },
-]);
+];
+
+export const router = createBrowserRouter(routeDefinitions, {
+  basename: routerBasePath === "" ? "/" : routerBasePath,
+});
