@@ -1,19 +1,27 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import compiler
+from app.api.routes import problems, compiler
+from app.core.database import engine, Base
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
+    title="Online Compiler API",
     description="코드 컴파일 및 실행 API 서버",
-    version=settings.VERSION
+    version="0.1.0",
 )
 
-app.include_router(compiler.router, prefix=settings.API_V1_STR)
-
-@app.get("/")
-def read_root():
-    return {"message": f"Welcome to {settings.PROJECT_NAME}!"}
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(problems.router, prefix="/api/v1/problems", tags=["problems"])
+app.include_router(compiler.router, prefix="/api/v1/compiler", tags=["compiler"])
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "version": settings.VERSION}
