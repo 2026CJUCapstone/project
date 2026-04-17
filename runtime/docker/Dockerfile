@@ -19,9 +19,10 @@ ENV BPP_BOOTSTRAP_TAG="${BPP_BOOTSTRAP_TAG}"
 ENV BPP_BOOTSTRAP_URL="${BPP_BOOTSTRAP_URL}"
 ENV BPP_BOOTSTRAP_SHA256="${BPP_BOOTSTRAP_SHA256}"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
     binutils \
     ca-certificates \
+    curl \
     cmake \
     python3 \
     python3-pip \
@@ -31,8 +32,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-jdk-headless \
     nasm \
     make \
-    nodejs \
-    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 20.x via NodeSource (Ubuntu 22.04 기본은 v12로 너무 낮음)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone "$BPP_REPO" /opt/Bpp \
