@@ -1,4 +1,4 @@
-// 문제 관리 API 서비스
+// 문제 관리 API
 
 function normalizeApiBaseUrl(value: string): string {
   if (!value || value === '/') return '';
