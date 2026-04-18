@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://127.0.0.1
+      SANDBOX_IMAGE: compiler-sandbox
+      EXECUTION_TIMEOUT: 10
+      SANDBOX_WORKDIR_ROOT: ${PROJECT_ROOT}/.sandbox-work
+      SANDBOX_MEMORY_MB: 256
+      SANDBOX_CPU_LIMIT: 1.0
+      SANDBOX_PIDS_LIMIT: 64
+      SANDBOX_NOFILE_LIMIT: 1024
+    working_dir: ${PROJECT_ROOT}/backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PROJECT_ROOT}:${PROJECT_ROOT}
+    ports:
+      - "${WEBCOMPILER_BACKEND_PORT_MAPPING:-8000:8000}"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
+        VITE_APP_BASE_PATH: ${VITE_APP_BASE_PATH:-/}
+    depends_on:
+      - backend
+    ports:
+      - "${WEBCOMPILER_FRONTEND_PORT_MAPPING:-5173:80}"

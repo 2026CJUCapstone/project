@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SandboxRunnerExecutionRequest",
+  "type": "object",
+  "required": [
+    "requestId",
+    "sampleName",
+    "executablePath",
+    "args",
+    "stdinData",
+    "workingDirectory",
+    "limits",
+    "traceMode",
+    "metadata"
+  ],
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sampleName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "executablePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "args": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "stdinData": {
+      "type": "string"
+    },
+    "workingDirectory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "timeoutMs",
+        "cpuQuotaCores",
+        "cpuTimeMs",
+        "memoryLimitMB",
+        "processLimit",
+        "maxThreads",
+        "stdoutBufferBytes",
+        "stderrBufferBytes",
+        "maxOpenFiles",
+        "networkMode",
+        "filesystemMode",
+        "syscallProfile"
+      ],
+      "properties": {
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cpuQuotaCores": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cpuTimeMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memoryLimitMB": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "processLimit": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxThreads": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stdoutBufferBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stderrBufferBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxOpenFiles": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "networkMode": {
+          "type": "string"
+        },
+        "filesystemMode": {
+          "type": "string"
+        },
+        "syscallProfile": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "traceMode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "basic",
+        "verbose"
+      ]
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

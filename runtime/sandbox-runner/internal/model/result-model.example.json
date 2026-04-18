@@ -1,0 +1,41 @@
+{
+  "requestId": "req-001",
+  "sampleName": "infinite-loop",
+  "finalStatus": "Timeout",
+  "exitCode": 137,
+  "runtimeErrorReason": "",
+  "signal": "",
+  "startedAt": "2026-03-15T17:50:00Z",
+  "finishedAt": "2026-03-15T17:50:01Z",
+  "metrics": {
+    "durationMs": 1001,
+    "cpuTimeMs": 1000,
+    "peakMemoryKb": 0,
+    "stdoutBytes": 0,
+    "stderrBytes": 0
+  },
+  "violation": {
+    "category": "timeout",
+    "reason": "cpu_time_limit_exceeded",
+    "message": "cpu time limit reached",
+    "resource": "cpu"
+  },
+  "profileSummary": null,
+  "traceEvents": [],
+  "timeline": [],
+  "stdout": "",
+  "stderr": "",
+  "stdoutMeta": {
+    "bytes": 0,
+    "truncated": false,
+    "encoding": "utf-8"
+  },
+  "stderrMeta": {
+    "bytes": 0,
+    "truncated": false,
+    "encoding": "utf-8"
+  },
+  "internalReasonCode": "",
+  "notes": "derived from initial PoC driver",
+  "metadata": {}
+}

@@ -1,0 +1,10 @@
+{
+  "code": "fn main() { return 0; }",
+  "language": "bpp",
+  "options": {
+    "optimize": false,
+    "target": "native",
+    "optLevel": "O1",
+    "preset": "safe-default"
+  }
+}

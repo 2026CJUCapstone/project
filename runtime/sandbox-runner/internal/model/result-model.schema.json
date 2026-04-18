@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SandboxRunnerExecutionResult",
+  "type": "object",
+  "required": [
+    "requestId",
+    "sampleName",
+    "finalStatus",
+    "exitCode",
+    "runtimeErrorReason",
+    "signal",
+    "startedAt",
+    "finishedAt",
+    "metrics",
+    "stdout",
+    "stderr",
+    "stdoutMeta",
+    "stderrMeta",
+    "internalReasonCode",
+    "notes",
+    "metadata"
+  ],
+  "properties": {
+    "requestId": {
+      "type": "string"
+    },
+    "sampleName": {
+      "type": "string"
+    },
+    "finalStatus": {
+      "type": "string",
+      "enum": [
+        "Success",
+        "RuntimeError",
+        "Timeout",
+        "OOM",
+        "SecurityViolation",
+        "InternalError"
+      ]
+    },
+    "exitCode": {
+      "type": "integer"
+    },
+    "runtimeErrorReason": {
+      "type": "string"
+    },
+    "signal": {
+      "type": "string"
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "finishedAt": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "durationMs",
+        "cpuTimeMs",
+        "peakMemoryKb",
+        "stdoutBytes",
+        "stderrBytes"
+      ],
+      "properties": {
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cpuTimeMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "peakMemoryKb": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "violation": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "category",
+        "reason",
+        "message",
+        "resource"
+      ],
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "timeout",
+            "memory",
+            "process",
+            "filesystem",
+            "network",
+            "syscall",
+            "internal"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "resource": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "profileSummary": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "traceEvents": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "stdout": {
+      "type": "string"
+    },
+    "stderr": {
+      "type": "string"
+    },
+    "stdoutMeta": {
+      "type": "object",
+      "required": [
+        "bytes",
+        "truncated",
+        "encoding"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "encoding": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stderrMeta": {
+      "type": "object",
+      "required": [
+        "bytes",
+        "truncated",
+        "encoding"
+      ],
+      "properties": {
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "encoding": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "internalReasonCode": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

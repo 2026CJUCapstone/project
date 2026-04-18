@@ -1,0 +1,5 @@
+{
+  "code": "print(\"hello\")",
+  "stdin": "",
+  "timeoutMs": 3000
+}

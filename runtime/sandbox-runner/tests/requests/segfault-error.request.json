@@ -1,0 +1,26 @@
+{
+  "requestId": "req-segfault-001",
+  "sampleName": "segfault-error",
+  "executablePath": "build/samples/segfault-error",
+  "args": [],
+  "stdinData": "",
+  "workingDirectory": "",
+  "limits": {
+    "timeoutMs": 3000,
+    "cpuQuotaCores": 1,
+    "cpuTimeMs": 3000,
+    "memoryLimitMB": 256,
+    "processLimit": 64,
+    "maxThreads": 8,
+    "stdoutBufferBytes": 65536,
+    "stderrBufferBytes": 65536,
+    "maxOpenFiles": 32,
+    "networkMode": "no-network",
+    "filesystemMode": "isolated",
+    "syscallProfile": "minimal-runtime"
+  },
+  "traceMode": "none",
+  "metadata": {
+    "engine": "local"
+  }
+}
