@@ -1,6 +1,7 @@
-from typing import Literal
-
+from typing import List, Literal, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
+from datetime import datetime
 
 
 CompilerLanguage = Literal["bpp", "python", "c", "cpp", "java", "javascript"]
@@ -58,3 +59,59 @@ class CompileResponse(BaseModel):
     warnings: list[CompileDiagnostic] = Field(default_factory=list)
     execution_time: float
     metadata: CompileMetadata | None = None
+
+
+class ChallengeBase(BaseModel):
+    title: str
+    description: str
+    difficulty: str
+    tags: List[str]
+    points: int = 100
+
+
+class ChallengeCreate(ChallengeBase):
+    pass
+
+
+class ChallengeRead(ChallengeBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+
+class LeaderboardRead(BaseModel):
+    username: str
+    total_score: int
+    avatar_url: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+
+class CamelModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        from_attributes=True
+    )
+
+
+class TestCase(CamelModel):
+    input: str
+    expected_output: str
+
+
+class ProblemBase(CamelModel):
+    title: str
+    difficulty: Literal["beginner", "intermediate", "advanced"]
+    tags: List[Literal["io", "control", "func"]]
+    description: str
+    test_cases: List[TestCase]
+
+
+class ProblemCreate(ProblemBase):
+    pass
+
+
+class ProblemRead(ProblemBase):
+    id: str
+    created_at: datetime

@@ -4,10 +4,23 @@ import re
 import shutil
 import tempfile
 import time
+import asyncio
+import contextlib
+import difflib
+import hashlib
+import json
+import random
+import re
+import shutil
+import string
+import tempfile
+import time
 import uuid
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Dict, List, Literal, Optional
 
 import docker
 from docker.errors import APIError, DockerException
@@ -15,8 +28,14 @@ from docker.types import Ulimit
 
 from app.core.config import settings
 
-SUPPORTED_LANGUAGES = {"bpp", "python", "c", "cpp", "java", "javascript"}
+# ----------------- 임시 메모리 데이터베이스 -----------------
+job_store: Dict[str, dict] = {}
+hash_store: Dict[str, str] = {}
+snippet_store: Dict[str, dict] = {}
+access_log_store: List[dict] = []
 
+ALLOWED_PASSES = {"Lexer", "Parser", "ASTBuilder", "Mem2Reg", "LoopUnroll", "DCE", "ConstProp"}
+SUPPORTED_LANGUAGES = {"bpp", "python", "c", "cpp", "java", "javascript"}
 EXTENSIONS = {
     "bpp": "bpp",
     "python": "py",
@@ -63,6 +82,13 @@ class Diagnostic:
             "severity": self.severity,
             "code": self.code,
         }
+
+
+# ----------------- 컴파일러 인터페이스 (Async) -----------------
+class CompilerRunner(ABC):
+    @abstractmethod
+    async def compile(self, source_code: str, options: List[str], language: str) -> dict:
+        pass
 
 
 class DockerCompilerRunner:
@@ -326,4 +352,101 @@ class DockerCompilerRunner:
         return Diagnostic(line=line_no, column=1, message=lines[-1], severity=severity)
 
 
+# ----------------- 가짜 구현체 (개발/테스트용) -----------------
+class MockBppCompiler:
+    async def compile(self, source_code: str, options: List[str], language: str = "bpp") -> dict:
+        await asyncio.sleep(0)
+        output = "Hello World" if "Hello World" in source_code else "실행 완료"
+        return {
+            "is_success": True,
+            "ast": {"type": "Program", "body": "Mock AST Data"},
+            "cfg": {"nodes": ["A", "B"], "edges": ["A->B"]},
+            "stdout": output,
+            "execution_time": 1.0,
+        }
+
+
 compiler_instance = DockerCompilerRunner()
+
+
+async def mock_execute_pipeline(source_code: str, passes: List[str]) -> dict:
+    await asyncio.sleep(2)
+    pass_results = [{"pass_name": p, "log": f"{p} 적용 완료"} for p in passes]
+    return {
+        "is_success": True,
+        "pipeline_used": passes,
+        "pass_results": pass_results,
+        "final_asm": "MOV EAX, 1",
+    }
+
+
+# ----------------- 백그라운드 워커 함수들 (Async) -----------------
+async def process_compile_job(job_id: str, source_code: str, options: List[str], language: str = "bpp"):
+    if job_store[job_id]["status"] == "CANCELED":
+        return
+    job_store[job_id]["status"] = "RUNNING"
+    try:
+        result = await compiler_instance.compile(source_code, language)
+        if job_store[job_id].get("status") == "CANCELED":
+            return
+        job_store[job_id]["status"] = "COMPLETED"
+        job_store[job_id]["result"] = result
+    except Exception as e:
+        if job_store[job_id].get("status") != "CANCELED":
+            job_store[job_id]["status"] = "FAILED"
+            job_store[job_id]["error"] = str(e)
+
+
+async def process_lab_job(job_id: str, source_code: str, passes: List[str]):
+    if job_store[job_id]["status"] == "CANCELED":
+        return
+    job_store[job_id]["status"] = "RUNNING"
+    try:
+        result = await mock_execute_pipeline(source_code, passes)
+        if job_store[job_id].get("status") == "CANCELED":
+            return
+        job_store[job_id]["status"] = "COMPLETED"
+        job_store[job_id]["result"] = result
+    except Exception as e:
+        if job_store[job_id].get("status") != "CANCELED":
+            job_store[job_id]["status"] = "FAILED"
+            job_store[job_id]["error"] = str(e)
+
+
+# ----------------- 유틸리티 함수 -----------------
+def generate_random_slug(length: int = 6) -> str:
+    chars = string.ascii_letters + string.digits
+    return ''.join(random.choices(chars, k=length))
+
+
+def get_unique_slug(desired_slug: Optional[str] = None) -> str:
+    base_slug = desired_slug if desired_slug else generate_random_slug()
+    if base_slug not in snippet_store:
+        return base_slug
+    suffix_counter = 1
+    while f"{base_slug}-{suffix_counter}" in snippet_store:
+        suffix_counter += 1
+    return f"{base_slug}-{suffix_counter}"
+
+
+def generate_text_diff(text1: str, text2: str) -> str:
+    diff = difflib.unified_diff(
+        text1.splitlines(keepends=True),
+        text2.splitlines(keepends=True),
+        fromfile='Base Version',
+        tofile='New Version',
+    )
+    return "".join(diff)
+
+
+def generate_html_report(job_id: str, result: dict) -> str:
+    pretty_json = json.dumps(result, indent=4, ensure_ascii=False)
+    html_template = f"""
+    <html>
+    <body>
+        <h1>B++ Report - {job_id}</h1>
+        <pre>{pretty_json}</pre>
+    </body>
+    </html>
+    """
+    return html_template

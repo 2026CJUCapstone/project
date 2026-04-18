@@ -6,7 +6,7 @@ from app.services import compiler as compiler_service
 router = APIRouter()
 
 
-@router.post("/compile", response_model=CompileResponse, tags=["Compiler"])
+@router.post("/compile", response_model=CompileResponse, tags=["compiler"])
 async def compile_code(request: CompileRequest):
     try:
         result = await compiler_service.compiler_instance.compile(
