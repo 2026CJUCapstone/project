@@ -34,7 +34,7 @@ const terminalStatusLabel: Record<TerminalStatus, string> = {
 };
 
 export function OutputConsole() {
-  const { isGraphViewerOpen, setGraphViewerOpen, output, clearOutput, restartConsole, backendStatus, isRunning } = useCompilerStore();
+  const { code, language, isGraphViewerOpen, setGraphViewerOpen, output, clearOutput, restartConsole, backendStatus, isRunning } = useCompilerStore();
   const [activeTab, setActiveTab] = useState<ConsoleTab>("output");
   const [terminalStatus, setTerminalStatus] = useState<TerminalStatus>("disconnected");
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
@@ -59,16 +59,22 @@ export function OutputConsole() {
       return;
     }
 
+    if (!code.trim()) {
+      appendTerminalLine({ type: "error", text: "실행할 코드가 없습니다." });
+      return;
+    }
+
     setTerminalStatus("connecting");
-    appendTerminalLine({ type: "system", text: "터미널 연결 중..." });
+    appendTerminalLine({ type: "system", text: "프로그램 터미널 준비 중..." });
 
     const ws = new WebSocket(getTerminalWebSocketUrl());
     wsRef.current = ws;
 
     ws.onopen = () => {
       if (wsRef.current !== ws) return;
+      ws.send(JSON.stringify({ type: "start", code, language, optimize: false }));
       setTerminalStatus("connected");
-      appendTerminalLine({ type: "system", text: "터미널 연결됨" });
+      appendTerminalLine({ type: "system", text: `${language.toUpperCase()} 프로그램 stdin 연결됨` });
     };
 
     ws.onmessage = (event) => {
@@ -87,7 +93,7 @@ export function OutputConsole() {
       setTerminalStatus("disconnected");
       appendTerminalLine({ type: "system", text: "터미널 연결 종료" });
     };
-  }, [appendTerminalLine]);
+  }, [appendTerminalLine, code, language]);
 
   const openTerminalTab = () => {
     setActiveTab("terminal");
@@ -246,7 +252,7 @@ export function OutputConsole() {
         ) : (
           <>
             <span>Terminal: {terminalStatusLabel[terminalStatus]}</span>
-            <span>Python REPL</span>
+            <span>{language.toUpperCase()} stdin</span>
           </>
         )}
       </div>
@@ -295,14 +301,14 @@ export function OutputConsole() {
             </div>
           </div>
           <form onSubmit={submitTerminalInput} className="flex items-center gap-3 px-4 py-3 border-t border-gray-200 dark:border-[#333] bg-white dark:bg-[#111]">
-            <span className="text-green-600 dark:text-green-400">&gt;&gt;&gt;</span>
+            <span className="text-green-600 dark:text-green-400">stdin&gt;</span>
             <input
               data-testid="terminal-input"
               value={terminalInput}
               onChange={(event) => setTerminalInput(event.target.value)}
               disabled={terminalStatus !== "connected"}
               className="flex-1 bg-transparent text-gray-900 dark:text-gray-100 outline-none disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder={terminalStatus === "connected" ? "Python 코드를 입력하세요" : "터미널 연결 대기 중"}
+              placeholder={terminalStatus === "connected" ? "프로그램 stdin으로 보낼 값을 입력하세요" : "터미널 연결 대기 중"}
               autoComplete="off"
               spellCheck={false}
             />

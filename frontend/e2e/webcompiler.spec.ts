@@ -8,6 +8,16 @@ func main() -> u64 {
 }
 `;
 
+const interactiveBppProgram = `import std.io;
+
+func main() -> u64 {
+    var line: u64 = input();
+    emit("program says: ");
+    emitln(line);
+    return 0;
+}
+`;
+
 test.describe("webcompiler browser e2e", () => {
   test("loads the app from /webcompiler and shows the default example", async ({ page }) => {
     await page.goto("/webcompiler/");
@@ -35,6 +45,11 @@ test.describe("webcompiler browser e2e", () => {
 
   test("accepts terminal input and renders terminal output at /webcompiler", async ({ page }) => {
     await page.goto("/webcompiler/");
+    await page.evaluate((code) => {
+      window.localStorage.setItem("b-compiler-editor-code", code);
+    }, interactiveBppProgram);
+    await page.reload();
+    await expect(page.locator(".view-lines").first()).toContainText("input();");
 
     await page.getByTestId("terminal-tab").click();
 
@@ -42,12 +57,13 @@ test.describe("webcompiler browser e2e", () => {
     const terminalOutput = page.getByTestId("terminal-output");
 
     await expect(terminalInput).toBeEnabled({ timeout: 30000 });
-    await terminalInput.fill('print("terminal-ui-ok")');
+    await terminalInput.fill("terminal-stdin-ok");
     await terminalInput.press("Enter");
 
-    await expect(terminalOutput).toContainText("terminal-ui-ok", { timeout: 30000 });
+    await expect(terminalOutput).toContainText("program says: terminal-stdin-ok", { timeout: 30000 });
+    await expect(terminalOutput).toContainText("exit code 0", { timeout: 30000 });
 
     await page.getByTestId("output-tab").click();
-    await expect(page.getByTestId("output-console")).not.toContainText("terminal-ui-ok");
+    await expect(page.getByTestId("output-console")).not.toContainText("terminal-stdin-ok");
   });
 });
