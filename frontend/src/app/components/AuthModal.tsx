@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, UserPlus, LogIn } from 'lucide-react';
+import { createAvatarUrl } from '../services/leaderboardProfile';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -9,6 +10,8 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -33,9 +36,9 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
       return;
     }
     setPasswordError('');
-    // Simulate login success and pass random developer avatar
-    const avatarUrl = "https://images.unsplash.com/photo-1740948267260-a738065a4b66?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkZXZlbG9wZXIlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDF8fHx8MTc3MzMwMTEyOXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral";
-    const name = "John Doe"; 
+    const emailName = email.split('@')[0]?.trim() || 'Coder';
+    const name = (isLogin ? emailName : username.trim() || emailName).slice(0, 64);
+    const avatarUrl = createAvatarUrl(name);
     
     onLogin(name, avatarUrl);
     onClose();
@@ -75,6 +78,8 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
               <input 
                 type="text" 
                 required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                 placeholder="developer_123"
               />
@@ -86,6 +91,8 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
             <input 
               type="email" 
               required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
               placeholder="you@example.com"
             />

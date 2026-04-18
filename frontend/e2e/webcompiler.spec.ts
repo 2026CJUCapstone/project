@@ -43,6 +43,16 @@ test.describe("webcompiler browser e2e", () => {
     await expect(outputConsole).toContainText("Hello from Playwright", { timeout: 30000 });
   });
 
+  test("loads the leaderboard route at /webcompiler", async ({ page }) => {
+    await page.goto("/webcompiler/leaderboard");
+
+    await expect(page.getByRole("heading", { name: "리더보드" })).toBeVisible();
+    await expect(page.getByText("전체 랭킹")).toBeVisible();
+    await expect(page.getByText("순위", { exact: true })).toBeVisible();
+    await expect(page.getByText("사용자", { exact: true })).toBeVisible();
+    await expect(page.getByText("점수", { exact: true })).toBeVisible();
+  });
+
   test("accepts terminal input and renders terminal output at /webcompiler", async ({ page }) => {
     await page.goto("/webcompiler/");
     await page.evaluate((code) => {

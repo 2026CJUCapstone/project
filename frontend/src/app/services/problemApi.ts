@@ -27,6 +27,26 @@ export interface Problem {
 
 export type ProblemCreateRequest = Omit<Problem, 'id' | 'createdAt'>;
 
+export interface LeaderboardEntry {
+  rank: number;
+  username: string;
+  totalScore: number;
+  avatarUrl?: string | null;
+}
+
+export interface LeaderboardScoreRequest {
+  username: string;
+  points: number;
+  challengeId: string;
+  avatarUrl?: string | null;
+}
+
+export interface LeaderboardScoreResult extends LeaderboardEntry {
+  challengeId: string;
+  awardedPoints: number;
+  alreadySolved: boolean;
+}
+
 // 문제 목록 조회
 export async function getProblems(): Promise<Problem[]> {
   const res = await fetch(`${API_BASE_URL}/api/v1/problems`);
@@ -61,5 +81,22 @@ export async function updateProblem(id: string, data: ProblemCreateRequest): Pro
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('문제 수정에 실패했습니다.');
+  return res.json();
+}
+
+export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const res = await fetch(`${API_BASE_URL}/api/v1/problems/leaderboard?${params.toString()}`);
+  if (!res.ok) throw new Error('리더보드를 불러오지 못했습니다.');
+  return res.json();
+}
+
+export async function submitLeaderboardScore(data: LeaderboardScoreRequest): Promise<LeaderboardScoreResult> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/problems/leaderboard/score`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('리더보드 점수 저장에 실패했습니다.');
   return res.json();
 }

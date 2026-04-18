@@ -114,12 +114,45 @@ func main() -> u64 {
         if run_result.get("stdout", "").strip() != "42":
             raise RuntimeError(f"Unexpected run output: {run_result}")
 
+        leaderboard_user = f"ci_leader_{int(time.time())}"
+        leaderboard_challenge = f"ci_problem_{int(time.time())}"
+        first_score = post_json(
+            "http://127.0.0.1:5173/api/v1/problems/leaderboard/score",
+            {
+                "username": leaderboard_user,
+                "points": 20,
+                "challengeId": leaderboard_challenge,
+            },
+        )
+        if first_score.get("awardedPoints") != 20 or first_score.get("alreadySolved") is not False:
+            raise RuntimeError(f"Initial leaderboard score failed: {first_score}")
+
+        duplicate_score = post_json(
+            "http://127.0.0.1:5173/api/v1/problems/leaderboard/score",
+            {
+                "username": leaderboard_user,
+                "points": 20,
+                "challengeId": leaderboard_challenge,
+            },
+        )
+        if duplicate_score.get("awardedPoints") != 0 or duplicate_score.get("alreadySolved") is not True:
+            raise RuntimeError(f"Duplicate leaderboard score was not blocked: {duplicate_score}")
+        if duplicate_score.get("totalScore") != 20:
+            raise RuntimeError(f"Duplicate leaderboard score changed total: {duplicate_score}")
+
+        leaderboard = wait_for_json("http://127.0.0.1:5173/api/v1/problems/leaderboard?limit=10")
+        leaderboard_row = next((row for row in leaderboard if row.get("username") == leaderboard_user), None)
+        if not leaderboard_row or leaderboard_row.get("totalScore") != 20:
+            raise RuntimeError(f"Leaderboard row missing or invalid: {leaderboard}")
+
         print(json.dumps({
             "backend_health": backend_health,
             "frontend_health": frontend_health,
             "compile_success": compile_result.get("success"),
             "invalid_compile_errors": len(invalid_compile_result.get("errors", [])),
             "run_stdout": run_result.get("stdout", "").strip(),
+            "leaderboard_awarded_points": first_score.get("awardedPoints"),
+            "leaderboard_duplicate_awarded_points": duplicate_score.get("awardedPoints"),
         }, ensure_ascii=True, indent=2))
         return 0
     finally:

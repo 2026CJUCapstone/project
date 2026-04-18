@@ -41,6 +41,95 @@ def list_problems(
             
     return problems
 
+
+def _leaderboard_entry(user: db_models.User, rank: int) -> dict:
+    return {
+        "rank": rank,
+        "username": user.username,
+        "total_score": user.total_score,
+        "avatar_url": user.avatar_url,
+    }
+
+
+def _leaderboard_rank(db: Session, user_id: str) -> int:
+    ordered_users = (
+        db.query(db_models.User)
+        .order_by(db_models.User.total_score.desc(), db_models.User.username.asc())
+        .all()
+    )
+    return next((index for index, current in enumerate(ordered_users, start=1) if current.id == user_id), 1)
+
+
+# 주소: /api/v1/problems/leaderboard
+@router.get("/leaderboard", response_model=List[schemas.LeaderboardRead])
+def get_leaderboard(
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    users = (
+        db.query(db_models.User)
+        .order_by(db_models.User.total_score.desc(), db_models.User.username.asc())
+        .limit(limit)
+        .all()
+    )
+    return [_leaderboard_entry(user, rank) for rank, user in enumerate(users, start=1)]
+
+
+@router.post("/leaderboard/score", response_model=schemas.LeaderboardScoreRead)
+def submit_leaderboard_score(
+    score: schemas.LeaderboardScoreCreate,
+    db: Session = Depends(get_db),
+):
+    username = score.username.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+
+    user = db.query(db_models.User).filter(db_models.User.username == username).first()
+    if user is None:
+        user = db_models.User(
+            username=username,
+            total_score=0,
+            avatar_url=score.avatar_url,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        if score.avatar_url:
+            user.avatar_url = score.avatar_url
+
+    existing_score = (
+        db.query(db_models.UserProblemScore)
+        .filter(
+            db_models.UserProblemScore.user_id == user.id,
+            db_models.UserProblemScore.challenge_id == score.challenge_id,
+        )
+        .first()
+    )
+
+    awarded_points = 0
+    already_solved = existing_score is not None
+    if existing_score is None:
+        awarded_points = score.points
+        user.total_score += awarded_points
+        db.add(
+            db_models.UserProblemScore(
+                user_id=user.id,
+                challenge_id=score.challenge_id,
+                points_awarded=awarded_points,
+            )
+        )
+
+    db.commit()
+    db.refresh(user)
+
+    return {
+        **_leaderboard_entry(user, _leaderboard_rank(db, user.id)),
+        "challenge_id": score.challenge_id,
+        "awarded_points": awarded_points,
+        "already_solved": already_solved,
+    }
+
+
 @router.put("/{id}", response_model=schemas.ProblemRead)
 def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depends(get_db)):
     db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
@@ -65,8 +154,3 @@ def delete_problem(id: str, db: Session = Depends(get_db)):
     db.delete(db_problem)
     db.commit()
     return {"message": "Successfully deleted"}
-
-# 주소: /api/v1/problems/leaderboard
-@router.get("/leaderboard", response_model=List[schemas.LeaderboardRead])
-def get_leaderboard(db: Session = Depends(get_db)):
-    return db.query(db_models.User).order_by(db_models.User.total_score.desc()).limit(50).all()

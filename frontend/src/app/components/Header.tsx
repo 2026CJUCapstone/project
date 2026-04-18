@@ -4,6 +4,7 @@ import { Terminal, Play, Save, Square, Swords, Trophy, Settings, Sun, Moon, Hamm
 import { UserProfile } from './UserProfile';
 import { AuthModal } from './AuthModal';
 import { useCompilerStore } from '../store/compilerStore';
+import { clearLeaderboardProfile, getSavedLeaderboardProfile, saveLeaderboardProfile } from '../services/leaderboardProfile';
 
 export function Header() {
   const navigate = useNavigate();
@@ -35,12 +36,19 @@ export function Header() {
     }
   }, [theme]);
 
+  useEffect(() => {
+    setUser(getSavedLeaderboardProfile());
+  }, []);
+
   const handleLogin = (name: string, avatar: string) => {
-    setUser({ name, avatar });
+    const profile = { name, avatar };
+    setUser(profile);
+    saveLeaderboardProfile(profile);
   };
 
   const handleLogout = () => {
     setUser(null);
+    clearLeaderboardProfile();
   };
 
   return (

@@ -8,6 +8,8 @@ venv/
 *.egg-info/
 dist/
 build/
+bpp_project.db
+backend/bpp_project.db
 
 # Node / React
 frontend/node_modules/
@@ -19,6 +21,7 @@ frontend/test-results/
 # Docker
 *.tar
 .sandbox-work/
+.deploy/
 
 # Editor
 .vscode/

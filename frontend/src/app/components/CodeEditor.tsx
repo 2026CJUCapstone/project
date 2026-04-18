@@ -5,6 +5,8 @@ import { useLocation } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
 import { judgeCode } from "../services/judgeApi";
 import type { JudgeSummary } from "../services/judgeApi";
+import { submitLeaderboardScore } from "../services/problemApi";
+import { getLeaderboardProfile } from "../services/leaderboardProfile";
 
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
@@ -61,7 +63,26 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
       let points = 20;
       if (challenge?.difficulty === 'intermediate') points = 50;
       if (challenge?.difficulty === 'advanced') points = 100;
-      setEarnedPoints(calculatedScore === 100 ? points : 0);
+
+      let awardedPoints = 0;
+      if (calculatedScore === 100 && challengeId) {
+        const normalizedChallengeId = String(challengeId);
+        const profile = getLeaderboardProfile();
+
+        try {
+          const scoreResult = await submitLeaderboardScore({
+            username: profile.name,
+            points,
+            challengeId: normalizedChallengeId,
+            avatarUrl: profile.avatar,
+          });
+          awardedPoints = scoreResult.awardedPoints;
+        } catch (error) {
+          console.error('Failed to submit leaderboard score', error);
+        }
+      }
+
+      setEarnedPoints(awardedPoints);
     } catch {
       setScore(0);
       setEarnedPoints(0);

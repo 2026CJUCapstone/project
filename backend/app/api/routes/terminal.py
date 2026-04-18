@@ -124,7 +124,7 @@ async def terminal_endpoint(websocket: WebSocket):
 
         async def exit_watcher() -> None:
             result = await asyncio.to_thread(container.wait)
-            exit_code = int(result.get("StatusCode", 1))
+            exit_code = int(result.get("StatusCode", 1) if isinstance(result, dict) else result)
             await asyncio.sleep(0.2)
             await websocket.send_text(f"\n> 프로그램이 종료되었습니다. (exit code {exit_code})\n")
 

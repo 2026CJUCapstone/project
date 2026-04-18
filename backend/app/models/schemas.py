@@ -79,20 +79,32 @@ class ChallengeRead(ChallengeBase):
         from_attributes = True
 
 
-class LeaderboardRead(BaseModel):
-    username: str
-    total_score: int
-    avatar_url: Optional[str] = None
-    class Config:
-        from_attributes = True
-
-
 class CamelModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=to_camel,
         populate_by_name=True,
         from_attributes=True
     )
+
+
+class LeaderboardRead(CamelModel):
+    rank: int
+    username: str
+    total_score: int
+    avatar_url: Optional[str] = None
+
+
+class LeaderboardScoreCreate(CamelModel):
+    username: str = Field(min_length=1, max_length=64)
+    points: int = Field(gt=0, le=10000)
+    challenge_id: str = Field(min_length=1, max_length=128)
+    avatar_url: Optional[str] = None
+
+
+class LeaderboardScoreRead(LeaderboardRead):
+    challenge_id: str
+    awarded_points: int
+    already_solved: bool
 
 
 class TestCase(CamelModel):

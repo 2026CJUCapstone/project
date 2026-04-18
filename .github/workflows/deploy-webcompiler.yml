@@ -1,9 +1,13 @@
 name: Deploy Webcompiler
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
     branches:
       - main
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -15,11 +19,14 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Start SSH Agent
         uses: webfactory/ssh-agent@v0.9.0
@@ -33,7 +40,7 @@ jobs:
 
       - name: Update Remote Repository
         env:
-          DEPLOY_BRANCH: ${{ github.ref_name }}
+          DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
           DEPLOY_HOST: ${{ secrets.WEBCOMPILER_DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
           DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
