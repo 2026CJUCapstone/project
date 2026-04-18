@@ -1,9 +1,11 @@
-import { useState, useMemo } from 'react';
-import { PlayCircle, Target, BookOpen, AlertTriangle, Code2, Tag, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { PlayCircle, Target, BookOpen, AlertTriangle, Code2, Tag, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { getProblems } from '../services/problemApi';
+import type { ProblemTag } from '../services/problemApi';
 
 type Difficulty = 'beginner' | 'intermediate' | 'advanced';
-type ChallengeTag = 'io' | 'control' | 'func';
+type ChallengeTag = ProblemTag;
 
 interface Challenge {
   id: string;
@@ -11,89 +13,10 @@ interface Challenge {
   difficulty: Difficulty;
   tags: ChallengeTag[];
   description: string;
-  expectedOutput: string;
-  failurePoints: string[];
+  expectedOutput?: string;
+  failurePoints?: string[];
+  testCases?: { input: string; expectedOutput: string }[];
 }
-
-const mockChallenges: Challenge[] = [
-  {
-    id: 'c1',
-    title: 'B++로 "Hello, World!" 출력하기',
-    difficulty: 'beginner',
-    tags: ['io'],
-    description: '표준 출력으로 "Hello, World!"를 정확하게 출력하는 프로그램을 작성하세요. B++ 학습의 첫 걸음입니다.',
-    expectedOutput: 'Hello, World!',
-    failurePoints: [
-      '마지막에 느낌표(!)를 빼먹는 경우',
-      '소문자 "h"나 "w"를 사용하는 경우',
-      '엄격한 채점 환경에서 개행 문자(줄바꿈)를 생략하는 경우'
-    ]
-  },
-  {
-    id: 'c2',
-    title: '홀수와 짝수',
-    difficulty: 'beginner',
-    tags: ['control', 'io'],
-    description: '표준 입력에서 정수를 읽어옵니다. 숫자가 짝수면 "Even", 홀수면 "Odd"를 출력하세요.',
-    expectedOutput: 'Even (입력이 4인 경우)\nOdd (입력이 7인 경우)',
-    failurePoints: [
-      '음수를 제대로 처리하지 못하는 경우',
-      '입력이 "0"일 때 짝수로 처리하지 않는 경우'
-    ]
-  },
-  {
-    id: 'c3',
-    title: '피보나치 수열',
-    difficulty: 'intermediate',
-    tags: ['control', 'func'],
-    description: '정수 N을 받아 피보나치 수열의 처음 N개 숫자를 출력하는 함수를 구현하세요.',
-    expectedOutput: '0 1 1 2 3 5 8 13... (N=8인 경우)',
-    failurePoints: [
-      'N이 클 때 최적화되지 않은 재귀를 사용하여 스택 오버플로우가 발생하는 경우',
-      'N=0 또는 N=1일 때 잘못된 출력이 나오는 경우',
-      '숫자 사이에 공백을 넣어 형식을 맞추지 않은 경우'
-    ]
-  },
-  {
-    id: 'c4',
-    title: '소인수분해',
-    difficulty: 'intermediate',
-    tags: ['control', 'io'],
-    description: '주어진 정수의 소인수를 오름차순으로 계산하여 출력하세요.',
-    expectedOutput: '2 2 3 5 (입력이 60인 경우)',
-    failurePoints: [
-      '소수에서 무한 루프에 빠지는 경우',
-      '2보다 작은 입력을 처리하지 못하는 경우',
-      '동일한 소인수가 여러 번 나올 때 하나만 출력하는 경우'
-    ]
-  },
-  {
-    id: 'c5',
-    title: '커스텀 그래프 탐색',
-    difficulty: 'advanced',
-    tags: ['func', 'control'],
-    description: '커스텀 그래프 구조에서 깊이 우선 탐색(DFS)을 구현하세요. 그래프는 표준 입력을 통해 인접 리스트 형태로 제공됩니다.',
-    expectedOutput: '0 1 3 4 2 (그래프 구조에 따라 다름)',
-    failurePoints: [
-      '방문한 노드를 추적하지 않아 사이클에서 무한 루프에 빠지는 경우',
-      '단절된 그래프를 제대로 처리하지 못하는 경우',
-      '메모리 누수나 비효율적인 재귀 깊이 문제'
-    ]
-  },
-  {
-    id: 'c6',
-    title: '고차 함수 Mapper',
-    difficulty: 'advanced',
-    tags: ['func'],
-    description: '배열과 콜백 함수를 인자로 받아, 모든 요소에 콜백을 적용한 새로운 배열을 반환하는 고차 함수를 작성하세요.',
-    expectedOutput: '[2, 4, 6] (입력이 [1, 2, 3]이고 콜백이 x * 2인 경우)',
-    failurePoints: [
-      '새로운 배열을 반환하지 않고 원본 배열을 수정(Mutate)하는 경우',
-      '빈 배열을 제대로 처리하지 못하는 경우',
-      '엄격한 타입 환경에서 타입 추론 문제가 발생하는 경우'
-    ]
-  }
-];
 
 const difficultyLabels: Record<Difficulty, string> = {
   beginner: '초급',
@@ -168,30 +91,34 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
       {/* Expanded details section */}
       {isExpanded && (
         <div className="px-5 pb-5 border-t border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a] pt-4 flex flex-col gap-5 animate-in slide-in-from-top-2 fade-in duration-200 transition-colors">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Target size={16} className="text-blue-600 dark:text-blue-400" />
-              <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">기대 출력</h4>
+          {challenge.expectedOutput && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Target size={16} className="text-blue-600 dark:text-blue-400" />
+                <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">기대 출력</h4>
+              </div>
+              <div className="bg-white dark:bg-[#0d0d0d] border border-gray-200 dark:border-[#333] rounded-lg p-3 font-mono text-sm text-green-600 dark:text-green-400 break-words shadow-inner">
+                {challenge.expectedOutput}
+              </div>
             </div>
-            <div className="bg-white dark:bg-[#0d0d0d] border border-gray-200 dark:border-[#333] rounded-lg p-3 font-mono text-sm text-green-600 dark:text-green-400 break-words shadow-inner">
-              {challenge.expectedOutput}
-            </div>
-          </div>
+          )}
           
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle size={16} className="text-red-600 dark:text-red-400" />
-              <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">자주 틀리는 포인트</h4>
+          {challenge.failurePoints && challenge.failurePoints.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle size={16} className="text-red-600 dark:text-red-400" />
+                <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">자주 틀리는 포인트</h4>
+              </div>
+              <ul className="space-y-2">
+                {challenge.failurePoints.map((point, idx) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <span className="text-red-500 mt-0.5">•</span>
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="space-y-2">
-              {challenge.failurePoints.map((point, idx) => (
-                <li key={idx} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <span className="text-red-500 mt-0.5">•</span>
-                  <span>{point}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          )}
         </div>
       )}
     </div>
@@ -199,16 +126,37 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
 }
 
 export function Challenges() {
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filterDifficulty, setFilterDifficulty] = useState<Difficulty | 'all'>('all');
   const [filterTag, setFilterTag] = useState<ChallengeTag | 'all'>('all');
 
+  useEffect(() => {
+    getProblems()
+      .then((problems) => {
+        const mapped: Challenge[] = problems.map((p) => ({
+          id: p.id,
+          title: p.title,
+          difficulty: p.difficulty,
+          tags: p.tags ?? [],
+          description: p.description,
+          testCases: p.testCases,
+        }));
+        setChallenges(mapped);
+      })
+      .catch(() => {
+        setChallenges([]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
   const filteredChallenges = useMemo(() => {
-    return mockChallenges.filter(c => {
+    return challenges.filter(c => {
       const matchDiff = filterDifficulty === 'all' || c.difficulty === filterDifficulty;
       const matchTag = filterTag === 'all' || c.tags.includes(filterTag);
       return matchDiff && matchTag;
     });
-  }, [filterDifficulty, filterTag]);
+  }, [challenges, filterDifficulty, filterTag]);
 
   return (
     <div className="w-full h-full flex flex-col bg-white dark:bg-[#121212] overflow-hidden transition-colors duration-200">
@@ -260,7 +208,12 @@ export function Challenges() {
       {/* Challenge List */}
       <div className="flex-1 overflow-y-auto p-6 relative">
         <div className="max-w-5xl mx-auto flex flex-col gap-4 pb-12">
-          {filteredChallenges.length > 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 size={32} className="animate-spin text-blue-500 mb-3" />
+              <p className="text-gray-500 text-sm">문제를 불러오는 중...</p>
+            </div>
+          ) : filteredChallenges.length > 0 ? (
             filteredChallenges.map(challenge => (
               <ChallengeCard key={challenge.id} challenge={challenge} />
             ))

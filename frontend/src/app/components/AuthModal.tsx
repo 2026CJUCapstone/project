@@ -9,6 +9,9 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   // Close on Escape key
   useEffect(() => {
@@ -25,6 +28,11 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLogin && password !== confirmPassword) {
+      setPasswordError('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    setPasswordError('');
     // Simulate login success and pass random developer avatar
     const avatarUrl = "https://images.unsplash.com/photo-1740948267260-a738065a4b66?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkZXZlbG9wZXIlMjBwb3J0cmFpdCUyMGhlYWRzaG90fGVufDF8fHx8MTc3MzMwMTEyOXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral";
     const name = "John Doe"; 
@@ -91,10 +99,31 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
             <input 
               type="password" 
               required
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setPasswordError(''); }}
               className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
               placeholder="••••••••"
             />
           </div>
+
+          {!isLogin && (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">비밀번호 확인</label>
+              <input 
+                type="password" 
+                required
+                value={confirmPassword}
+                onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(''); }}
+                className={`w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all ${
+                  passwordError ? 'border-red-500 focus:border-red-500' : 'border-gray-300 dark:border-[#333] focus:border-blue-500'
+                }`}
+                placeholder="••••••••"
+              />
+              {passwordError && (
+                <p className="text-xs text-red-500 mt-1">{passwordError}</p>
+              )}
+            </div>
+          )}
 
           <button 
             type="submit"
@@ -108,7 +137,7 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
           {isLogin ? "계정이 없으신가요? " : "이미 계정이 있으신가요? "}
           <button 
             type="button"
-            onClick={() => setIsLogin(!isLogin)}
+            onClick={() => { setIsLogin(!isLogin); setPassword(''); setConfirmPassword(''); setPasswordError(''); }}
             className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
           >
             {isLogin ? '회원가입' : '로그인'}

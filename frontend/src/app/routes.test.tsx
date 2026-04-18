@@ -23,6 +23,5 @@ describe("app routes", () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText("챌린지 허브")).toBeInTheDocument();
-    expect(screen.getByText('B++로 "Hello, World!" 출력하기')).toBeInTheDocument();
   });
 });

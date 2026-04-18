@@ -1,8 +1,10 @@
 import Editor, { useMonaco } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
-import { FileCode2, Copy, Check, BookOpen, ChevronDown, ChevronUp, Target, Send, Award, Loader2, Clock } from "lucide-react";
+import { FileCode2, Copy, Check, BookOpen, ChevronDown, ChevronUp, Target, Send, Award, Loader2, Clock, CheckCircle, XCircle } from "lucide-react";
 import { useLocation } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
+import { judgeCode } from "../services/judgeApi";
+import type { JudgeSummary } from "../services/judgeApi";
 
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
@@ -24,6 +26,8 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [earnedPoints, setEarnedPoints] = useState<number | null>(null);
+  const [judgeResult, setJudgeResult] = useState<JudgeSummary | null>(null);
+  const [isJudgeDetailOpen, setIsJudgeDetailOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const editorRef = useRef<any>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,24 +39,35 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const challenge = location.state?.challenge;
   const challengeId = challenge?.id;
 
-  const handleSubmitChallenge = () => {
+  const handleSubmitChallenge = async () => {
     if (!editorRef.current) return;
     setIsSubmitting(true);
     setScore(null);
     setEarnedPoints(null);
-    
-    // 채점 과정을 시뮬레이션 (1.5초 대기)
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setScore(100); // 100점 만점
-      
-      // 난이도에 따른 포인트 차등 지급
+    setJudgeResult(null);
+
+    try {
+      const code = editorRef.current.getValue();
+      const testCases = challenge?.testCases ?? [
+        { input: "", expectedOutput: challenge?.expectedOutput ?? "" }
+      ];
+      const result = await judgeCode(code, testCases);
+      setJudgeResult(result);
+      setIsJudgeDetailOpen(true);
+
+      const calculatedScore = Math.round((result.passedCount / result.totalCount) * 100);
+      setScore(calculatedScore);
+
       let points = 20;
       if (challenge?.difficulty === 'intermediate') points = 50;
       if (challenge?.difficulty === 'advanced') points = 100;
-      
-      setEarnedPoints(points);
-    }, 1500);
+      setEarnedPoints(calculatedScore === 100 ? points : 0);
+    } catch {
+      setScore(0);
+      setEarnedPoints(0);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   let defaultCode = `func main() -> u64 {
@@ -335,6 +350,56 @@ func main() -> u64 {
                   )}
                 </button>
               </div>
+
+              {/* 채점 상세 결과 (접기/펼치기) */}
+              {judgeResult && (
+                <div className="border-t border-gray-200 dark:border-[#333] mt-2 pt-1">
+                  <button
+                    onClick={() => setIsJudgeDetailOpen(!isJudgeDetailOpen)}
+                    className="flex items-center justify-between w-full py-2 hover:opacity-80 transition-opacity"
+                  >
+                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      채점 상세 ({judgeResult.passedCount}/{judgeResult.totalCount} 통과)
+                    </span>
+                    {isJudgeDetailOpen ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
+                  </button>
+
+                  {isJudgeDetailOpen && (
+                    <div className="flex flex-col gap-2 pb-1 animate-in slide-in-from-top-2 fade-in duration-200">
+                      {judgeResult.results.map((r, idx) => (
+                        <div key={idx} className={`p-2.5 rounded border ${
+                          r.passed ? "border-green-500/20 bg-green-500/5" : "border-red-500/20 bg-red-500/5"
+                        }`}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            {r.passed ? (
+                              <CheckCircle size={13} className="text-green-400" />
+                            ) : (
+                              <XCircle size={13} className="text-red-400" />
+                            )}
+                            <span className="text-xs font-semibold text-gray-300 dark:text-gray-300">테스트 #{idx + 1}</span>
+                            <span className="text-[10px] text-gray-500 ml-auto">{r.executionTime}ms</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-[11px]">
+                            <div>
+                              <p className="text-gray-500 mb-0.5">입력</p>
+                              <code className="block bg-white/5 dark:bg-[#0d0d0d] rounded px-1.5 py-1 text-gray-400 whitespace-pre-wrap">{r.input || "(없음)"}</code>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-0.5">기대 출력</p>
+                              <code className="block bg-white/5 dark:bg-[#0d0d0d] rounded px-1.5 py-1 text-green-400 whitespace-pre-wrap">{r.expected}</code>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 mb-0.5">실제 출력</p>
+                              <code className={`block bg-white/5 dark:bg-[#0d0d0d] rounded px-1.5 py-1 whitespace-pre-wrap ${r.passed ? "text-green-400" : "text-red-400"}`}>{r.actual || "(없음)"}</code>
+                            </div>
+                          </div>
+                          {r.error && <p className="text-[11px] text-red-400 mt-1">오류: {r.error}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

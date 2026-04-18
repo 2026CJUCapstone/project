@@ -10,7 +10,7 @@ export function IDE() {
   return (
     <div className="relative w-full h-full bg-white dark:bg-[#0d0d0d] transition-colors duration-200">
       <PanelGroup direction="horizontal" className="w-full h-full" id="main-horizontal-group">
-        {/* 왼쪽 패널: 기존 에디터 및 콘솔 */}
+        {/* 왼쪽 패널: 에디터 및 콘솔 */}
         <Panel defaultSize={isGraphViewerOpen ? 75 : 100} minSize={30} id="editor-console-panel" order={1}>
           <PanelGroup direction="vertical" className="w-full h-full" id="editor-vertical-group">
             <Panel defaultSize={70} minSize={20} id="editor-panel" order={1}>
