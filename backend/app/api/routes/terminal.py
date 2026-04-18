@@ -1,4 +1,8 @@
 import asyncio
+import contextlib
+import socket
+
+import docker
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.core.config import settings
 
@@ -7,43 +11,60 @@ router = APIRouter()
 @router.websocket("/ws/terminal")
 async def terminal_endpoint(websocket: WebSocket):
     await websocket.accept()
-    
-    # 예시로 파이썬 인터프리터를 실행한다고 가정
-    proc = await asyncio.create_subprocess_exec(
-        "docker", "run", "--rm", "-i", "--network", "none",
-        settings.SANDBOX_IMAGE, "python3", "-u", "-c", "import sys; exec(sys.stdin.read())",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
 
-    async def side_reader(stream, ws: WebSocket):
-        """Docker의 출력을 웹소켓으로 전달"""
+    client = docker.from_env()
+    container = await asyncio.to_thread(
+        client.containers.run,
+        settings.SANDBOX_IMAGE,
+        ["-i", "-u"],
+        entrypoint="python3",
+        stdin_open=True,
+        tty=True,
+        network_disabled=True,
+        detach=True,
+        remove=False,
+    )
+    sock = await asyncio.to_thread(
+        container.attach_socket,
+        params={"stdin": 1, "stdout": 1, "stderr": 1, "stream": 1},
+    )
+    raw_sock = getattr(sock, "_sock", sock)
+    raw_sock.settimeout(0.5)
+
+    async def side_reader(ws: WebSocket):
+        """Docker 컨테이너의 출력을 웹소켓으로 전달"""
         while True:
-            data = await stream.read(1024)
+            try:
+                data = await asyncio.to_thread(raw_sock.recv, 1024)
+            except (TimeoutError, socket.timeout):
+                continue
             if not data:
                 break
             await ws.send_text(data.decode())
 
-    async def side_writer(ws: WebSocket, stdin):
+    async def side_writer(ws: WebSocket):
         """웹소켓의 입력을 Docker의 stdin으로 전달"""
         try:
             while True:
                 user_input = await ws.receive_text()
-                stdin.write(user_input.encode())
-                await stdin.drain()
+                await asyncio.to_thread(raw_sock.sendall, user_input.replace("\n", "\r").encode())
         except WebSocketDisconnect:
             pass
 
+    reader = asyncio.create_task(side_reader(websocket))
+    writer = asyncio.create_task(side_writer(websocket))
     try:
-        await asyncio.gather(
-            side_reader(proc.stdout, websocket),
-            side_reader(proc.stderr, websocket),
-            side_writer(websocket, proc.stdin)
-        )
+        await asyncio.wait({reader, writer}, return_when=asyncio.FIRST_COMPLETED)
     except Exception as e:
         print(f"Terminal Error: {e}")
     finally:
-        if proc.returncode is None:
-            proc.terminate()
-        await websocket.close()
+        reader.cancel()
+        writer.cancel()
+        with contextlib.suppress(Exception):
+            raw_sock.close()
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(container.kill)
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(container.remove, force=True)
+        with contextlib.suppress(Exception):
+            await websocket.close()

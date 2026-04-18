@@ -3,6 +3,7 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 python-dotenv
+sqlalchemy
 httpx
 pytest
 pytest-asyncio

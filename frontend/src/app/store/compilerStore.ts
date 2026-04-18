@@ -48,7 +48,6 @@ let activeRunController: AbortController | null = null;
 const INITIAL_OUTPUT: OutputLine[] = [
   { type: 'info', text: 'B++ 컴파일러 v1.0.0 초기화 중...' },
   { type: 'success', text: '컴파일러 환경이 준비되었습니다.' },
-  { type: 'input', text: '> _' },
 ];
 
 function formatExecutionTime(milliseconds: number): string {
@@ -59,7 +58,7 @@ function formatExecutionTime(milliseconds: number): string {
 }
 
 function appendPrompt(lines: OutputLine[]): OutputLine[] {
-  return [...lines, { type: 'input', text: '> _' }];
+  return lines;
 }
 
 export const useCompilerStore = create<CompilerState>((set, get) => ({
@@ -67,12 +66,11 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   setCode: (code) => set({ code }),
   output: INITIAL_OUTPUT,
   addOutput: (line) => set((state) => ({ output: [...state.output, line] })),
-  clearOutput: () => set({ output: [{ type: 'input', text: '> _' }] }),
+  clearOutput: () => set({ output: [] }),
   restartConsole: () => set({ 
     output: [
       { type: 'info', text: '컴파일러 환경 재시작 중...' },
       { type: 'success', text: '컴파일러 환경이 준비되었습니다.' },
-      { type: 'input', text: '> _' },
     ],
     lastError: null,
   }),

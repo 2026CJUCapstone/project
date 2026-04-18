@@ -7,7 +7,8 @@ from app.models import schemas
 
 router = APIRouter()
 
-@router.post("/", response_model=schemas.ProblemRead)
+@router.post("/", response_model=schemas.ProblemRead, include_in_schema=False)
+@router.post("", response_model=schemas.ProblemRead)
 def create_problem(problem: schemas.ProblemCreate, db: Session = Depends(get_db)):
     db_problem = db_models.Problem(
         title=problem.title,
@@ -21,7 +22,8 @@ def create_problem(problem: schemas.ProblemCreate, db: Session = Depends(get_db)
     db.refresh(db_problem)
     return db_problem
 
-@router.get("/", response_model=List[schemas.ProblemRead])
+@router.get("/", response_model=List[schemas.ProblemRead], include_in_schema=False)
+@router.get("", response_model=List[schemas.ProblemRead])
 def list_problems(
     difficulty: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),

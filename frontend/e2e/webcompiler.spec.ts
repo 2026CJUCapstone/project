@@ -14,6 +14,7 @@ test.describe("webcompiler browser e2e", () => {
 
     await expect(page.getByText("B++ Online Compiler")).toBeVisible();
     await expect(page.getByTestId("compile-run-button")).toBeVisible();
+    await expect(page.getByTestId("output-console")).not.toContainText("> _");
     await expect(page.locator(".view-lines").first()).toContainText('println("Hello from B++!!");');
   });
 
@@ -30,5 +31,23 @@ test.describe("webcompiler browser e2e", () => {
     const outputConsole = page.getByTestId("output-console");
     await expect(outputConsole).toContainText("실행 완료", { timeout: 30000 });
     await expect(outputConsole).toContainText("Hello from Playwright", { timeout: 30000 });
+  });
+
+  test("accepts terminal input and renders terminal output at /webcompiler", async ({ page }) => {
+    await page.goto("/webcompiler/");
+
+    await page.getByTestId("terminal-tab").click();
+
+    const terminalInput = page.getByTestId("terminal-input");
+    const terminalOutput = page.getByTestId("terminal-output");
+
+    await expect(terminalInput).toBeEnabled({ timeout: 30000 });
+    await terminalInput.fill('print("terminal-ui-ok")');
+    await terminalInput.press("Enter");
+
+    await expect(terminalOutput).toContainText("terminal-ui-ok", { timeout: 30000 });
+
+    await page.getByTestId("output-tab").click();
+    await expect(page.getByTestId("output-console")).not.toContainText("terminal-ui-ok");
   });
 });

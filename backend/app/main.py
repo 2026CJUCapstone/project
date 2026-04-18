@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import problems, compiler
+from app.api.routes import compiler, problems, terminal
 from app.core.database import engine, Base
 
 Base.metadata.create_all(bind=engine)
@@ -21,6 +21,7 @@ app.add_middleware(
 )
 app.include_router(problems.router, prefix="/api/v1/problems", tags=["problems"])
 app.include_router(compiler.router, prefix="/api/v1/compiler", tags=["compiler"])
+app.include_router(terminal.router, tags=["terminal"])
 
 @app.get("/health")
 def health_check():
