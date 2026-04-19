@@ -11,7 +11,7 @@ func main() -> u64 {
 const interactiveBppProgram = `import std.io;
 
 func main() -> u64 {
-    var line: u64 = input();
+    var line: number = input();
     emit("program says: ");
     emitln(line);
     return 0;
