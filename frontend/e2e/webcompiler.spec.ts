@@ -66,10 +66,15 @@ test.describe("webcompiler browser e2e", () => {
     const terminalInput = page.getByTestId("terminal-input");
     const terminalOutput = page.getByTestId("terminal-output");
 
+    await expect(terminalInput).toBeDisabled();
+    await expect(terminalOutput).toContainText("연결 버튼을 눌렀을 때만");
+
+    await page.getByTestId("terminal-connect-button").click();
     await expect(terminalInput).toBeEnabled({ timeout: 30000 });
     await terminalInput.fill("terminal-stdin-ok");
     await terminalInput.press("Enter");
 
+    await expect(terminalOutput).toContainText("stdin> terminal-stdin-ok", { timeout: 30000 });
     await expect(terminalOutput).toContainText("program says: terminal-stdin-ok", { timeout: 30000 });
     await expect(terminalOutput).toContainText("exit code 0", { timeout: 30000 });
 

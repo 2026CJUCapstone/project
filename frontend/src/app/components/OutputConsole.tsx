@@ -5,7 +5,7 @@ import { useCompilerStore } from "../store/compilerStore";
 type ConsoleTab = "output" | "terminal";
 type TerminalStatus = "disconnected" | "connecting" | "connected";
 type TerminalLine = {
-  type: "system" | "output" | "error";
+  type: "system" | "input" | "output" | "error";
   text: string;
 };
 
@@ -31,6 +31,13 @@ const terminalStatusLabel: Record<TerminalStatus, string> = {
   disconnected: "Disconnected",
   connecting: "Connecting",
   connected: "Connected",
+};
+
+const terminalLineLabel: Record<TerminalLine["type"], string> = {
+  system: "system",
+  input: "stdin",
+  output: "stdout",
+  error: "error",
 };
 
 export function OutputConsole() {
@@ -97,7 +104,6 @@ export function OutputConsole() {
 
   const openTerminalTab = () => {
     setActiveTab("terminal");
-    connectTerminal();
   };
 
   const restartTerminal = () => {
@@ -125,7 +131,9 @@ export function OutputConsole() {
       return;
     }
 
-    ws.send(`${terminalInput}\n`);
+    const input = terminalInput;
+    ws.send(`${input}\n`);
+    appendTerminalLine({ type: "input", text: input.length > 0 ? `stdin> ${input}` : "stdin> <empty line>" });
     setTerminalInput("");
   };
 
@@ -211,6 +219,7 @@ export function OutputConsole() {
           ) : (
             <>
               <button
+                data-testid="terminal-connect-button"
                 onClick={terminalStatus === "connected" ? restartTerminal : connectTerminal}
                 disabled={terminalStatus === "connecting"}
                 className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -285,17 +294,26 @@ export function OutputConsole() {
         <div className="flex-1 min-h-0 flex flex-col">
           <div ref={terminalScrollRef} data-testid="terminal-output" className="flex-1 p-5 overflow-auto">
             <div className="flex flex-col gap-2">
+              {terminalLines.length === 0 && (
+                <div className="leading-relaxed text-gray-500 dark:text-gray-500">
+                  터미널은 연결 버튼을 눌렀을 때만 현재 코드를 컴파일하고 실행합니다.
+                </div>
+              )}
               {terminalLines.map((line, idx) => (
                 <div
                   key={idx}
                   className={`
-                    leading-relaxed whitespace-pre-wrap
+                    flex items-start gap-3 leading-relaxed
                     ${line.type === "system" ? "text-blue-600 dark:text-blue-300" : ""}
+                    ${line.type === "input" ? "text-green-700 dark:text-green-300" : ""}
                     ${line.type === "output" ? "text-gray-800 dark:text-gray-300" : ""}
                     ${line.type === "error" ? "text-red-600 dark:text-red-400" : ""}
                   `}
                 >
-                  {line.text}
+                  <span className="w-14 shrink-0 select-none text-[10px] uppercase tracking-widest opacity-60">
+                    {terminalLineLabel[line.type]}
+                  </span>
+                  <span className="min-w-0 whitespace-pre-wrap">{line.text}</span>
                 </div>
               ))}
             </div>
