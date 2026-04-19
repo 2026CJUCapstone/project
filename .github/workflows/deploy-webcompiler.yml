@@ -57,6 +57,7 @@ jobs:
           DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
           DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && bash scripts/deploy_server.sh"
+            "cd '${DEPLOY_PATH}' && GITHUB_TOKEN='${GITHUB_TOKEN}' bash scripts/deploy_server.sh"

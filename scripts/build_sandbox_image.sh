@@ -15,7 +15,17 @@ if [[ -z "$BPP_REF" ]]; then
 fi
 
 BPP_RELEASE_API="${BPP_RELEASE_API:-https://api.github.com/repos/Creeper0809/Bpp/releases/latest}"
-bootstrap_json="$(curl -fsSL "$BPP_RELEASE_API")"
+curl_args=(-fsSL --retry 3 --retry-delay 2)
+github_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+
+if [[ -n "$github_token" ]]; then
+  curl_args+=(
+    -H "Authorization: Bearer ${github_token}"
+    -H "X-GitHub-Api-Version: 2022-11-28"
+  )
+fi
+
+bootstrap_json="$(curl "${curl_args[@]}" "$BPP_RELEASE_API")"
 read -r BPP_BOOTSTRAP_TAG BPP_BOOTSTRAP_URL BPP_BOOTSTRAP_SHA256 < <(
   printf '%s' "$bootstrap_json" | python3 -c '
 import json, sys

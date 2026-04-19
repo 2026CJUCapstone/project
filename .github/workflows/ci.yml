@@ -96,6 +96,8 @@ jobs:
         run: docker version
 
       - name: Run Docker E2E
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/e2e_stack_test.py
 
       - name: Dump Container Logs On Failure
@@ -133,6 +135,8 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Start Webcompiler Deploy-Like Stack
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/docker_up_webcompiler.sh
 
       - name: Run Playwright Browser E2E
