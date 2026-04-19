@@ -302,6 +302,7 @@ export function OutputConsole() {
               {terminalLines.map((line, idx) => (
                 <div
                   key={idx}
+                  data-terminal-line-type={line.type}
                   className={`
                     flex items-start gap-3 leading-relaxed
                     ${line.type === "system" ? "text-blue-600 dark:text-blue-300" : ""}

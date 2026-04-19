@@ -71,14 +71,15 @@ test.describe("webcompiler browser e2e", () => {
 
     await page.getByTestId("terminal-connect-button").click();
     await expect(terminalInput).toBeEnabled({ timeout: 30000 });
-    await terminalInput.fill("terminal-stdin-ok");
+    await terminalInput.fill("42");
     await terminalInput.press("Enter");
 
-    await expect(terminalOutput).toContainText("stdin> terminal-stdin-ok", { timeout: 30000 });
-    await expect(terminalOutput).toContainText("program says: terminal-stdin-ok", { timeout: 30000 });
+    await expect(terminalOutput.locator('[data-terminal-line-type="input"]').filter({ hasText: "stdin> 42" }).first()).toBeVisible({ timeout: 30000 });
+    await expect(terminalOutput.locator('[data-terminal-line-type="output"]').filter({ hasText: "program says:" }).first()).toBeVisible({ timeout: 30000 });
+    await expect(terminalOutput.locator('[data-terminal-line-type="output"]').filter({ hasText: "42" }).first()).toBeVisible({ timeout: 30000 });
     await expect(terminalOutput).toContainText("exit code 0", { timeout: 30000 });
 
     await page.getByTestId("output-tab").click();
-    await expect(page.getByTestId("output-console")).not.toContainText("terminal-stdin-ok");
+    await expect(page.getByTestId("output-console")).not.toContainText("stdin> 42");
   });
 });
