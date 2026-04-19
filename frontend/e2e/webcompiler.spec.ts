@@ -12,8 +12,8 @@ const interactiveBppProgram = `import std.io;
 
 func main() -> u64 {
     var line: number = input();
-    emit("program says: ");
-    emitln(line);
+    print("program says: ");
+    println(line);
     return 0;
 }
 `;
@@ -59,7 +59,7 @@ test.describe("webcompiler browser e2e", () => {
       window.localStorage.setItem("b-compiler-editor-code", code);
     }, interactiveBppProgram);
     await page.reload();
-    await expect(page.locator(".view-lines").first()).toContainText("input();");
+    await expect(page.locator(".view-lines").first()).toContainText("input()");
 
     await page.getByTestId("terminal-tab").click();
 
