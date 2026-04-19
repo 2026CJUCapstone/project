@@ -280,6 +280,13 @@ wait_for_url "http://127.0.0.1:${EDGE_FRONTEND_PORT}/health" "edge frontend"
 printf '%s\n' "$target_color" > "$STATE_FILE"
 log "active color is now $target_color"
 
+if [[ "${WEBCOMPILER_ENABLE_SANDBOX_UPDATER:-1}" == "1" ]]; then
+  log "installing sandbox updater timer"
+  if ! bash "$PROJECT_ROOT/scripts/install_sandbox_updater_timer.sh"; then
+    log "sandbox updater timer install failed; continuing deployment"
+  fi
+fi
+
 if [[ "${WEBCOMPILER_STOP_OLD_AFTER_DEPLOY:-0}" == "1" && -n "$active_color" && "$active_color" != "$target_color" ]]; then
   log "stopping previous $active_color stack"
   compose_for_color "$active_color" down --remove-orphans

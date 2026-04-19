@@ -7,7 +7,8 @@ export PROJECT_ROOT="$ROOT_DIR"
 
 BPP_REPO="${BPP_REPO:-https://github.com/Creeper0809/Bpp}"
 BPP_BRANCH="${BPP_BRANCH:-main}"
-BPP_REF="$(git ls-remote "$BPP_REPO" "refs/heads/$BPP_BRANCH" | awk 'NR==1 { print $1 }')"
+BPP_REF="${BPP_REF:-$(git ls-remote "$BPP_REPO" "refs/heads/$BPP_BRANCH" | awk 'NR==1 { print $1 }')}"
+SANDBOX_IMAGE_TAG="${SANDBOX_IMAGE_TAG:-compiler-sandbox}"
 
 if [[ -z "$BPP_REF" ]]; then
   echo "failed to resolve $BPP_REPO branch $BPP_BRANCH" >&2
@@ -56,6 +57,6 @@ docker build \
   --build-arg "BPP_BOOTSTRAP_TAG=$BPP_BOOTSTRAP_TAG" \
   --build-arg "BPP_BOOTSTRAP_URL=$BPP_BOOTSTRAP_URL" \
   --build-arg "BPP_BOOTSTRAP_SHA256=$BPP_BOOTSTRAP_SHA256" \
-  -t compiler-sandbox \
+  -t "$SANDBOX_IMAGE_TAG" \
   -f "$PROJECT_ROOT/runtime/docker/Dockerfile" \
   "$PROJECT_ROOT/runtime"
