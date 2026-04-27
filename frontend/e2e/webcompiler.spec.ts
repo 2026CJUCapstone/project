@@ -26,7 +26,7 @@ test.describe("webcompiler browser e2e", () => {
     await expect(page.getByTestId("compile-run-button")).toBeVisible();
     await expect(page.getByTestId("output-console")).not.toContainText("> _");
     await expect(page.locator(".view-lines").first()).toContainText("var spf: [101]i64;");
-    await expect(page.locator(".view-lines").first()).toContainText('print("factors = ");');
+    await expect(page.locator(".view-lines").first()).toContainText("// spf[i] = i의 가장 작은 소인수");
   });
 
   test("runs B++ code through the browser at /webcompiler", async ({ page }) => {
@@ -40,8 +40,9 @@ test.describe("webcompiler browser e2e", () => {
     await page.getByTestId("compile-run-button").click();
 
     const outputConsole = page.getByTestId("output-console");
-    await expect(outputConsole).toContainText("실행 완료", { timeout: 30000 });
+    await expect(outputConsole).toContainText("BPP 컴파일 및 실행을 시작합니다.", { timeout: 30000 });
     await expect(outputConsole).toContainText("Hello from Playwright", { timeout: 30000 });
+    await expect(outputConsole).toContainText("프로그램이 종료되었습니다. (exit code 0)", { timeout: 30000 });
   });
 
   test("loads the leaderboard route at /webcompiler", async ({ page }) => {
@@ -51,7 +52,7 @@ test.describe("webcompiler browser e2e", () => {
     await expect(page.getByText("전체 랭킹")).toBeVisible();
     await expect(page.getByText("순위", { exact: true })).toBeVisible();
     await expect(page.getByText("사용자", { exact: true })).toBeVisible();
-    await expect(page.getByText("점수", { exact: true })).toBeVisible();
+    await expect(page.locator("div.text-right").filter({ hasText: /^점수$/ })).toBeVisible();
   });
 
   test("accepts terminal input and renders terminal output at /webcompiler", async ({ page }) => {
