@@ -13,11 +13,13 @@ services:
       SANDBOX_CPU_LIMIT: 1.0
       SANDBOX_PIDS_LIMIT: 64
       SANDBOX_NOFILE_LIMIT: 1024
+      DATABASE_URL: sqlite:////data/bpp_project.db
     working_dir: ${PROJECT_ROOT}/backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${PROJECT_ROOT}:${PROJECT_ROOT}
+      - ${WEBCOMPILER_DATA_DIR:-./.data/webcompiler}:/data
     ports:
       - "${WEBCOMPILER_BACKEND_PORT_MAPPING:-8000:8000}"
 

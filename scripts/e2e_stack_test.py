@@ -13,7 +13,16 @@ from urllib.request import Request, urlopen
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-ENV = {**os.environ, "PROJECT_ROOT": str(ROOT_DIR)}
+BACKEND_PORT = 18010
+FRONTEND_PORT = 15180
+BACKEND_BASE_URL = f"http://127.0.0.1:{BACKEND_PORT}"
+FRONTEND_BASE_URL = f"http://127.0.0.1:{FRONTEND_PORT}"
+ENV = {
+    **os.environ,
+    "PROJECT_ROOT": str(ROOT_DIR),
+    "WEBCOMPILER_BACKEND_PORT_MAPPING": f"127.0.0.1:{BACKEND_PORT}:8000",
+    "WEBCOMPILER_FRONTEND_PORT_MAPPING": f"127.0.0.1:{FRONTEND_PORT}:80",
+}
 
 
 def run_command(*args: str) -> None:
@@ -70,18 +79,18 @@ func main() -> u64 {
     try:
         run_command("bash", "scripts/docker_up.sh")
 
-        backend_health = wait_for_json("http://127.0.0.1:8000/health")
-        frontend_health = wait_for_json("http://127.0.0.1:5173/health")
+        backend_health = wait_for_json(f"{BACKEND_BASE_URL}/health")
+        frontend_health = wait_for_json(f"{FRONTEND_BASE_URL}/health")
 
         if backend_health.get("status") != "ok" or frontend_health.get("status") != "ok":
             raise RuntimeError("Health check failed")
 
-        index_html = fetch_text("http://127.0.0.1:5173/")
+        index_html = fetch_text(f"{FRONTEND_BASE_URL}/")
         if '<div id="root"></div>' not in index_html:
             raise RuntimeError("Frontend index page did not load correctly")
 
         compile_result = post_json(
-            "http://127.0.0.1:5173/api/v1/compiler/compile",
+            f"{FRONTEND_BASE_URL}/api/v1/compiler/compile",
             {
                 "code": bpp_code,
                 "language": "bpp",
@@ -92,7 +101,7 @@ func main() -> u64 {
             raise RuntimeError(f"Compile endpoint failed: {compile_result}")
 
         invalid_compile_result = post_json(
-            "http://127.0.0.1:5173/api/v1/compiler/compile",
+            f"{FRONTEND_BASE_URL}/api/v1/compiler/compile",
             {
                 "code": invalid_bpp_code,
                 "language": "bpp",
@@ -103,7 +112,7 @@ func main() -> u64 {
             raise RuntimeError(f"Compile diagnostics endpoint failed: {invalid_compile_result}")
 
         run_result = post_json(
-            "http://127.0.0.1:5173/api/v1/compiler/run",
+            f"{FRONTEND_BASE_URL}/api/v1/compiler/run",
             {
                 "language": "bpp",
                 "code": bpp_code,
@@ -117,7 +126,7 @@ func main() -> u64 {
         leaderboard_user = f"ci_leader_{int(time.time())}"
         leaderboard_challenge = f"ci_problem_{int(time.time())}"
         first_score = post_json(
-            "http://127.0.0.1:5173/api/v1/problems/leaderboard/score",
+            f"{FRONTEND_BASE_URL}/api/v1/problems/leaderboard/score",
             {
                 "username": leaderboard_user,
                 "points": 20,
@@ -128,7 +137,7 @@ func main() -> u64 {
             raise RuntimeError(f"Initial leaderboard score failed: {first_score}")
 
         duplicate_score = post_json(
-            "http://127.0.0.1:5173/api/v1/problems/leaderboard/score",
+            f"{FRONTEND_BASE_URL}/api/v1/problems/leaderboard/score",
             {
                 "username": leaderboard_user,
                 "points": 20,
@@ -140,7 +149,7 @@ func main() -> u64 {
         if duplicate_score.get("totalScore") != 20:
             raise RuntimeError(f"Duplicate leaderboard score changed total: {duplicate_score}")
 
-        leaderboard = wait_for_json("http://127.0.0.1:5173/api/v1/problems/leaderboard?limit=10")
+        leaderboard = wait_for_json(f"{FRONTEND_BASE_URL}/api/v1/problems/leaderboard?limit=10")
         leaderboard_row = next((row for row in leaderboard if row.get("username") == leaderboard_user), None)
         if not leaderboard_row or leaderboard_row.get("totalScore") != 20:
             raise RuntimeError(f"Leaderboard row missing or invalid: {leaderboard}")

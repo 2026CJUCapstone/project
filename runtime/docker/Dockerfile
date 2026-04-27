@@ -1,10 +1,13 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ARG BPP_REPO=https://github.com/Creeper0809/Bpp
 ARG BPP_REF=main
 ARG BPP_BOOTSTRAP_TAG=bootstrap-v12
 ARG BPP_BOOTSTRAP_URL
 ARG BPP_BOOTSTRAP_SHA256
+ARG TEST_SKIP_LLVM_BUILD=1
+ARG TEST_FAST_IO=0
+ARG RUNTIME_BUILD_SIGNATURE=unknown
 
 LABEL org.opencontainers.image.source="${BPP_REPO}"
 LABEL io.bpp.repo="${BPP_REPO}"
@@ -12,32 +15,64 @@ LABEL io.bpp.ref="${BPP_REF}"
 LABEL io.bpp.bootstrap.tag="${BPP_BOOTSTRAP_TAG}"
 LABEL io.bpp.bootstrap.url="${BPP_BOOTSTRAP_URL}"
 LABEL io.bpp.bootstrap.sha256="${BPP_BOOTSTRAP_SHA256}"
+LABEL io.bpp.test_skip_llvm_build="${TEST_SKIP_LLVM_BUILD}"
+LABEL io.bpp.test_fast_io="${TEST_FAST_IO}"
+LABEL io.bpp.runtime_build_signature="${RUNTIME_BUILD_SIGNATURE}"
 
 ENV BPP_REPO="${BPP_REPO}"
 ENV BPP_REF="${BPP_REF}"
 ENV BPP_BOOTSTRAP_TAG="${BPP_BOOTSTRAP_TAG}"
 ENV BPP_BOOTSTRAP_URL="${BPP_BOOTSTRAP_URL}"
 ENV BPP_BOOTSTRAP_SHA256="${BPP_BOOTSTRAP_SHA256}"
+ENV TEST_SKIP_LLVM_BUILD="${TEST_SKIP_LLVM_BUILD}"
+ENV TEST_FAST_IO="${TEST_FAST_IO}"
+ENV RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE}"
 
-RUN apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
-    binutils \
-    ca-certificates \
-    curl \
-    cmake \
-    python3 \
-    python3-pip \
-    git \
-    gcc \
-    g++ \
-    default-jdk-headless \
-    nasm \
-    make \
-    && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    if ! (apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
+      binutils \
+      ca-certificates \
+      clang \
+      curl \
+      cmake \
+      coreutils \
+      python3 \
+      python3-pip \
+      git \
+      gcc \
+      g++ \
+      default-jdk-headless \
+      nasm \
+      make); then \
+      rm -rf /var/lib/apt/lists/*; \
+      apt-get update -o Acquire::Retries=3; \
+      apt-get install -y --no-install-recommends \
+        binutils \
+        ca-certificates \
+        clang \
+        curl \
+        cmake \
+        coreutils \
+        python3 \
+        python3-pip \
+        git \
+        gcc \
+        g++ \
+        default-jdk-headless \
+        nasm \
+        make; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*
 
-# Node.js 20.x via NodeSource (Ubuntu 22.04 기본은 v12로 너무 낮음)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Node.js 20.x via NodeSource
+RUN set -eux; \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
+    if ! apt-get install -y --no-install-recommends nodejs; then \
+      rm -rf /var/lib/apt/lists/*; \
+      apt-get update -o Acquire::Retries=3; \
+      apt-get install -y --no-install-recommends nodejs; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*
 
 RUN git clone "$BPP_REPO" /opt/Bpp \
     && cd /opt/Bpp \
@@ -46,10 +81,10 @@ RUN git clone "$BPP_REPO" /opt/Bpp \
       -DCMAKE_INSTALL_PREFIX=/usr/local \
       -DBPP_BOOTSTRAP_RELEASE_TAG="$BPP_BOOTSTRAP_TAG" \
       -DBPP_BOOTSTRAP_SHA256_LINUX="$BPP_BOOTSTRAP_SHA256" \
-    && TEST_FAST_IO=0 TEST_QUIET=1 TEST_JOBS=4 cmake --build build-linux --target bpp-selfhost-fast \
+    && cmake --build build-linux --target bpp-selfhost-fast \
     && cmake --install build-linux \
-    && printf 'repo=%s\nref=%s\nbootstrap_tag=%s\nbootstrap_url=%s\nbootstrap_sha256=%s\n' \
-      "$BPP_REPO" "$BPP_REF" "$BPP_BOOTSTRAP_TAG" "$BPP_BOOTSTRAP_URL" "$BPP_BOOTSTRAP_SHA256" > /usr/local/share/bpp-build-info.txt \
+    && printf 'repo=%s\nref=%s\nbootstrap_tag=%s\nbootstrap_url=%s\nbootstrap_sha256=%s\ntest_skip_llvm_build=%s\ntest_fast_io=%s\nruntime_build_signature=%s\n' \
+      "$BPP_REPO" "$BPP_REF" "$BPP_BOOTSTRAP_TAG" "$BPP_BOOTSTRAP_URL" "$BPP_BOOTSTRAP_SHA256" "$TEST_SKIP_LLVM_BUILD" "$TEST_FAST_IO" "$RUNTIME_BUILD_SIGNATURE" > /usr/local/share/bpp-build-info.txt \
     && rm -rf /opt/Bpp/.git
 
 WORKDIR /sandbox

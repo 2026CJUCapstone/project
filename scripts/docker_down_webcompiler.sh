@@ -10,13 +10,13 @@ for color in blue green; do
     -p "webcompiler-$color" \
     -f "$PROJECT_ROOT/docker-compose.yml" \
     -f "$PROJECT_ROOT/docker-compose.deploy.yml" \
-    down -v --remove-orphans
+    down --remove-orphans
 done
 
 docker compose \
   -p "${COMPOSE_PROJECT_NAME:-webcompiler}" \
   -f "$PROJECT_ROOT/docker-compose.yml" \
   -f "$PROJECT_ROOT/docker-compose.deploy.yml" \
-  down -v --remove-orphans
+  down --remove-orphans
 
 docker rm -f webcompiler-edge-frontend webcompiler-edge-backend >/dev/null 2>&1 || true

@@ -6,6 +6,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PROJECT_ROOT="$ROOT_DIR"
 
 mkdir -p "$PROJECT_ROOT/.sandbox-work" "$PROJECT_ROOT/.deploy"
+export WEBCOMPILER_DATA_DIR="${WEBCOMPILER_DATA_DIR:-$PROJECT_ROOT/.data/webcompiler}"
+mkdir -p "$WEBCOMPILER_DATA_DIR"
+
+if [[ ! -f "$WEBCOMPILER_DATA_DIR/bpp_project.db" ]]; then
+  for legacy_db in "$PROJECT_ROOT/backend/bpp_project.db" "$PROJECT_ROOT/bpp_project.db"; do
+    if [[ -f "$legacy_db" ]]; then
+      cp "$legacy_db" "$WEBCOMPILER_DATA_DIR/bpp_project.db"
+      break
+    fi
+  done
+fi
 
 export WEBCOMPILER_BASE_PATH="${WEBCOMPILER_BASE_PATH:-/webcompiler/}"
 export WEBCOMPILER_API_BASE="${WEBCOMPILER_API_BASE:-/webcompiler}"

@@ -4,7 +4,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="${PROJECT_ROOT:-$ROOT_DIR}"
-INTERVAL="${SANDBOX_UPDATER_INTERVAL:-60s}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 SERVICE_FILE="$UNIT_DIR/webcompiler-sandbox-updater.service"
 TIMER_FILE="$UNIT_DIR/webcompiler-sandbox-updater.timer"
@@ -30,6 +29,8 @@ WorkingDirectory=$PROJECT_ROOT
 Environment=PROJECT_ROOT=$PROJECT_ROOT
 Environment=BPP_REPO=${BPP_REPO:-https://github.com/Creeper0809/Bpp}
 Environment=BPP_BRANCH=${BPP_BRANCH:-main}
+Environment=TEST_SKIP_LLVM_BUILD=${TEST_SKIP_LLVM_BUILD:-1}
+Environment=TEST_FAST_IO=${TEST_FAST_IO:-0}
 ExecStart=/usr/bin/env bash $PROJECT_ROOT/scripts/update_sandbox_image_if_needed.sh
 EOF
 
@@ -38,8 +39,7 @@ cat > "$TIMER_FILE" <<EOF
 Description=Run Bpp compiler sandbox updater every minute
 
 [Timer]
-OnBootSec=30s
-OnUnitActiveSec=$INTERVAL
+OnCalendar=*-*-* *:*:00
 AccuracySec=10s
 Persistent=true
 Unit=webcompiler-sandbox-updater.service
@@ -50,7 +50,7 @@ EOF
 
 if systemctl --user daemon-reload >/dev/null 2>&1 \
   && systemctl --user enable --now webcompiler-sandbox-updater.timer >/dev/null 2>&1; then
-  log "enabled user timer webcompiler-sandbox-updater.timer with interval $INTERVAL"
+  log "enabled user timer webcompiler-sandbox-updater.timer to run every minute"
   exit 0
 fi
 
