@@ -18,7 +18,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     saveCode,
     loadCode,
     setCode,
-    compileAndRun,
+    compileAndStartTerminal,
     compile,
     language,
     setLanguage,
@@ -91,8 +91,52 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     }
   };
 
-  let defaultCode = `func main() -> u64 {
-    println("Hello from B++!!");
+  let defaultCode = `import std.io;
+
+func main() -> u64 {
+    var limit: i64 = 100;
+    var target: i64 = 84;
+    var spf: [101]i64;
+
+    // spf[i] = i의 가장 작은 소인수
+    var i: i64 = 0;
+    while (i <= limit) {
+        spf[i] = 0;
+        i = i + 1;
+    }
+
+    i = 2;
+    while (i <= limit) {
+        if (spf[i] == 0) {
+            spf[i] = i;
+
+            var j: i64 = i * i;
+            while (j <= limit) {
+                if (spf[j] == 0) {
+                    spf[j] = i;
+                }
+                j = j + i;
+            }
+        }
+        i = i + 1;
+    }
+
+    print("target = ");
+    println(target);
+    print("factors = ");
+
+    var current: i64 = target;
+    var first: i64 = 1;
+    while (current > 1) {
+        var p: i64 = spf[current];
+        if (first == 0) {
+            print(" x ");
+        }
+        print(p);
+        first = 0;
+        current = current / p;
+    }
+
     return 0;
 }
 `;
@@ -261,13 +305,13 @@ func main() -> u64 {
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        void compileAndRun();
+        void compileAndStartTerminal();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [compileAndRun, compile, saveStatus, saveCode]);
+  }, [compileAndStartTerminal, compile, saveStatus, saveCode]);
 
   // 마지막 저장 시간 업데이트 (1초마다)
   const [, forceUpdate] = useState(0);

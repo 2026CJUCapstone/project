@@ -22,6 +22,7 @@ frontend/test-results/
 *.tar
 .sandbox-work/
 .deploy/
+.data/
 
 # Editor
 .vscode/

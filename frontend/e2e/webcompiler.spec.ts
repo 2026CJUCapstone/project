@@ -25,7 +25,8 @@ test.describe("webcompiler browser e2e", () => {
     await expect(page.getByText("B++ Online Compiler")).toBeVisible();
     await expect(page.getByTestId("compile-run-button")).toBeVisible();
     await expect(page.getByTestId("output-console")).not.toContainText("> _");
-    await expect(page.locator(".view-lines").first()).toContainText('println("Hello from B++!!");');
+    await expect(page.locator(".view-lines").first()).toContainText("var spf: [101]i64;");
+    await expect(page.locator(".view-lines").first()).toContainText('print("factors = ");');
   });
 
   test("runs B++ code through the browser at /webcompiler", async ({ page }) => {
@@ -67,9 +68,9 @@ test.describe("webcompiler browser e2e", () => {
     const terminalOutput = page.getByTestId("terminal-output");
 
     await expect(terminalInput).toBeDisabled();
-    await expect(terminalOutput).toContainText("연결 버튼을 눌렀을 때만");
+    await expect(terminalOutput).toContainText("상단 실행 버튼을 누르면");
 
-    await page.getByTestId("terminal-connect-button").click();
+    await page.getByTestId("compile-run-button").click();
     await expect(terminalInput).toBeEnabled({ timeout: 30000 });
     await terminalInput.fill("42");
     await terminalInput.press("Enter");

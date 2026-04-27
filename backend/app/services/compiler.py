@@ -1,11 +1,5 @@
 import asyncio
 import contextlib
-import re
-import shutil
-import tempfile
-import time
-import asyncio
-import contextlib
 import difflib
 import hashlib
 import json
@@ -27,6 +21,12 @@ from docker.errors import APIError, DockerException
 from docker.types import Ulimit
 
 from app.core.config import settings
+from app.services.compiler_graphs import (
+    build_bpp_asm,
+    build_bpp_ast_graph,
+    build_bpp_ir,
+    build_bpp_ssa_graph,
+)
 
 # ----------------- 임시 메모리 데이터베이스 -----------------
 job_store: Dict[str, dict] = {}
@@ -87,12 +87,25 @@ class Diagnostic:
 # ----------------- 컴파일러 인터페이스 (Async) -----------------
 class CompilerRunner(ABC):
     @abstractmethod
-    async def compile(self, source_code: str, options: List[str], language: str) -> dict:
+    async def compile(
+        self,
+        source_code: str,
+        language: str,
+        optimize: bool = False,
+        target: str = "all",
+    ) -> dict:
         pass
 
 
 class DockerCompilerRunner:
-    async def compile(self, source_code: str, language: str, optimize: bool = False) -> dict:
+    async def compile(
+        self,
+        source_code: str,
+        language: str,
+        optimize: bool = False,
+        target: str = "all",
+    ) -> dict:
+        started_at = time.monotonic()
         result = await self._execute(
             mode="compile",
             source_code=source_code,
@@ -102,16 +115,69 @@ class DockerCompilerRunner:
         diagnostics = self._parse_diagnostics(result["stderr"], language, result["exit_code"] == 0)
         errors = [item.to_dict() for item in diagnostics if item.severity == "error"]
         warnings = [item.to_dict() for item in diagnostics if item.severity == "warning"]
-        return {
+        response = {
             "success": result["exit_code"] == 0,
             "errors": errors,
             "warnings": warnings,
             "execution_time": result["execution_time"],
             "metadata": {
                 "node_count": len(source_code.splitlines()),
-                "optimization_level": 2 if optimize else 0,
+                "optimization_level": 1 if optimize else 0,
             },
         }
+
+        if result["exit_code"] != 0 or language != "bpp":
+            return response
+
+        requested_targets = self._resolve_requested_targets(target)
+        if "ast" in requested_targets:
+            ast_graph = build_bpp_ast_graph(source_code)
+            response["ast"] = ast_graph
+            response["metadata"]["node_count"] = len(ast_graph["nodes"])
+
+        dump_tasks: dict[str, asyncio.Task[dict]] = {}
+        if "ssa" in requested_targets:
+            dump_tasks["ssa"] = asyncio.create_task(
+                self._execute(
+                    mode="dump-ssa",
+                    source_code=source_code,
+                    language=language,
+                    optimize=optimize,
+                )
+            )
+        if "ir" in requested_targets:
+            dump_tasks["ir"] = asyncio.create_task(
+                self._execute(
+                    mode="dump-ir",
+                    source_code=source_code,
+                    language=language,
+                    optimize=optimize,
+                )
+            )
+        if "asm" in requested_targets:
+            dump_tasks["asm"] = asyncio.create_task(
+                self._execute(
+                    mode="asm",
+                    source_code=source_code,
+                    language=language,
+                    optimize=optimize,
+                )
+            )
+
+        if dump_tasks:
+            dump_results = await asyncio.gather(*dump_tasks.values())
+            for target_name, dump_result in zip(dump_tasks.keys(), dump_results):
+                if dump_result["exit_code"] != 0:
+                    continue
+                if target_name == "ssa":
+                    response["ssa"] = build_bpp_ssa_graph(dump_result["stdout"], source_code)
+                elif target_name == "ir":
+                    response["ir"] = build_bpp_ir(dump_result["stdout"], source_code)
+                elif target_name == "asm":
+                    response["asm"] = build_bpp_asm(dump_result["stdout"], source_code)
+
+        response["execution_time"] = round((time.monotonic() - started_at) * 1000, 2)
+        return response
 
     async def run(self, source_code: str, language: str, stdin: str = "", optimize: bool = False) -> dict:
         return await self._execute(
@@ -125,7 +191,7 @@ class DockerCompilerRunner:
     async def _execute(
         self,
         *,
-        mode: Literal["compile", "run"],
+        mode: Literal["compile", "run", "dump-ir", "dump-ssa", "asm"],
         source_code: str,
         language: str,
         stdin: str = "",
@@ -212,6 +278,11 @@ class DockerCompilerRunner:
             "exit_code": exit_code,
             "execution_time": elapsed_ms,
         }
+
+    def _resolve_requested_targets(self, target: str) -> set[str]:
+        if target == "all":
+            return {"ast", "ssa", "ir", "asm"}
+        return {target}
 
     def _get_client(self) -> docker.DockerClient:
         try:
@@ -354,7 +425,13 @@ class DockerCompilerRunner:
 
 # ----------------- 가짜 구현체 (개발/테스트용) -----------------
 class MockBppCompiler:
-    async def compile(self, source_code: str, options: List[str], language: str = "bpp") -> dict:
+    async def compile(
+        self,
+        source_code: str,
+        language: str = "bpp",
+        optimize: bool = False,
+        target: str = "all",
+    ) -> dict:
         await asyncio.sleep(0)
         output = "Hello World" if "Hello World" in source_code else "실행 완료"
         return {

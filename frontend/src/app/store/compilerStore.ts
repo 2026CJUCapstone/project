@@ -6,6 +6,13 @@ export type OutputLine = {
   text: string;
 };
 
+export type ConsoleTab = 'output' | 'terminal';
+export type TerminalStatus = 'disconnected' | 'connecting' | 'connected';
+export type TerminalLine = {
+  type: 'system' | 'input' | 'output' | 'error';
+  text: string;
+};
+
 interface CompilerState {
   code: string;
   setCode: (code: string) => void;
@@ -32,8 +39,16 @@ interface CompilerState {
   // 컴파일 관련 상태
   isCompiling: boolean;
   lastCompile: CompileResponse | null;
+  lastCompiledCode: string | null;
   compileAndRun: () => Promise<void>;
+  compileAndStartTerminal: () => Promise<void>;
   compile: () => Promise<void>;
+  activeConsoleTab: ConsoleTab;
+  setActiveConsoleTab: (tab: ConsoleTab) => void;
+  terminalStatus: TerminalStatus;
+  terminalLines: TerminalLine[];
+  clearTerminal: () => void;
+  sendTerminalInput: (input: string) => void;
   // 자동저장 관련 상태
   lastSavedTime: number | null;
   autoSaveEnabled: boolean;
@@ -44,6 +59,8 @@ interface CompilerState {
 
 const STORAGE_KEY = 'b-compiler-editor-code';
 let activeRunController: AbortController | null = null;
+let activeTerminalSocket: WebSocket | null = null;
+let terminalStopRequested = false;
 
 const INITIAL_OUTPUT: OutputLine[] = [
   { type: 'info', text: 'B++ 컴파일러 v1.0.0 초기화 중...' },
@@ -61,6 +78,32 @@ function appendPrompt(lines: OutputLine[]): OutputLine[] {
   return lines;
 }
 
+function getTerminalWebSocketUrl(): string {
+  const configuredWsUrl = import.meta.env.VITE_WS_URL;
+  const baseFromRoute = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL.replace(/\/$/, '');
+  const baseValue = configuredWsUrl || import.meta.env.VITE_API_URL || baseFromRoute || window.location.origin;
+  const url = new URL(baseValue, window.location.origin);
+
+  url.protocol = url.protocol === 'https:' || url.protocol === 'wss:' ? 'wss:' : 'ws:';
+
+  if (!url.pathname.endsWith('/ws/terminal')) {
+    const path = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '');
+    url.pathname = `${path}/ws/terminal`;
+  }
+
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
+function closeTerminalSocket() {
+  const current = activeTerminalSocket;
+  activeTerminalSocket = null;
+  if (current && current.readyState !== WebSocket.CLOSED) {
+    current.close();
+  }
+}
+
 export const useCompilerStore = create<CompilerState>((set, get) => ({
   code: '',
   setCode: (code) => set({ code }),
@@ -76,14 +119,30 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   }),
   isRunning: false,
   cancelRun: () => {
+    const hadTerminalSession = Boolean(activeTerminalSocket);
+    const hadHttpRun = Boolean(activeRunController);
+
     if (activeRunController) {
       activeRunController.abort();
       activeRunController = null;
     }
 
+    if (activeTerminalSocket) {
+      terminalStopRequested = true;
+      closeTerminalSocket();
+    }
+
+    if (!hadTerminalSession && !hadHttpRun) {
+      return;
+    }
+
     set((state) => ({
       isRunning: false,
       lastError: '실행이 사용자에 의해 취소되었습니다.',
+      terminalStatus: 'disconnected',
+      terminalLines: hadTerminalSession
+        ? [...state.terminalLines, { type: 'system', text: '실행이 중지되었습니다.' }]
+        : state.terminalLines,
       output: appendPrompt([
         ...state.output.filter((line) => line.type !== 'input'),
         { type: 'warning', text: '> 실행이 취소되었습니다.' },
@@ -99,6 +158,31 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   setGraphViewerOpen: (isOpen) => set({ isGraphViewerOpen: isOpen }),
   activeGraphTab: 'AST',
   setActiveGraphTab: (tab) => set({ activeGraphTab: tab }),
+  activeConsoleTab: 'output',
+  setActiveConsoleTab: (tab) => set({ activeConsoleTab: tab }),
+  terminalStatus: 'disconnected',
+  terminalLines: [],
+  clearTerminal: () => set({ terminalLines: [] }),
+  sendTerminalInput: (input) => {
+    const socket = activeTerminalSocket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      set((state) => ({
+        terminalLines: [...state.terminalLines, { type: 'error', text: '터미널이 실행 중이 아닙니다.' }],
+      }));
+      return;
+    }
+
+    socket.send(`${input}\n`);
+    set((state) => ({
+      terminalLines: [
+        ...state.terminalLines,
+        {
+          type: 'input',
+          text: input.length > 0 ? `stdin> ${input}` : 'stdin> <empty line>',
+        },
+      ],
+    }));
+  },
   selectedText: '',
   setSelectedText: (text) => set({ selectedText: text }),
   theme: 'dark',
@@ -107,6 +191,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   // 컴파일 관련 상태 및 함수
   isCompiling: false,
   lastCompile: null,
+  lastCompiledCode: null,
 
   compile: async () => {
     const { code, isCompiling, language } = get();
@@ -169,6 +254,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
       set({
         isCompiling: false,
         lastCompile: result,
+        lastCompiledCode: code,
         lastError: result.success ? null : '컴파일 오류가 발생했습니다.',
         output: appendPrompt(nextOutput),
       });
@@ -192,6 +278,145 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
     if (lastCompile?.success) {
       await runCode();
     }
+  },
+
+  compileAndStartTerminal: async () => {
+    const { code, compile, isCompiling, isRunning, language } = get();
+    if (isCompiling || isRunning) {
+      return;
+    }
+
+    await compile();
+
+    const { lastCompile, lastCompiledCode } = get();
+    if (!lastCompile?.success || lastCompiledCode !== code) {
+      return;
+    }
+
+    if (!code.trim()) {
+      return;
+    }
+
+    if (activeTerminalSocket) {
+      terminalStopRequested = true;
+      closeTerminalSocket();
+    }
+
+    set((state) => ({
+      activeConsoleTab: 'terminal',
+      terminalStatus: 'connecting',
+      terminalLines: [{ type: 'system', text: '프로그램 터미널 준비 중...' }],
+      isRunning: true,
+      backendStatus: 'checking',
+      lastError: null,
+      output: appendPrompt([
+        ...state.output.filter((line) => line.type !== 'input'),
+        { type: 'info', text: '> 터미널 세션을 시작하는 중...' },
+      ]),
+    }));
+
+    try {
+      await checkHealth();
+      set({ backendStatus: 'online' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '터미널 세션을 시작할 수 없습니다.';
+      set((state) => ({
+        isRunning: false,
+        terminalStatus: 'disconnected',
+        backendStatus: 'offline',
+        lastError: message,
+        terminalLines: [...state.terminalLines, { type: 'error', text: message }],
+        output: appendPrompt([
+          ...state.output.filter((line) => line.type !== 'input'),
+          { type: 'error', text: `> ${message}` },
+        ]),
+      }));
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      const socket = new WebSocket(getTerminalWebSocketUrl());
+      let settled = false;
+
+      const finish = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
+
+      terminalStopRequested = false;
+      activeTerminalSocket = socket;
+
+      socket.onopen = () => {
+        if (activeTerminalSocket !== socket) {
+          finish();
+          return;
+        }
+
+        socket.send(JSON.stringify({ type: 'start', code, language, optimize: false }));
+        set((state) => ({
+          terminalStatus: 'connected',
+          terminalLines: [...state.terminalLines, { type: 'system', text: `${language.toUpperCase()} 프로그램 stdin 연결됨` }],
+          output: appendPrompt([
+            ...state.output.filter((line) => line.type !== 'input'),
+            { type: 'success', text: `> ${language.toUpperCase()} 실행 세션이 시작되었습니다.` },
+          ]),
+        }));
+        finish();
+      };
+
+      socket.onmessage = (event) => {
+        if (activeTerminalSocket !== socket) return;
+
+        const chunk = String(event.data);
+        const normalized = chunk.replace(/\r\n/g, '\n').trimEnd();
+
+        set((state) => ({
+          terminalLines: [...state.terminalLines, { type: 'output', text: chunk }],
+          output: normalized
+            ? [...state.output, { type: normalized.startsWith('>') ? 'info' : 'normal', text: normalized }]
+            : state.output,
+        }));
+      };
+
+      socket.onerror = () => {
+        if (activeTerminalSocket !== socket) return;
+
+        set((state) => ({
+          lastError: '터미널 연결 오류가 발생했습니다.',
+          terminalLines: [...state.terminalLines, { type: 'error', text: '터미널 연결 오류' }],
+          output: appendPrompt([
+            ...state.output.filter((line) => line.type !== 'input'),
+            { type: 'error', text: '> 터미널 연결 오류' },
+          ]),
+        }));
+      };
+
+      socket.onclose = () => {
+        if (activeTerminalSocket === socket) {
+          activeTerminalSocket = null;
+        }
+
+        const stoppedByUser = terminalStopRequested;
+        terminalStopRequested = false;
+
+        set((state) => ({
+          isRunning: false,
+          terminalStatus: 'disconnected',
+          terminalLines: stoppedByUser
+            ? state.terminalLines
+            : [...state.terminalLines, { type: 'system', text: '터미널 세션이 종료되었습니다.' }],
+          output: stoppedByUser
+            ? state.output
+            : appendPrompt([
+                ...state.output.filter((line) => line.type !== 'input'),
+                { type: 'info', text: '> 터미널 세션이 종료되었습니다.' },
+              ]),
+        }));
+        finish();
+      };
+    });
   },
 
   // 자동저장 관련 상태 및 함수

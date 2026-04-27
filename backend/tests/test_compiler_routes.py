@@ -7,7 +7,7 @@ from app.services import compiler as compiler_service
 
 @pytest.mark.asyncio
 async def test_compile_route_returns_400_for_unsupported_language(monkeypatch: pytest.MonkeyPatch):
-    async def fake_compile(source_code: str, language: str, optimize: bool = False):
+    async def fake_compile(source_code: str, language: str, optimize: bool = False, target: str = "all"):
         raise ValueError(f"지원하지 않는 언어입니다: {language}")
 
     monkeypatch.setattr(compiler_service.compiler_instance, "compile", fake_compile)
@@ -28,7 +28,7 @@ async def test_compile_route_returns_400_for_unsupported_language(monkeypatch: p
 
 @pytest.mark.asyncio
 async def test_compile_route_returns_500_for_sandbox_failure(monkeypatch: pytest.MonkeyPatch):
-    async def fake_compile(source_code: str, language: str, optimize: bool = False):
+    async def fake_compile(source_code: str, language: str, optimize: bool = False, target: str = "all"):
         raise compiler_service.SandboxExecutionError("docker unavailable")
 
     monkeypatch.setattr(compiler_service.compiler_instance, "compile", fake_compile)

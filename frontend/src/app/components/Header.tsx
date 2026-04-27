@@ -22,7 +22,7 @@ export function Header() {
     cancelRun,
     isRunning,
     compile,
-    compileAndRun,
+    compileAndStartTerminal,
     isCompiling,
     language,
     setLanguage,
@@ -102,7 +102,7 @@ export function Header() {
               </button>
               <button
                 onClick={() => {
-                  void compileAndRun();
+                  void compileAndStartTerminal();
                 }}
                 disabled={isRunning || isCompiling}
                 data-testid="compile-run-button"

@@ -56,10 +56,11 @@ async def test_run_contract_accepts_code_alias(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_compile_contract(monkeypatch: pytest.MonkeyPatch):
-    async def fake_compile(source_code: str, language: str, optimize: bool = False):
+    async def fake_compile(source_code: str, language: str, optimize: bool = False, target: str = "all"):
         assert source_code == 'import emitln from std.io;\nfunc main() -> u64 { emitln("ok"); return 0; }\n'
         assert language == "bpp"
         assert optimize is False
+        assert target == "all"
         return {
             "success": True,
             "errors": [],

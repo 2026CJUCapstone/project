@@ -13,6 +13,7 @@ async def compile_code(request: CompileRequest):
             source_code=request.code,
             language=request.language,
             optimize=request.options.optimize,
+            target=request.options.target,
         )
         return CompileResponse(**result)
     except ValueError as exc:

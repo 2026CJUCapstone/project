@@ -1,389 +1,302 @@
 import { useMemo } from 'react';
-import { Network, GitBranch, GitMerge, FileCode2, Minus } from 'lucide-react';
 import {
-  ReactFlow,
+  Binary,
+  Braces,
+  CircleAlert,
+  FileCode2,
+  GitBranch,
+  GitMerge,
+  Loader2,
+  Minus,
+  Network,
+  ScanSearch,
+  Workflow,
+} from 'lucide-react';
+import {
   Background,
+  BackgroundVariant,
   Controls,
   Handle,
-  Position,
   MarkerType,
-  BackgroundVariant,
-  type Node,
+  MiniMap,
+  Panel,
+  Position,
+  ReactFlow,
   type Edge,
+  type Node,
   type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { useCompilerStore } from '../store/compilerStore';
-import type { ASTGraph, SSAGraph, IRInstruction, ASMLine } from '../services/compilerApi';
-
-/* ── Dagre 레이아웃 ──────────────────────────────────────────── */
+import type { ASMLine, ASTGraph, IRInstruction, SSAGraph } from '../services/compilerApi';
 
 function layoutNodes(nodes: Node[], edges: Edge[], w = 160, h = 56, opts?: { nodesep?: number; ranksep?: number }): Node[] {
   const g = new (dagre as any).graphlib.Graph();
-  g.setGraph({ rankdir: 'TB', nodesep: opts?.nodesep ?? 50, ranksep: opts?.ranksep ?? 70, marginx: 30, marginy: 30 });
-  g.setDefaultEdgeLabel(() => ({}));
-  nodes.forEach((n: Node) => {
-    const nw = (n.data?.w as number) || w;
-    const nh = (n.data?.h as number) || h;
-    g.setNode(n.id, { width: nw, height: nh });
+  g.setGraph({
+    rankdir: 'TB',
+    nodesep: opts?.nodesep ?? 56,
+    ranksep: opts?.ranksep ?? 80,
+    marginx: 36,
+    marginy: 36,
   });
-  edges.forEach((e: Edge) => g.setEdge(e.source, e.target));
+  g.setDefaultEdgeLabel(() => ({}));
+  nodes.forEach((node: Node) => {
+    const width = (node.data?.w as number) || w;
+    const height = (node.data?.h as number) || h;
+    g.setNode(node.id, { width, height });
+  });
+  edges.forEach((edge: Edge) => g.setEdge(edge.source, edge.target));
   (dagre as any).layout(g);
-  return nodes.map((n: Node) => {
-    const nw = (n.data?.w as number) || w;
-    const nh = (n.data?.h as number) || h;
-    const p = g.node(n.id);
-    return { ...n, position: { x: p.x - nw / 2, y: p.y - nh / 2 }, sourcePosition: Position.Bottom, targetPosition: Position.Top };
+  return nodes.map((node: Node) => {
+    const width = (node.data?.w as number) || w;
+    const height = (node.data?.h as number) || h;
+    const position = g.node(node.id);
+    return {
+      ...node,
+      position: { x: position.x - width / 2, y: position.y - height / 2 },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+    };
   });
 }
 
-/* ── 커스텀 노드: AST ────────────────────────────────────────── */
-
 function ASTNode({ data }: NodeProps) {
-  const hl = data.highlight as boolean;
+  const highlight = data.highlight as boolean;
   const isRoot = data.isRoot as boolean;
   return (
-    <div className={`px-5 py-2.5 rounded-full border-2 text-center shadow-lg min-w-[120px] transition-all
-      ${hl
-        ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-400 ring-2 ring-amber-300/60 shadow-amber-200/30 dark:shadow-amber-700/20'
-        : isRoot
-          ? 'bg-orange-100 dark:bg-orange-900/40 border-orange-400 dark:border-orange-500'
-          : 'bg-white dark:bg-[#1e150a] border-orange-200 dark:border-orange-700/60'}`}>
-      {!isRoot && <Handle type="target" position={Position.Top} className="!bg-orange-400 !w-2 !h-2 !border-0 !-top-1" />}
-      <div className={`text-[11px] font-bold leading-tight ${hl ? 'text-amber-700 dark:text-amber-200' : 'text-orange-700 dark:text-orange-200'}`}>
-        {data.label as string}
+    <div
+      className={`min-w-[150px] rounded-lg border px-4 py-3 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.8)] transition-all ${
+        highlight
+          ? 'border-amber-300 bg-amber-50 text-amber-950 ring-1 ring-amber-200/80 dark:border-amber-400/60 dark:bg-[#22170d] dark:text-amber-50 dark:ring-amber-400/20'
+          : isRoot
+            ? 'border-orange-300 bg-orange-100 text-orange-950 dark:border-orange-500/60 dark:bg-[#1c1510] dark:text-orange-50'
+            : 'border-orange-100 bg-white text-slate-900 dark:border-[#4a3321] dark:bg-[#151312] dark:text-slate-100'
+      }`}
+    >
+      {!isRoot && <Handle type="target" position={Position.Top} className="!h-2.5 !w-2.5 !border-0 !bg-orange-400 !-top-1.5" />}
+      <div className="flex items-center gap-2">
+        <span className="rounded-md bg-orange-500/12 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-orange-600 dark:bg-orange-400/12 dark:text-orange-300">
+          AST
+        </span>
+        <span className="text-[12px] font-semibold leading-tight">{data.label as string}</span>
       </div>
-      {data.sub ? <div className="text-[9px] mt-0.5 text-orange-400/80 dark:text-orange-400/60 font-medium">{String(data.sub)}</div> : null}
-      <Handle type="source" position={Position.Bottom} className="!bg-orange-400 !w-2 !h-2 !border-0 !-bottom-1" />
+      {data.sub ? <div className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{String(data.sub)}</div> : null}
+      <Handle type="source" position={Position.Bottom} className="!h-2.5 !w-2.5 !border-0 !bg-orange-400 !-bottom-1.5" />
     </div>
   );
 }
 
-/* ── 커스텀 노드: SSA 블록 ───────────────────────────────────── */
-
 function SSANode({ data }: NodeProps) {
-  const hl = data.highlight as boolean;
+  const highlight = data.highlight as boolean;
   const lines = (data.lines as string[]) || [];
   return (
-    <div className={`rounded-lg border-2 shadow-lg overflow-hidden min-w-[180px] transition-all
-      ${hl
-        ? 'border-amber-400 ring-2 ring-amber-300/60 shadow-amber-200/20 dark:shadow-amber-700/10'
-        : 'border-teal-300 dark:border-teal-600 shadow-teal-100/30 dark:shadow-teal-900/20'}`}>
-      <Handle type="target" position={Position.Top} className="!bg-teal-400 !w-2 !h-2 !border-0 !-top-1" />
-      <div className={`px-3 py-1.5 text-[11px] font-bold tracking-wide
-        ${hl ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-200' : 'bg-teal-500 dark:bg-teal-700 text-white'}`}>
-        {data.label as string}
+    <div
+      className={`min-w-[220px] overflow-hidden rounded-lg border shadow-[0_10px_24px_-20px_rgba(15,23,42,0.85)] transition-all ${
+        highlight
+          ? 'border-cyan-300 bg-cyan-50 ring-1 ring-cyan-200/70 dark:border-cyan-400/60 dark:bg-[#121d1d] dark:ring-cyan-400/20'
+          : 'border-teal-200 bg-white dark:border-[#254240] dark:bg-[#141616]'
+      }`}
+    >
+      <Handle type="target" position={Position.Top} className="!h-2.5 !w-2.5 !border-0 !bg-teal-400 !-top-1.5" />
+      <div
+        className={`border-b px-3.5 py-2 ${
+          highlight
+            ? 'border-cyan-200 bg-cyan-100/90 text-cyan-900 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-50'
+            : 'border-teal-100 bg-teal-500/90 text-white dark:border-teal-500/20 dark:bg-[#1d5f5a]'
+        }`}
+      >
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em]">SSA Block</div>
+        <div className="mt-0.5 text-[12px] font-semibold leading-tight">{data.label as string}</div>
       </div>
-      <div className="bg-white dark:bg-[#0a1f1c] px-3 py-2 space-y-0.5">
-        {lines.map((l: string, i: number) => (
-          <div key={i} className="font-mono text-[10px] text-gray-500 dark:text-teal-300/70 leading-relaxed">{l}</div>
+      <div className="space-y-1 bg-white/95 px-3.5 py-3 dark:bg-[#101313]">
+        {lines.map((line: string, index: number) => (
+          <div key={index} className="font-mono text-[10.5px] leading-relaxed text-slate-600 dark:text-teal-100/80">
+            {line}
+          </div>
         ))}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-teal-400 !w-2 !h-2 !border-0 !-bottom-1" />
+      <Handle type="source" position={Position.Bottom} className="!h-2.5 !w-2.5 !border-0 !bg-teal-400 !-bottom-1.5" />
     </div>
   );
 }
 
 const nodeTypes = { ast: ASTNode, ssa: SSANode };
 
-/* ── 엣지 헬퍼 ───────────────────────────────────────────────── */
-
-function mkEdge(id: string, src: string, tgt: string, color: string, label?: string, type: string = 'straight'): Edge {
+function mkEdge(id: string, source: string, target: string, color: string, label?: string): Edge {
   return {
-    id, source: src, target: tgt, type,
-    style: { stroke: color, strokeWidth: 1.5 },
-    markerEnd: { type: MarkerType.ArrowClosed, color, width: 12, height: 12 },
-    ...(label ? { label, labelStyle: { fill: color, fontWeight: 700, fontSize: 10 }, labelBgStyle: { fill: 'transparent' } } : {}),
+    id,
+    source,
+    target,
+    type: 'smoothstep',
+    style: { stroke: color, strokeWidth: 1.8 },
+    markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
+    label,
+    labelStyle: {
+      fill: color,
+      fontWeight: 700,
+      fontSize: 10,
+    },
+    labelBgPadding: [7, 4],
+    labelBgBorderRadius: 999,
+    labelBgStyle: {
+      fill: 'rgba(255,255,255,0.9)',
+      stroke: 'transparent',
+    },
   };
 }
 
-/* ── 그래프 빌더 ──────────────────────────────────────────────── */
-
-function buildAST(code: string, sel: string) {
-  const hasIf = code.includes('if');
-  const hasFor = code.includes('for') || code.includes('while');
-  const hasPrint = code.includes('cout') || code.includes('print');
-  const s = sel.trim();
-  const ifS = !!(s && (sel.includes('if') || sel.includes('else')));
-  const forS = !!(s && (sel.includes('for') || sel.includes('while')));
-  const prS = !!(s && (sel.includes('cout') || sel.includes('print')));
-  const mainS = !!(s && !ifS && !forS && !prS);
-  const c = '#fb923c';
-
-  const W = 150;
-  const H = 48;
-  const n: Node[] = [
-    { id: 'rt', type: 'ast', data: { label: 'Program', highlight: false, isRoot: true, w: W, h: H }, position: { x: 0, y: 0 } },
-    { id: 'fn', type: 'ast', data: { label: 'FunctionDecl', sub: 'main()', highlight: mainS, w: W, h: H }, position: { x: 0, y: 0 } },
-  ];
-  const e: Edge[] = [mkEdge('e1', 'rt', 'fn', c)];
-
-  if (hasIf) {
-    n.push(
-      { id: 'if', type: 'ast', data: { label: 'IfStatement', highlight: ifS, w: W, h: H }, position: { x: 0, y: 0 } },
-      { id: 'cd', type: 'ast', data: { label: 'Condition', highlight: ifS, w: W, h: H }, position: { x: 0, y: 0 } },
-      { id: 'tb', type: 'ast', data: { label: 'TrueBody', highlight: ifS, w: W, h: H }, position: { x: 0, y: 0 } },
-    );
-    e.push(mkEdge('e2', 'fn', 'if', c), mkEdge('e3', 'if', 'cd', c), mkEdge('e4', 'if', 'tb', c));
-    if (hasPrint) {
-      n.push({ id: 'pr', type: 'ast', data: { label: 'FunctionCall', sub: 'print/cout', highlight: prS, w: W, h: H }, position: { x: 0, y: 0 } });
-      e.push(mkEdge('e5', 'tb', 'pr', c));
-    }
-  } else {
-    n.push({ id: 'sl', type: 'ast', data: { label: 'StatementList', highlight: mainS, w: W, h: H }, position: { x: 0, y: 0 } });
-    e.push(mkEdge('e2', 'fn', 'sl', c));
-    if (hasPrint) {
-      n.push({ id: 'pr', type: 'ast', data: { label: 'FunctionCall', sub: 'print/cout', highlight: prS, w: W, h: H }, position: { x: 0, y: 0 } });
-      e.push(mkEdge('e3', 'sl', 'pr', c));
-    }
-  }
-
-  if (hasFor) {
-    n.push({ id: 'lp', type: 'ast', data: { label: 'LoopStatement', highlight: forS, w: W, h: H }, position: { x: 0, y: 0 } });
-    e.push(mkEdge('elo', 'fn', 'lp', c));
-  }
-
-  return { nodes: layoutNodes(n, e, W, H, { nodesep: 60, ranksep: 80 }), edges: e };
-}
-
-function buildSSA(code: string, sel: string) {
-  const hasIf = code.includes('if');
-  const s = sel.trim();
-  const ifS = !!(s && (sel.includes('if') || sel.includes('else')));
-  const mainS = !!(s && !ifS);
-
-  const n: Node[] = [];
-  const e: Edge[] = [];
-
-  if (hasIf) {
-    n.push(
-      { id: 'e0', type: 'ssa', data: { label: 'Block 0 — Entry', highlight: mainS, lines: ['var_1 = init', 'branch B1, B2'], w: 210, h: 90 }, position: { x: 0, y: 0 } },
-      { id: 'b1', type: 'ssa', data: { label: 'Block 1 — True', highlight: ifS, lines: ['var_2 = expr', 'jump B3'], w: 210, h: 80 }, position: { x: 0, y: 0 } },
-      { id: 'b2', type: 'ssa', data: { label: 'Block 2 — False', highlight: ifS, lines: ['var_3 = expr', 'jump B3'], w: 210, h: 80 }, position: { x: 0, y: 0 } },
-      { id: 'b3', type: 'ssa', data: { label: 'Block 3 — Merge', highlight: mainS, lines: ['var_4 = Φ(var_2, var_3)', 'return 0'], w: 210, h: 80 }, position: { x: 0, y: 0 } },
-    );
-    e.push(
-      mkEdge('et', 'e0', 'b1', '#4ade80', 'True'),
-      mkEdge('ef', 'e0', 'b2', '#f87171', 'False'),
-      mkEdge('em1', 'b1', 'b3', '#2dd4bf'),
-      mkEdge('em2', 'b2', 'b3', '#2dd4bf'),
-    );
-  } else {
-    n.push(
-      { id: 'e0', type: 'ssa', data: { label: 'Block 0 — Entry', highlight: mainS, lines: ['var_1 = init', 'jump B1'], w: 210, h: 80 }, position: { x: 0, y: 0 } },
-      { id: 'b1', type: 'ssa', data: { label: 'Block 1 — Body', highlight: mainS, lines: ['var_2 = expr', 'return 0'], w: 210, h: 80 }, position: { x: 0, y: 0 } },
-    );
-    e.push(mkEdge('em', 'e0', 'b1', '#2dd4bf'));
-  }
-
-  return { nodes: layoutNodes(n, e, 210, 85, { nodesep: 60, ranksep: 80 }), edges: e };
-}
-
-/* ── 코드 라인 생성 (IR / ASM) ────────────────────────────────── */
-
-function irLines(code: string): string[] {
-  const hasIf = code.includes('if');
-  if (hasIf) {
-    return [
-      '  %1 = alloca i32, align 4',
-      '  store i32 0, i32* %1, align 4',
-      '  %2 = load i32, i32* %1, align 4',
-      '  %3 = icmp sgt i32 %2, 0',
-      '  br i1 %3, label %true_blk, label %false_blk',
-      '',
-      'true_blk:',
-      '  %4 = add i32 %2, 1',
-      '  br label %merge',
-      '',
-      'false_blk:',
-      '  %5 = sub i32 %2, 1',
-      '  br label %merge',
-      '',
-      'merge:',
-      '  %6 = phi i32 [ %4, %true_blk ], [ %5, %false_blk ]',
-      '  ret i32 %6',
-    ];
-  }
-  return [
-    '  %1 = alloca i32, align 4',
-    '  store i32 0, i32* %1, align 4',
-    '  %2 = load i32, i32* %1, align 4',
-    '  %3 = add i32 %2, 1',
-    '  ret i32 0',
-  ];
-}
-
-function asmLines(code: string): string[] {
-  const hasIf = code.includes('if');
-  if (hasIf) {
-    return [
-      '  push    rbp',
-      '  mov     rbp, rsp',
-      '  sub     rsp, 16',
-      '  cmp     dword ptr [rbp-4], 0',
-      '  jle     .LBB0_2',
-      '.LBB0_1:',
-      '  mov     eax, 1',
-      '  jmp     .LBB0_3',
-      '.LBB0_2:',
-      '  mov     eax, 0',
-      '.LBB0_3:',
-      '  add     rsp, 16',
-      '  pop     rbp',
-      '  ret',
-    ];
-  }
-  return [
-    '  push    rbp',
-    '  mov     rbp, rsp',
-    '  sub     rsp, 16',
-    '  mov     dword ptr [rbp-4], 0',
-    '  xor     eax, eax',
-    '  add     rsp, 16',
-    '  pop     rbp',
-    '  ret',
-  ];
-}
-
-/* ── 실제 컴파일 데이터 → ReactFlow 변환 ─────────────────────── */
-
-function convertASTGraph(astGraph: ASTGraph, sel: string): { nodes: Node[]; edges: Edge[] } {
-  const c = '#fb923c';
-  const W = 150;
-  const H = 48;
-  const s = sel.trim().toLowerCase();
-
-  const nodes: Node[] = astGraph.nodes.map((n, i) => ({
-    id: n.id,
+function convertASTGraph(astGraph: ASTGraph, selectedText: string): { nodes: Node[]; edges: Edge[] } {
+  const search = selectedText.trim().toLowerCase();
+  const nodes: Node[] = astGraph.nodes.map((node, index) => ({
+    id: node.id,
     type: 'ast',
     data: {
-      label: n.type,
-      sub: n.label !== n.type ? n.label : undefined,
-      highlight: s ? n.label.toLowerCase().includes(s) || n.type.toLowerCase().includes(s) : false,
-      isRoot: i === 0,
-      w: W,
-      h: H,
+      label: node.type,
+      sub: node.label !== node.type ? node.label : undefined,
+      highlight: search ? node.label.toLowerCase().includes(search) || node.type.toLowerCase().includes(search) : false,
+      isRoot: index === 0,
+      w: 170,
+      h: 62,
     },
     position: { x: 0, y: 0 },
   }));
 
-  const edges: Edge[] = astGraph.edges.map((e, i) =>
-    mkEdge(`ae${i}`, e.from, e.to, c, e.label),
-  );
-
-  return { nodes: layoutNodes(nodes, edges, W, H, { nodesep: 60, ranksep: 80 }), edges };
+  const edges: Edge[] = astGraph.edges.map((edge, index) => mkEdge(`ast-edge-${index}`, edge.from, edge.to, '#f97316', edge.label));
+  return { nodes: layoutNodes(nodes, edges, 170, 62, { nodesep: 64, ranksep: 88 }), edges };
 }
 
-function convertSSAGraph(ssaGraph: SSAGraph, sel: string): { nodes: Node[]; edges: Edge[] } {
-  const s = sel.trim().toLowerCase();
-
-  const nodes: Node[] = ssaGraph.blocks.map((b) => ({
-    id: b.id,
+function convertSSAGraph(ssaGraph: SSAGraph, selectedText: string): { nodes: Node[]; edges: Edge[] } {
+  const search = selectedText.trim().toLowerCase();
+  const nodes: Node[] = ssaGraph.blocks.map((block) => ({
+    id: block.id,
     type: 'ssa',
     data: {
-      label: b.label,
-      highlight: s ? b.label.toLowerCase().includes(s) || b.instructions.some((l) => l.toLowerCase().includes(s)) : false,
-      lines: b.instructions,
-      w: 210,
-      h: 50 + b.instructions.length * 18,
+      label: block.label,
+      highlight: search ? block.label.toLowerCase().includes(search) || block.instructions.some((line) => line.toLowerCase().includes(search)) : false,
+      lines: block.instructions,
+      w: 230,
+      h: 72 + block.instructions.length * 18,
     },
     position: { x: 0, y: 0 },
   }));
 
-  const edges: Edge[] = ssaGraph.edges.map((e, i) => {
-    const color = e.type === 'true' ? '#4ade80' : e.type === 'false' ? '#f87171' : '#2dd4bf';
-    return mkEdge(`se${i}`, e.from, e.to, color, e.label);
+  const edges: Edge[] = ssaGraph.edges.map((edge, index) => {
+    const color = edge.type === 'true' ? '#22c55e' : edge.type === 'false' ? '#ef4444' : '#14b8a6';
+    return mkEdge(`ssa-edge-${index}`, edge.from, edge.to, color, edge.label);
   });
 
-  return { nodes: layoutNodes(nodes, edges, 210, 85, { nodesep: 60, ranksep: 80 }), edges };
+  return { nodes: layoutNodes(nodes, edges, 230, 90, { nodesep: 76, ranksep: 96 }), edges };
 }
 
 function convertIRLines(instructions: IRInstruction[]): string[] {
-  return instructions.map((inst) => {
+  return instructions.map((instruction) => {
     const parts: string[] = [];
-    if (inst.result) parts.push(`${inst.result} = `);
-    parts.push(inst.opcode);
-    if (inst.operands.length) parts.push(' ' + inst.operands.join(', '));
-    if (inst.comment) parts.push(`  ; ${inst.comment}`);
+    if (instruction.result) parts.push(`${instruction.result} = `);
+    parts.push(instruction.opcode);
+    if (instruction.operands.length) parts.push(` ${instruction.operands.join(', ')}`);
+    if (instruction.comment) parts.push(`  ; ${instruction.comment}`);
     return parts.join('');
   });
 }
 
 function convertASMLines(lines: ASMLine[]): string[] {
-  return lines.map((l) => {
+  return lines.map((line) => {
     const parts: string[] = [];
-    if (l.label) return `${l.label}:`;
-    parts.push('  ' + l.instruction);
-    if (l.operands.length) parts.push('  ' + l.operands.join(', '));
-    if (l.comment) parts.push(`  ; ${l.comment}`);
+    if (line.label) return `${line.label}:`;
+    if (line.instruction) parts.push(`  ${line.instruction}`);
+    if (line.operands.length) parts.push(`  ${line.operands.join(', ')}`);
+    if (line.comment) parts.push(`  ; ${line.comment}`);
     return parts.join('');
   });
 }
 
-/* ── 구문 하이라이팅 ─────────────────────────────────────────── */
-
-function tokenHighlight(text: string, re: RegExp, classify: (m: string) => string | null) {
+function tokenHighlight(text: string, re: RegExp, classify: (match: string) => string | null) {
   const parts: JSX.Element[] = [];
-  let last = 0, k = 0, m: RegExpExecArray | null;
+  let lastIndex = 0;
+  let key = 0;
+  let match: RegExpExecArray | null;
   re.lastIndex = 0;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push(<span key={k++}>{text.slice(last, m.index)}</span>);
-    const cls = classify(m[0]);
-    parts.push(<span key={k++} className={cls || undefined}>{m[0]}</span>);
-    last = re.lastIndex;
+
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
+    }
+    const className = classify(match[0]);
+    parts.push(
+      <span key={key++} className={className || undefined}>
+        {match[0]}
+      </span>,
+    );
+    lastIndex = re.lastIndex;
   }
-  if (last < text.length) parts.push(<span key={k++}>{text.slice(last)}</span>);
+
+  if (lastIndex < text.length) {
+    parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
+  }
+
   return <>{parts}</>;
 }
 
-function colorIR(t: string): JSX.Element {
-  if (t.trim().endsWith(':')) return <span className="text-yellow-400 font-bold">{t}</span>;
-  if (!t.trim()) return <>{t}</>;
+function colorIR(text: string): JSX.Element {
+  if (text.trim().endsWith(':')) return <span className="font-semibold text-amber-400">{text}</span>;
+  if (!text.trim()) return <>{text}</>;
   return tokenHighlight(
-    t,
-    /(%[\w.]+|\b(?:alloca|store|load|add|sub|mul|icmp|br|ret|call|phi|sgt|slt|eq|ne)\b|\b(?:i32|i64|i1|i8|void|label)\b|@[\w.]+|\b\d+\b)/g,
-    (m) => {
-      if (m.startsWith('%')) return 'text-sky-400';
-      if (/^(alloca|store|load|add|sub|mul|icmp|br|ret|call|phi|sgt|slt|eq|ne)$/.test(m)) return 'text-violet-400 font-medium';
-      if (/^(i32|i64|i1|i8|void|label)$/.test(m)) return 'text-emerald-400';
-      if (m.startsWith('@')) return 'text-yellow-400';
-      if (/^\d+$/.test(m)) return 'text-orange-300';
+    text,
+    /(%[\w.]+|\b(?:func|alloca|store|load|add|sub|mul|icmp|br|ret|call|phi|sgt|ugt|slt|eq|ne|ult|udiv)\b|\b(?:i32|i64|i1|i8|void|label)\b|@[\w.]+|\b\d+\b)/g,
+    (match) => {
+      if (match.startsWith('%') || /^r\d+$/.test(match)) return 'text-sky-400';
+      if (/^(func|alloca|store|load|add|sub|mul|icmp|br|ret|call|phi|sgt|ugt|slt|eq|ne|ult|udiv)$/.test(match)) return 'font-medium text-violet-400';
+      if (/^(i32|i64|i1|i8|void|label)$/.test(match)) return 'text-emerald-400';
+      if (match.startsWith('@')) return 'text-yellow-400';
+      if (/^\d+$/.test(match)) return 'text-orange-300';
       return null;
     },
   );
 }
 
-function colorASM(t: string): JSX.Element {
-  if (/^\.\w+.*:$/.test(t.trim())) return <span className="text-green-400 font-bold">{t}</span>;
-  if (!t.trim()) return <>{t}</>;
+function colorASM(text: string): JSX.Element {
+  if (/^\.\w+.*:$/.test(text.trim()) || /^[A-Za-z_][\w.]*:$/.test(text.trim())) {
+    return <span className="font-semibold text-green-400">{text}</span>;
+  }
+  if (!text.trim()) return <>{text}</>;
   return tokenHighlight(
-    t,
-    /(\b(?:push|pop|mov|add|sub|cmp|jle|jmp|jge|je|jne|ret|xor|call|lea|nop)\b|\b(?:rbp|rsp|rax|rbx|rcx|rdx|rdi|rsi|eax|ebx|ecx|edx|r8|r9|r10|r11)\b|\.[\w]+:?|\b(?:dword|qword|ptr)\b|\b\d+\b)/g,
-    (m) => {
-      if (/^(push|pop|mov|add|sub|cmp|jle|jmp|jge|je|jne|ret|xor|call|lea|nop)$/.test(m)) return 'text-sky-400 font-semibold';
-      if (/^(rbp|rsp|rax|rbx|rcx|rdx|rdi|rsi|eax|ebx|ecx|edx|r8|r9|r10|r11)$/.test(m)) return 'text-amber-300';
-      if (m.startsWith('.')) return 'text-green-400 font-bold';
-      if (/^(dword|qword|ptr)$/.test(m)) return 'text-rose-300';
-      if (/^\d+$/.test(m)) return 'text-orange-300';
+    text,
+    /(\b(?:push|pop|mov|add|sub|cmp|jle|jmp|jge|je|jne|ret|xor|call|lea|nop|test|sete|setne|setb|setg|movzx)\b|\b(?:rbp|rsp|rax|rbx|rcx|rdx|rdi|rsi|eax|ebx|ecx|edx|r8|r9|r10|r11)\b|\.[\w]+:?|\b(?:dword|qword|ptr)\b|\b\d+\b)/g,
+    (match) => {
+      if (/^(push|pop|mov|add|sub|cmp|jle|jmp|jge|je|jne|ret|xor|call|lea|nop|test|sete|setne|setb|setg|movzx)$/.test(match)) {
+        return 'font-semibold text-sky-400';
+      }
+      if (/^(rbp|rsp|rax|rbx|rcx|rdx|rdi|rsi|eax|ebx|ecx|edx|r8|r9|r10|r11)$/.test(match)) return 'text-amber-300';
+      if (match.startsWith('.')) return 'font-semibold text-green-400';
+      if (/^(dword|qword|ptr)$/.test(match)) return 'text-rose-300';
+      if (/^\d+$/.test(match)) return 'text-orange-300';
       return null;
     },
   );
 }
 
-/* ── 코드 뷰 컴포넌트 ────────────────────────────────────────── */
-
-function CodeView({ lines, sel, colorize }: { lines: string[]; sel: string; colorize: (t: string) => JSX.Element }) {
+function CodeView({ lines, selectedText, colorize }: { lines: string[]; selectedText: string; colorize: (text: string) => JSX.Element }) {
+  const search = selectedText.trim().toLowerCase();
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-[#333] overflow-hidden shadow-lg font-mono text-[12px] leading-[1.8]">
-      {lines.map((line, i) => {
-        const isHl = sel.trim().length > 0 && line.toLowerCase().includes(sel.toLowerCase());
+    <div className="overflow-hidden border-y border-slate-200 bg-white dark:border-[#333] dark:bg-[#0d0d0d]">
+      {lines.map((line, index) => {
+        const highlighted = search.length > 0 && line.toLowerCase().includes(search);
         return (
-          <div key={i} className={`flex ${isHl ? 'bg-amber-50 dark:bg-amber-900/20' : i % 2 === 0 ? 'bg-white dark:bg-[#141414]' : 'bg-gray-50/50 dark:bg-[#1a1a1a]'}`}>
-            <span className="select-none w-10 text-right pr-3 py-1 text-gray-400 dark:text-gray-600 border-r border-gray-200 dark:border-[#333] shrink-0 text-[11px]">
-              {i + 1}
+          <div
+            key={index}
+            className={`flex font-mono text-[12px] leading-7 ${
+              highlighted
+                ? 'bg-amber-50 dark:bg-[#1d1710]'
+                : index % 2 === 0
+                  ? 'bg-white dark:bg-[#0d0d0d]'
+                  : 'bg-slate-50/80 dark:bg-[#121212]'
+            }`}
+          >
+            <span className="w-11 shrink-0 border-r border-slate-200 px-3 text-right text-[11px] text-slate-400 dark:border-[#252525] dark:text-gray-500">
+              {index + 1}
             </span>
-            <span className="px-3 py-1 whitespace-pre text-gray-800 dark:text-gray-200">{colorize(line)}</span>
+            <span className="min-w-0 whitespace-pre px-3 text-slate-700 dark:text-gray-200">{colorize(line)}</span>
           </div>
         );
       })}
@@ -391,107 +304,255 @@ function CodeView({ lines, sel, colorize }: { lines: string[]; sel: string; colo
   );
 }
 
-/* ── 메인 컴포넌트 ────────────────────────────────────────────── */
+function EmptyState({
+  title,
+  description,
+  icon,
+  loading = false,
+}: {
+  title: string;
+  description: string;
+  icon: JSX.Element;
+  loading?: boolean;
+}) {
+  return (
+    <div className="flex h-full items-center justify-center px-8">
+      <div className="max-w-sm text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500 dark:border-[#333] dark:bg-[#1e1e1e] dark:text-gray-300">
+          {loading ? <Loader2 size={22} className="animate-spin" /> : icon}
+        </div>
+        <h3 className="mt-4 text-sm font-semibold text-slate-800 dark:text-gray-100">{title}</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-gray-400">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function uniqueFunctionCountFromSSA(ssa: SSAGraph | undefined): number {
+  if (!ssa?.blocks?.length) return 0;
+  return new Set(ssa.blocks.map((block) => block.label.split(' · ')[0])).size;
+}
+
+function functionCountFromAST(ast: ASTGraph | undefined): number {
+  if (!ast?.nodes?.length) return 0;
+  return ast.nodes.filter((node) => node.type === 'FunctionDecl').length;
+}
 
 export function CompilerGraphViewer({ code }: { code: string }) {
-  const { setGraphViewerOpen, activeGraphTab, setActiveGraphTab, selectedText, theme, lastCompile } = useCompilerStore();
+  const {
+    activeGraphTab,
+    isCompiling,
+    language,
+    lastCompile,
+    lastCompiledCode,
+    selectedText,
+    setActiveGraphTab,
+    setGraphViewerOpen,
+    theme,
+  } = useCompilerStore();
 
-  // 실제 컴파일 결과가 있으면 사용, 없으면 mock fallback
-  const astData = useMemo(() => {
-    if (lastCompile?.ast) return convertASTGraph(lastCompile.ast, selectedText);
-    return buildAST(code, selectedText);
-  }, [lastCompile?.ast, code, selectedText]);
+  const astData = useMemo(() => (lastCompile?.ast ? convertASTGraph(lastCompile.ast, selectedText) : null), [lastCompile?.ast, selectedText]);
+  const ssaData = useMemo(() => (lastCompile?.ssa ? convertSSAGraph(lastCompile.ssa, selectedText) : null), [lastCompile?.ssa, selectedText]);
+  const irLines = useMemo(() => (lastCompile?.ir?.instructions?.length ? convertIRLines(lastCompile.ir.instructions) : []), [lastCompile?.ir]);
+  const asmLines = useMemo(() => (lastCompile?.asm?.lines?.length ? convertASMLines(lastCompile.asm.lines) : []), [lastCompile?.asm]);
 
-  const ssaData = useMemo(() => {
-    if (lastCompile?.ssa) return convertSSAGraph(lastCompile.ssa, selectedText);
-    return buildSSA(code, selectedText);
-  }, [lastCompile?.ssa, code, selectedText]);
+  const isCurrentCodeCompiled = lastCompiledCode === code;
+  const compileState = !lastCompile
+    ? 'idle'
+    : lastCompile.success
+      ? isCurrentCodeCompiled
+        ? 'ready'
+        : 'stale'
+      : 'error';
 
-  const irData = useMemo(() => {
-    if (lastCompile?.ir?.instructions?.length) return convertIRLines(lastCompile.ir.instructions);
-    return irLines(code);
-  }, [lastCompile?.ir, code]);
+  const tabs = [
+    { id: 'AST', label: 'AST', icon: <Network size={13} />, accent: 'text-orange-500 border-orange-500 dark:bg-[#252525] dark:text-orange-400', count: lastCompile?.ast?.nodes?.length ?? 0 },
+    { id: 'SSA', label: 'SSA', icon: <GitMerge size={13} />, accent: 'text-teal-500 border-teal-500 dark:bg-[#252525] dark:text-teal-300', count: lastCompile?.ssa?.blocks?.length ?? 0 },
+    { id: 'IR', label: 'IR', icon: <GitBranch size={13} />, accent: 'text-violet-500 border-violet-500 dark:bg-[#252525] dark:text-violet-300', count: lastCompile?.ir?.instructions?.length ?? 0 },
+    { id: 'ASM', label: 'ASM', icon: <FileCode2 size={13} />, accent: 'text-rose-500 border-rose-500 dark:bg-[#252525] dark:text-rose-300', count: lastCompile?.asm?.lines?.length ?? 0 },
+  ] as const;
 
-  const asmData = useMemo(() => {
-    if (lastCompile?.asm?.lines?.length) return convertASMLines(lastCompile.asm.lines);
-    return asmLines(code);
-  }, [lastCompile?.asm, code]);
+  const footerDescriptions = {
+    AST: 'AST - 소스 구조를 기반으로 정리한 트리 뷰',
+    SSA: 'SSA - 실제 B++ dump에서 파싱한 제어 흐름 그래프',
+    IR: 'IR - 실제 B++ dump-ir 출력',
+    ASM: 'ASM - 실제 B++ asm 출력',
+  } as const;
 
-  const isGraph = activeGraphTab === 'AST' || activeGraphTab === 'SSA';
+  const metricBadges = useMemo(() => {
+    if (activeGraphTab === 'AST') {
+      return [
+        { icon: <Braces size={12} />, label: `${lastCompile?.ast?.nodes?.length ?? 0} nodes` },
+        { icon: <Workflow size={12} />, label: `${lastCompile?.ast?.edges?.length ?? 0} edges` },
+        { icon: <Network size={12} />, label: `${functionCountFromAST(lastCompile?.ast)} funcs` },
+      ];
+    }
+    if (activeGraphTab === 'SSA') {
+      return [
+        { icon: <Binary size={12} />, label: `${lastCompile?.ssa?.blocks?.length ?? 0} blocks` },
+        { icon: <Workflow size={12} />, label: `${lastCompile?.ssa?.edges?.length ?? 0} edges` },
+        { icon: <Network size={12} />, label: `${uniqueFunctionCountFromSSA(lastCompile?.ssa)} funcs` },
+      ];
+    }
+    if (activeGraphTab === 'IR') {
+      return [{ icon: <GitBranch size={12} />, label: `${irLines.length} lines` }];
+    }
+    return [{ icon: <FileCode2 size={12} />, label: `${asmLines.length} lines` }];
+  }, [activeGraphTab, asmLines.length, irLines.length, lastCompile?.ast, lastCompile?.ssa]);
 
-  const tabs = ['AST', 'SSA', 'IR', 'ASM'] as const;
-  const tabIcon: Record<string, JSX.Element> = {
-    AST: <Network size={13} />, SSA: <GitMerge size={13} />, IR: <GitBranch size={13} />, ASM: <FileCode2 size={13} />,
-  };
-  const tabColor: Record<string, string> = {
-    AST: 'text-orange-500 border-orange-500', SSA: 'text-teal-500 border-teal-500', IR: 'text-violet-500 border-violet-500', ASM: 'text-rose-500 border-rose-500',
-  };
+  const activeGraphData = activeGraphTab === 'AST' ? astData : ssaData;
+  const graphHasData = activeGraphTab === 'AST' ? Boolean(astData?.nodes.length) : Boolean(ssaData?.nodes.length);
+  const textLines = activeGraphTab === 'IR' ? irLines : asmLines;
+  const textHasData = textLines.length > 0;
+  const canRender = activeGraphTab === 'AST' || activeGraphTab === 'SSA' ? graphHasData : textHasData;
+
+  const emptyState = useMemo(() => {
+    if (language !== 'bpp') {
+      return {
+        title: 'B++ 전용 파이프라인 뷰',
+        description: '지금 연결된 그래프, IR, ASM 뷰는 B++ 컴파일 결과를 기준으로 동작합니다.',
+        icon: <CircleAlert size={22} />,
+        loading: false,
+      };
+    }
+    if (isCompiling && !canRender) {
+      return {
+        title: '컴파일 결과를 가져오는 중',
+        description: '실제 B++ dump를 읽어서 그래프와 텍스트 뷰를 갱신하고 있습니다.',
+        icon: <Loader2 size={22} />,
+        loading: true,
+      };
+    }
+    if (compileState === 'idle') {
+      return {
+        title: '컴파일하면 파이프라인이 열립니다',
+        description: 'Ctrl+Shift+B로 컴파일하면 AST, SSA, IR, ASM이 이 패널에 실제 결과 기준으로 나타납니다.',
+        icon: <ScanSearch size={22} />,
+        loading: false,
+      };
+    }
+    if (compileState === 'error') {
+      return {
+        title: '최근 컴파일이 실패했습니다',
+        description: '오른쪽 패널은 성공한 컴파일 결과가 있어야 채워집니다. 먼저 오류를 해결한 뒤 다시 컴파일해 주세요.',
+        icon: <CircleAlert size={22} />,
+        loading: false,
+      };
+    }
+    return {
+      title: `${activeGraphTab} 결과가 아직 없습니다`,
+      description: '이 탭에 필요한 출력이 비어 있습니다. 코드를 다시 컴파일하면 최신 결과로 채워집니다.',
+      icon: <ScanSearch size={22} />,
+      loading: false,
+    };
+  }, [activeGraphTab, canRender, compileState, isCompiling, language]);
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-[#121212] border-l border-gray-200 dark:border-[#333]">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shrink-0">
-        <div className="flex items-center gap-2">
-          <Network size={18} className="text-purple-500 dark:text-purple-400" />
-          <h2 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">Pipeline Viewer</h2>
-        </div>
-        <button onClick={() => setGraphViewerOpen(false)} className="p-1 hover:bg-gray-200 dark:hover:bg-[#333] text-gray-500 hover:text-gray-900 dark:hover:text-white rounded transition-colors" title="최소화">
-          <Minus size={18} />
-        </button>
-      </div>
-
-      {/* 탭 */}
-      <div className="flex items-center border-b border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a] px-1 pt-1 shrink-0">
-        {tabs.map((tab) => (
-          <button key={tab} onClick={() => setActiveGraphTab(tab)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold uppercase tracking-wider border-b-2 transition-all mx-0.5 rounded-t
-              ${activeGraphTab === tab ? `${tabColor[tab]} bg-white dark:bg-[#121212]` : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}>
-            {tabIcon[tab]}{tab}
+    <div className="flex h-full flex-col border-l border-slate-200 bg-white dark:border-[#333] dark:bg-[#0d0d0d]">
+      <div className="shrink-0 border-b border-slate-200 bg-white px-3 pt-2 dark:border-[#333] dark:bg-[#1e1e1e]">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-[#333]">
+          <div className="flex items-center gap-1">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveGraphTab(tab.id)}
+                className={`flex items-center gap-2 border-b-2 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition-all ${
+                  activeGraphTab === tab.id
+                    ? `${tab.accent}`
+                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:text-gray-400 dark:hover:bg-[#252525] dark:hover:text-gray-200'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-[#2a2a2a] dark:text-gray-400">{tab.count}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setGraphViewerOpen(false)}
+            className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 dark:text-gray-400 dark:hover:bg-[#252525] dark:hover:text-white"
+            title="최소화"
+          >
+            <Minus size={16} />
           </button>
-        ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 py-2.5">
+          {metricBadges.map((metric) => (
+            <span
+              key={metric.label}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600 dark:border-[#333] dark:bg-[#161616] dark:text-gray-300"
+            >
+              {metric.icon}
+              {metric.label}
+            </span>
+          ))}
+        </div>
       </div>
 
-      {/* 콘텐츠 */}
-      <div className="flex-1 relative overflow-hidden">
-        {isGraph ? (
+      <div className="relative flex-1 overflow-hidden bg-slate-50 dark:bg-[#0d0d0d]">
+        {!canRender ? (
+          <EmptyState {...emptyState} />
+        ) : activeGraphTab === 'AST' || activeGraphTab === 'SSA' ? (
           <div className="absolute inset-0">
             <ReactFlow
               key={activeGraphTab}
-              nodes={activeGraphTab === 'AST' ? astData.nodes : ssaData.nodes}
-              edges={activeGraphTab === 'AST' ? astData.edges : ssaData.edges}
+              nodes={activeGraphData?.nodes ?? []}
+              edges={activeGraphData?.edges ?? []}
               nodeTypes={nodeTypes}
               fitView
-              fitViewOptions={{ padding: 0.35, maxZoom: 1.2 }}
+              fitViewOptions={{ padding: 0.28, maxZoom: 1.15 }}
+              minZoom={0.2}
+              maxZoom={2.2}
               nodesDraggable
               nodesConnectable={false}
               elementsSelectable={false}
               colorMode={theme}
-              minZoom={0.2}
-              maxZoom={2.5}
-              defaultEdgeOptions={{ animated: false }}
               proOptions={{ hideAttribution: true }}
             >
-              <Background variant={BackgroundVariant.Dots} gap={20} size={0.8} color={theme === 'dark' ? '#2a2a2a' : '#e5e5e5'} />
-              <Controls showInteractive={false} className="!shadow-lg !border !border-gray-200 dark:!border-gray-700 !rounded-lg" />
+              <Background
+                variant={BackgroundVariant.Dots}
+                gap={20}
+                size={0.8}
+                color={theme === 'dark' ? '#242424' : '#dbe4f0'}
+              />
+              <MiniMap
+                pannable
+                zoomable
+                className="!rounded-md !border !border-slate-200 !bg-white/95 dark:!border-[#333] dark:!bg-[#1e1e1e]/95"
+                nodeColor={(node) => (node.type === 'ast' ? '#f97316' : '#14b8a6')}
+                maskColor={theme === 'dark' ? 'rgba(13, 13, 13, 0.82)' : 'rgba(255,255,255,0.76)'}
+              />
+              <Panel position="top-left">
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-white/95 px-3 py-2 text-[11px] font-medium text-slate-600 backdrop-blur dark:border-[#333] dark:bg-[#1e1e1e]/95 dark:text-gray-300">
+                  {activeGraphTab === 'AST' ? (
+                    <>
+                      <span className="inline-flex items-center gap-1.5 text-orange-500"><Braces size={12} /> syntax nodes</span>
+                      <span className="inline-flex items-center gap-1.5 text-amber-500"><ScanSearch size={12} /> selection highlight</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center gap-1.5 text-teal-500"><Binary size={12} /> blocks</span>
+                      <span className="inline-flex items-center gap-1.5 text-emerald-500"><Workflow size={12} /> branch edges</span>
+                    </>
+                  )}
+                </div>
+              </Panel>
+              <Controls showInteractive={false} className="!rounded-md !border !border-slate-200 dark:!border-[#333] dark:!bg-[#1e1e1e]" />
             </ReactFlow>
           </div>
         ) : (
-          <div className="h-full overflow-auto p-4">
-            <div className="flex items-center gap-2 mb-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
-              <FileCode2 size={14} className={activeGraphTab === 'IR' ? 'text-violet-400' : 'text-rose-400'} />
+          <div className="h-full overflow-auto">
+            <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-[#333] dark:bg-[#1e1e1e] dark:text-gray-400">
+              {activeGraphTab === 'IR' ? <GitBranch size={14} className="text-violet-400" /> : <FileCode2 size={14} className="text-rose-400" />}
               {activeGraphTab === 'IR' ? 'Intermediate Representation' : 'Assembly Output'}
             </div>
-            <CodeView lines={activeGraphTab === 'IR' ? irData : asmData} sel={selectedText} colorize={activeGraphTab === 'IR' ? colorIR : colorASM} />
+            <CodeView lines={textLines} selectedText={selectedText} colorize={activeGraphTab === 'IR' ? colorIR : colorASM} />
           </div>
         )}
       </div>
 
-      {/* 설명 */}
-      <div className="shrink-0 px-4 py-2.5 border-t border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a] text-xs text-gray-500 dark:text-gray-500">
-        {activeGraphTab === 'AST' && <p><strong className="text-orange-500">AST</strong> — 소스 코드의 구문 분석 결과 트리</p>}
-        {activeGraphTab === 'SSA' && <p><strong className="text-teal-500">SSA</strong> — 제어 흐름 그래프 (CFG)</p>}
-        {activeGraphTab === 'IR' && <p><strong className="text-violet-500">IR</strong> — 기계어에 가까운 중간 표현</p>}
-        {activeGraphTab === 'ASM' && <p><strong className="text-rose-500">ASM</strong> — 대상 아키텍처 어셈블리 코드</p>}
+      <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500 dark:border-[#333] dark:bg-[#121212] dark:text-gray-400">
+        {footerDescriptions[activeGraphTab]}
       </div>
     </div>
   );

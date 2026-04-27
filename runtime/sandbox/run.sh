@@ -9,7 +9,7 @@ STDIN_FILE="${4:-}"
 OPTIMIZE="${COMPILER_OPTIMIZE:-0}"
 
 if [[ -z "$MODE" || -z "$LANGUAGE" || -z "$SOURCE_FILE" ]]; then
-  echo "usage: run.sh <compile|run> <language> <source_file> [stdin_file]" >&2
+  echo "usage: run.sh <compile|run|dump-ir|dump-ssa|asm> <language> <source_file> [stdin_file]" >&2
   exit 2
 fi
 
@@ -114,6 +114,36 @@ compile_bpp() {
   ld /tmp/program.o -o /tmp/program
 }
 
+dump_bpp_ir() {
+  local bpp_flags=()
+  if [[ "$OPTIMIZE" == "1" ]]; then
+    bpp_flags+=(-O1)
+  else
+    bpp_flags+=(-O0)
+  fi
+  bpp "${bpp_flags[@]}" -dump-ir "$SOURCE_FILE"
+}
+
+dump_bpp_ssa() {
+  local bpp_flags=()
+  if [[ "$OPTIMIZE" == "1" ]]; then
+    bpp_flags+=(-O1)
+  else
+    bpp_flags+=(-O0)
+  fi
+  bpp "${bpp_flags[@]}" -dump-ssa "$SOURCE_FILE"
+}
+
+emit_bpp_asm() {
+  local bpp_flags=()
+  if [[ "$OPTIMIZE" == "1" ]]; then
+    bpp_flags+=(-O1)
+  else
+    bpp_flags+=(-O0)
+  fi
+  bpp "${bpp_flags[@]}" -asm "$SOURCE_FILE"
+}
+
 run_bpp() {
   if [[ -n "$STDIN_FILE" ]]; then
     /tmp/program < "$STDIN_FILE"
@@ -124,30 +154,64 @@ run_bpp() {
 
 case "$LANGUAGE" in
   bpp)
-    compile_bpp
-    if [[ "$MODE" == "run" ]]; then
-      run_bpp
-    fi
+    case "$MODE" in
+      compile)
+        compile_bpp
+        ;;
+      run)
+        compile_bpp
+        run_bpp
+        ;;
+      dump-ir)
+        dump_bpp_ir
+        ;;
+      dump-ssa)
+        dump_bpp_ssa
+        ;;
+      asm)
+        emit_bpp_asm
+        ;;
+      *)
+        echo "Unsupported mode for B++: $MODE" >&2
+        exit 1
+        ;;
+    esac
     ;;
   python)
+    if [[ "$MODE" != "compile" && "$MODE" != "run" ]]; then
+      echo "Unsupported mode for Python: $MODE" >&2
+      exit 1
+    fi
     compile_python
     if [[ "$MODE" == "run" ]]; then
       run_python
     fi
     ;;
   c)
+    if [[ "$MODE" != "compile" && "$MODE" != "run" ]]; then
+      echo "Unsupported mode for C: $MODE" >&2
+      exit 1
+    fi
     compile_c
     if [[ "$MODE" == "run" ]]; then
       run_c
     fi
     ;;
   cpp)
+    if [[ "$MODE" != "compile" && "$MODE" != "run" ]]; then
+      echo "Unsupported mode for C++: $MODE" >&2
+      exit 1
+    fi
     compile_cpp
     if [[ "$MODE" == "run" ]]; then
       run_cpp
     fi
     ;;
   java)
+    if [[ "$MODE" != "compile" && "$MODE" != "run" ]]; then
+      echo "Unsupported mode for Java: $MODE" >&2
+      exit 1
+    fi
     mkdir -p /tmp/java-classes
     compile_java
     if [[ "$MODE" == "run" ]]; then
@@ -155,6 +219,10 @@ case "$LANGUAGE" in
     fi
     ;;
   javascript)
+    if [[ "$MODE" != "compile" && "$MODE" != "run" ]]; then
+      echo "Unsupported mode for JavaScript: $MODE" >&2
+      exit 1
+    fi
     compile_javascript
     if [[ "$MODE" == "run" ]]; then
       run_javascript
