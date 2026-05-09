@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, BookOpen } from "lucide-react";
+import { useNavigate } from "react-router";
+import { ChevronDown, ChevronUp, BookOpen, MessageSquare } from "lucide-react";
 import { JudgePanel } from "./JudgePanel";
 import type { TestCase } from "../services/problemApi";
 
@@ -34,6 +35,17 @@ interface Props {
 
 export function ChallengePanel({ challenge, code, onClose }: Props) {
   const [judgeOpen, setJudgeOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const goToCommunity = () => {
+    navigate('/community', {
+      state: {
+        tab: 'problems',
+        problemId: challenge.id,
+        problemTitle: challenge.title,
+      },
+    });
+  };
 
   const testCases: TestCase[] =
     challenge.testCases ??
@@ -47,9 +59,19 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
           <BookOpen size={14} className="text-blue-400" />
           <span className="text-xs font-semibold uppercase tracking-widest text-gray-200">문제</span>
         </div>
-        <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-200 transition-colors">
-          닫기
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={goToCommunity}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-purple-300 hover:text-white hover:bg-purple-500/20 border border-purple-500/30 transition-colors"
+            title="이 문제의 커뮤니티로 이동"
+          >
+            <MessageSquare size={12} />
+            커뮤니티
+          </button>
+          <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-200 transition-colors">
+            닫기
+          </button>
+        </div>
       </div>
 
       {/* 문제 설명 영역 */}

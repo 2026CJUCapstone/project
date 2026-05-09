@@ -3,6 +3,7 @@ import { Layout } from "./Layout";
 import { IDE } from "./pages/IDE";
 import { Leaderboard } from "./pages/Leaderboard";
 import { Challenges } from "./pages/Challenges";
+import { Community } from "./pages/Community";
 import { Admin } from "./pages/Admin";
 
 const routerBasePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -15,6 +16,7 @@ export const routeDefinitions = [
       { index: true, Component: IDE },
       { path: "leaderboard", Component: Leaderboard },
       { path: "challenges", Component: Challenges },
+      { path: "community", Component: Community },
     ],
   },
   { path: "/admin", Component: Admin },
