@@ -79,20 +79,32 @@ class ChallengeRead(ChallengeBase):
         from_attributes = True
 
 
-class LeaderboardRead(BaseModel):
-    username: str
-    total_score: int
-    avatar_url: Optional[str] = None
-    class Config:
-        from_attributes = True
-
-
 class CamelModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=to_camel,
         populate_by_name=True,
         from_attributes=True
     )
+
+
+class LeaderboardRead(CamelModel):
+    rank: int
+    username: str
+    total_score: int
+    avatar_url: Optional[str] = None
+
+
+class LeaderboardScoreCreate(CamelModel):
+    username: str = Field(min_length=1, max_length=64)
+    points: int = Field(gt=0, le=10000)
+    challenge_id: str = Field(min_length=1, max_length=128)
+    avatar_url: Optional[str] = None
+
+
+class LeaderboardScoreRead(LeaderboardRead):
+    challenge_id: str
+    awarded_points: int
+    already_solved: bool
 
 
 class TestCase(CamelModel):
@@ -112,6 +124,63 @@ class ProblemCreate(ProblemBase):
     pass
 
 
-class ProblemRead(ProblemBase):
+class ProblemRead(CamelModel):
     id: str
+    creator_id: str
+    title: str
+    difficulty: str
+    tags: List[str]
+    description: str
+    created_at: datetime
+
+class ProblemDetail(ProblemBase):
+    id: str
+    created_at: datetime
+
+class UserCreate(CamelModel):
+    username: str = Field(min_length=3, max_length=50)
+    password: str = Field(min_length=8)
+
+class UserLogin(CamelModel):
+    username: str
+    password: str
+
+class UserRead(CamelModel):
+    id: str
+    username: str
+    total_score: int
+    avatar_url: Optional[str] = None
+
+class Token(CamelModel):
+    access_token: str
+    token_type: str
+
+class SubmissionRequest(CamelModel):
+    code: str
+    language: CompilerLanguage
+
+class TestCaseResult(CamelModel):
+    case_number: int
+    status: Literal["Correct", "Wrong", "Error"]
+    input: str
+    expected: str
+    actual: str
+
+class SubmissionResponse(CamelModel):
+    status: str
+    total_cases: int
+    passed_cases: int
+    total_score: int
+    details: List[TestCaseResult]
+
+class CommentBase(CamelModel):
+    content: str = Field(min_length=1, max_length=1000)
+
+class CommentCreate(CommentBase):
+    pass
+
+class CommentRead(CommentBase):
+    id: str
+    problem_id: str
+    user_id: str
     created_at: datetime
