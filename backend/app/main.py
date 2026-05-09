@@ -1,15 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import problems, compiler
+from app.api.routes import compiler, problems, terminal, auth, community
 from app.core.database import engine, Base
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Online Compiler API",
-    description="코드 컴파일 및 실행 API 서버",
-    version="0.1.0",
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
 )
 
 app.add_middleware(
@@ -19,8 +18,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 app.include_router(problems.router, prefix="/api/v1/problems", tags=["problems"])
 app.include_router(compiler.router, prefix="/api/v1/compiler", tags=["compiler"])
+app.include_router(terminal.router, prefix="/api/v1/terminal", tags=["terminal"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(community.router, prefix="/api/v1/problems", tags=["community"])
 
 @app.get("/health")
 def health_check():
