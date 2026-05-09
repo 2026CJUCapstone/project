@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     SANDBOX_CPU_LIMIT: float = 1.0
     SANDBOX_PIDS_LIMIT: int = 64
     SANDBOX_NOFILE_LIMIT: int = 1024
+    TERMINAL_SESSION_TIMEOUT: int = 120
+    SECRET_KEY: str = "fallback-secret-key-for-dev"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", enable_decoding=False)
 
