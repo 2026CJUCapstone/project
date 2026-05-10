@@ -98,6 +98,9 @@ jobs:
       - name: Run Docker E2E
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # TEMP PIN: upstream Bpp main HEAD (658bbc9 "1") fails 2 IR Dump tests in bpp-selfhost-fast.
+          # Pinned to commit immediately before the regression. Remove this env to track main again.
+          BPP_REF: 739058c0e83ade743073aab8b2ec08dcc56af73f
         run: python3 scripts/e2e_stack_test.py
 
       - name: Dump Container Logs On Failure
@@ -137,6 +140,8 @@ jobs:
       - name: Start Webcompiler Deploy-Like Stack
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # TEMP PIN: see e2e-stack job for context. Remove to follow upstream Bpp main.
+          BPP_REF: 739058c0e83ade743073aab8b2ec08dcc56af73f
         run: bash scripts/docker_up_webcompiler.sh
 
       - name: Run Playwright Browser E2E
