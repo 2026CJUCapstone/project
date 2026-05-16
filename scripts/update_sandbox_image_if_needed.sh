@@ -15,6 +15,8 @@ runtime_build_signature() {
 
 BPP_REPO="${BPP_REPO:-https://github.com/Creeper0809/Bpp}"
 BPP_BRANCH="${BPP_BRANCH:-main}"
+BPP_RELEASE_API="${BPP_RELEASE_API:-https://api.github.com/repos/Creeper0809/Bpp/releases/latest}"
+BPP_USE_RELEASE_BINARY="${BPP_USE_RELEASE_BINARY:-1}"
 STABLE_IMAGE="${SANDBOX_STABLE_IMAGE:-compiler-sandbox}"
 CANDIDATE_IMAGE="${SANDBOX_CANDIDATE_IMAGE:-compiler-sandbox:candidate}"
 DEPLOY_DIR="${WEBCOMPILER_DEPLOY_STATE_DIR:-$PROJECT_ROOT/.deploy}"
@@ -34,6 +36,20 @@ current_image_build_key() {
 
 latest_remote_ref() {
   git ls-remote "$BPP_REPO" "refs/heads/$BPP_BRANCH" | awk 'NR==1 { print $1 }'
+}
+
+latest_release_tag() {
+  local curl_args
+  curl_args=(-fsSL --retry 3 --retry-delay 2)
+  local github_token
+  github_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  if [[ -n "$github_token" ]]; then
+    curl_args+=(
+      -H "Authorization: Bearer ${github_token}"
+      -H "X-GitHub-Api-Version: 2022-11-28"
+    )
+  fi
+  curl "${curl_args[@]}" "$BPP_RELEASE_API" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("tag_name", ""))'
 }
 
 desired_build_key() {
@@ -77,9 +93,14 @@ if ! flock -n 9; then
   exit 0
 fi
 
-latest_ref="$(latest_remote_ref)"
-if [[ -z "$latest_ref" ]]; then
-  log "failed to resolve $BPP_REPO $BPP_BRANCH"
+if [[ "$BPP_USE_RELEASE_BINARY" == "1" ]]; then
+  latest_ref="release:$(latest_release_tag)"
+else
+  latest_ref="$(latest_remote_ref)"
+fi
+
+if [[ -z "$latest_ref" || "$latest_ref" == "release:" ]]; then
+  log "failed to resolve build target for sandbox image"
   exit 1
 fi
 
@@ -94,6 +115,7 @@ log "updating sandbox image: ${current_key:-none} -> $desired_key"
 SANDBOX_IMAGE_TAG="$CANDIDATE_IMAGE" \
 BPP_REPO="$BPP_REPO" \
 BPP_BRANCH="$BPP_BRANCH" \
+BPP_USE_RELEASE_BINARY="$BPP_USE_RELEASE_BINARY" \
 BPP_REF="$latest_ref" \
 TEST_SKIP_LLVM_BUILD="$TEST_SKIP_LLVM_BUILD" \
 TEST_FAST_IO="$TEST_FAST_IO" \

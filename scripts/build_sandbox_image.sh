@@ -15,16 +15,12 @@ runtime_build_signature() {
 
 BPP_REPO="${BPP_REPO:-https://github.com/Creeper0809/Bpp}"
 BPP_BRANCH="${BPP_BRANCH:-main}"
-BPP_REF="${BPP_REF:-$(git ls-remote "$BPP_REPO" "refs/heads/$BPP_BRANCH" | awk 'NR==1 { print $1 }')}"
+BPP_USE_RELEASE_BINARY="${BPP_USE_RELEASE_BINARY:-1}"
+BPP_REF="${BPP_REF:-}"
 SANDBOX_IMAGE_TAG="${SANDBOX_IMAGE_TAG:-compiler-sandbox}"
 TEST_SKIP_LLVM_BUILD="${TEST_SKIP_LLVM_BUILD:-1}"
 TEST_FAST_IO="${TEST_FAST_IO:-0}"
 RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE:-$(runtime_build_signature)}"
-
-if [[ -z "$BPP_REF" ]]; then
-  echo "failed to resolve $BPP_REPO branch $BPP_BRANCH" >&2
-  exit 1
-fi
 
 BPP_RELEASE_API="${BPP_RELEASE_API:-https://api.github.com/repos/Creeper0809/Bpp/releases/latest}"
 curl_args=(-fsSL --retry 3 --retry-delay 2)
@@ -38,7 +34,7 @@ if [[ -n "$github_token" ]]; then
 fi
 
 bootstrap_json="$(curl "${curl_args[@]}" "$BPP_RELEASE_API")"
-read -r BPP_BOOTSTRAP_TAG BPP_BOOTSTRAP_URL BPP_BOOTSTRAP_SHA256 < <(
+read -r BPP_RELEASE_TAG BPP_RELEASE_BINARY_URL BPP_RELEASE_BINARY_SHA256 < <(
   printf '%s' "$bootstrap_json" | python3 -c '
 import json, sys
 
@@ -54,12 +50,30 @@ print(tag, binary.get("browser_download_url", ""), sha256)
 '
 )
 
-if [[ -z "$BPP_BOOTSTRAP_TAG" || -z "$BPP_BOOTSTRAP_URL" || -z "$BPP_BOOTSTRAP_SHA256" ]]; then
-  echo "failed to resolve latest Bpp bootstrap release asset" >&2
+if [[ -z "$BPP_RELEASE_TAG" || -z "$BPP_RELEASE_BINARY_URL" || -z "$BPP_RELEASE_BINARY_SHA256" ]]; then
+  echo "failed to resolve latest Bpp release asset" >&2
   exit 1
 fi
 
-echo "Building sandbox with Bpp $BPP_BRANCH @ $BPP_REF using bootstrap $BPP_BOOTSTRAP_TAG"
+BPP_BOOTSTRAP_TAG="$BPP_RELEASE_TAG"
+BPP_BOOTSTRAP_URL="$BPP_RELEASE_BINARY_URL"
+BPP_BOOTSTRAP_SHA256="$BPP_RELEASE_BINARY_SHA256"
+
+if [[ "$BPP_USE_RELEASE_BINARY" != "1" && -z "$BPP_REF" ]]; then
+  BPP_REF="$(git ls-remote "$BPP_REPO" "refs/heads/$BPP_BRANCH" | awk 'NR==1 { print $1 }')"
+fi
+
+if [[ "$BPP_USE_RELEASE_BINARY" != "1" && -z "$BPP_REF" ]]; then
+  echo "failed to resolve $BPP_REPO branch $BPP_BRANCH" >&2
+  exit 1
+fi
+
+if [[ -z "$BPP_REF" ]]; then
+  BPP_REF="release:$BPP_RELEASE_TAG"
+fi
+
+echo "Building sandbox with Bpp $BPP_BRANCH @ $BPP_REF using release $BPP_RELEASE_TAG"
+echo "  use_release_binary=$BPP_USE_RELEASE_BINARY"
 echo "  test_skip_llvm_build=$TEST_SKIP_LLVM_BUILD"
 echo "  test_fast_io=$TEST_FAST_IO"
 echo "  runtime_build_signature=$RUNTIME_BUILD_SIGNATURE"
@@ -71,6 +85,10 @@ docker build \
   --build-arg "BPP_BOOTSTRAP_TAG=$BPP_BOOTSTRAP_TAG" \
   --build-arg "BPP_BOOTSTRAP_URL=$BPP_BOOTSTRAP_URL" \
   --build-arg "BPP_BOOTSTRAP_SHA256=$BPP_BOOTSTRAP_SHA256" \
+  --build-arg "BPP_USE_RELEASE_BINARY=$BPP_USE_RELEASE_BINARY" \
+  --build-arg "BPP_RELEASE_TAG=$BPP_RELEASE_TAG" \
+  --build-arg "BPP_RELEASE_BINARY_URL=$BPP_RELEASE_BINARY_URL" \
+  --build-arg "BPP_RELEASE_BINARY_SHA256=$BPP_RELEASE_BINARY_SHA256" \
   --build-arg "TEST_SKIP_LLVM_BUILD=$TEST_SKIP_LLVM_BUILD" \
   --build-arg "TEST_FAST_IO=$TEST_FAST_IO" \
   --build-arg "RUNTIME_BUILD_SIGNATURE=$RUNTIME_BUILD_SIGNATURE" \
