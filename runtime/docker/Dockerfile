@@ -85,13 +85,13 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
-    if [[ "$BPP_USE_RELEASE_BINARY" == "1" ]]; then \
-      if [[ -z "$BPP_RELEASE_BINARY_URL" ]]; then \
+    if [ "$BPP_USE_RELEASE_BINARY" = "1" ]; then \
+      if [ -z "$BPP_RELEASE_BINARY_URL" ]; then \
         echo "BPP_RELEASE_BINARY_URL is required when BPP_USE_RELEASE_BINARY=1" >&2; \
         exit 1; \
       fi; \
       curl -fsSL "$BPP_RELEASE_BINARY_URL" -o /tmp/bpp; \
-      if [[ -n "$BPP_RELEASE_BINARY_SHA256" ]]; then \
+      if [ -n "$BPP_RELEASE_BINARY_SHA256" ]; then \
         echo "$BPP_RELEASE_BINARY_SHA256  /tmp/bpp" | sha256sum -c -; \
       fi; \
       install -m 0755 /tmp/bpp /usr/local/bin/bpp; \
