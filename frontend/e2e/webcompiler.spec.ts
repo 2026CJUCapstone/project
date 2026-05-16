@@ -18,6 +18,10 @@ func main() -> u64 {
 }
 `;
 
+const interactivePythonProgram = `line = input()
+print(f"program says: {line}")
+`;
+
 test.describe("webcompiler browser e2e", () => {
   test("loads the app from /webcompiler and shows the default example", async ({ page }) => {
     await page.goto("/webcompiler/");
@@ -59,9 +63,11 @@ test.describe("webcompiler browser e2e", () => {
     await page.goto("/webcompiler/");
     await page.evaluate((code) => {
       window.localStorage.setItem("b-compiler-editor-code", code);
-    }, interactiveBppProgram);
+    }, interactivePythonProgram);
     await page.reload();
-    await expect(page.locator(".view-lines").first()).toContainText("input()");
+    await expect(page.locator(".view-lines").first()).toContainText("line = input()");
+
+    await page.getByRole("combobox", { name: "실행 언어 선택" }).selectOption("python");
 
     await page.getByTestId("terminal-tab").click();
 
