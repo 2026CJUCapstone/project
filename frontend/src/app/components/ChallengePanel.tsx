@@ -1,9 +1,14 @@
+
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ChevronDown, ChevronUp, BookOpen, MessageSquare } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { JudgePanel } from "./JudgePanel";
 import type { TestCase } from "../services/problemApi";
-
+import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from "../constants/difficulty";
 interface Challenge {
   id: string;
   title: string;
@@ -15,22 +20,10 @@ interface Challenge {
   testCases?: TestCase[];
 }
 
-const difficultyLabels: Record<string, string> = {
-  beginner: "초급",
-  intermediate: "중급",
-  advanced: "고급",
-};
-
-const difficultyColors: Record<string, string> = {
-  beginner: "text-green-400 bg-green-400/10 border-green-400/20",
-  intermediate: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
-  advanced: "text-red-400 bg-red-400/10 border-red-400/20",
-};
-
 interface Props {
   challenge: Challenge;
   code: string;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export function ChallengePanel({ challenge, code, onClose }: Props) {
@@ -68,9 +61,11 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
             <MessageSquare size={12} />
             커뮤니티
           </button>
-          <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-200 transition-colors">
-            닫기
-          </button>
+          {onClose && (
+            <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-200 transition-colors">
+              닫기
+            </button>
+          )}
         </div>
       </div>
 
@@ -80,8 +75,8 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
           {/* 제목 + 난이도 */}
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${difficultyColors[challenge.difficulty] ?? "text-gray-400 bg-gray-400/10 border-gray-400/20"}`}>
-                {difficultyLabels[challenge.difficulty] ?? challenge.difficulty}
+              <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getDifficultyBadgeClass(challenge.difficulty)}`}>
+                {DIFFICULTY_LABELS[challenge.difficulty as keyof typeof DIFFICULTY_LABELS] ?? challenge.difficulty}
               </span>
               {challenge.tags?.map((tag) => (
                 <span key={tag} className="px-2 py-0.5 rounded text-xs font-medium border text-blue-300 bg-blue-500/10 border-blue-500/20">
@@ -92,18 +87,38 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
             <h2 className="text-lg font-bold text-white">{challenge.title}</h2>
           </div>
 
-          {/* 설명 */}
-          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-            {challenge.description}
-          </p>
 
+          {/* 설명 */}
+          <div className="prose prose-sm max-w-none prose-invert prose-headings:text-white prose-p:text-gray-300 prose-strong:text-gray-100 prose-code:text-blue-300 prose-pre:bg-[#1a1a1a] prose-pre:border prose-pre:border-[#333]">
+            <ReactMarkdown
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {challenge.description}
+            </ReactMarkdown>
+          </div>
           {/* 기대 출력 */}
-          {challenge.expectedOutput && (
-            <div>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">기대 출력</p>
-              <code className="block bg-[#1a1a1a] border border-[#333] rounded px-3 py-2 text-sm text-green-400 whitespace-pre-wrap">
-                {challenge.expectedOutput}
-              </code>
+          {testCases.length > 0 && (
+            <div className="flex flex-col gap-3">
+              {testCases.map((testCase, index) => (
+                <div key={index} className="rounded-lg border border-[#333] bg-[#111] p-3">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">예시 {index + 1}</p>
+                  <div className="grid grid-cols-1 gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">입력</p>
+                      <code className="block bg-[#1a1a1a] border border-[#333] rounded px-3 py-2 text-sm text-gray-300 whitespace-pre-wrap">
+                        {testCase.input || "(없음)"}
+                      </code>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">출력</p>
+                      <code className="block bg-[#1a1a1a] border border-[#333] rounded px-3 py-2 text-sm text-green-400 whitespace-pre-wrap">
+                        {testCase.expectedOutput || "(없음)"}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -137,6 +152,7 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
             <div className="border-t border-[#333]">
               <JudgePanel
                 code={code}
+                challengeId={challenge.id}
                 challengeTitle={challenge.title}
                 testCases={testCases}
                 onClose={() => setJudgeOpen(false)}

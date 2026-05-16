@@ -8,7 +8,7 @@ class Problem(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     creator_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String, index=True, nullable=False)
-    difficulty = Column(String, nullable=False) # beginner, intermediate, advanced
+    difficulty = Column(String, nullable=False) # iron5 ~ diamond1
     tags = Column(JSON, nullable=False)         # ["io", "control", "func"]
     description = Column(Text, nullable=False)
     test_cases = Column(JSON, nullable=False)
@@ -19,6 +19,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     username = Column(String, index=True, nullable=False, unique=True)
+    nickname = Column(String, index=True, nullable=True, unique=True)
     hashed_password = Column(String, nullable=False)
     total_score = Column(Integer, nullable=False, default=0)
     avatar_url = Column(String, nullable=True)

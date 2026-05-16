@@ -1,11 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
-import { PlayCircle, Target, BookOpen, AlertTriangle, Code2, Tag, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { PlayCircle, Code2, Tag, Loader2, Search, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { getProblems } from '../services/problemApi';
-import type { ProblemTag } from '../services/problemApi';
+import { DIFFICULTY_LEVELS, getProblems } from '../services/problemApi';
+import type { ProblemTag, ProblemDifficulty } from '../services/problemApi';
+import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from '../constants/difficulty';
 
-type Difficulty = 'beginner' | 'intermediate' | 'advanced';
+type Difficulty = ProblemDifficulty;
 type ChallengeTag = ProblemTag;
+type SortOption = 'difficultyAsc' | 'difficultyDesc' | 'title';
 
 interface Challenge {
   id: string;
@@ -13,27 +15,13 @@ interface Challenge {
   difficulty: Difficulty;
   tags: ChallengeTag[];
   description: string;
-  expectedOutput?: string;
-  failurePoints?: string[];
   testCases?: { input: string; expectedOutput: string }[];
 }
-
-const difficultyLabels: Record<Difficulty, string> = {
-  beginner: '초급',
-  intermediate: '중급',
-  advanced: '고급'
-};
 
 const tagLabels: Record<ChallengeTag, string> = {
   io: '입출력',
   control: '제어문',
   func: '함수'
-};
-
-const difficultyColors = {
-  beginner: 'text-green-400 bg-green-400/10 border-green-400/20',
-  intermediate: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
-  advanced: 'text-red-400 bg-red-400/10 border-red-400/20'
 };
 
 const tagColors = {
@@ -42,85 +30,65 @@ const tagColors = {
   func: 'text-pink-300 bg-pink-500/10 border-pink-500/20'
 };
 
-function ChallengeCard({ challenge }: { challenge: Challenge }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+const difficultyTrackStops: Difficulty[] = [
+  'iron5',
+  'bronze5',
+  'silver5',
+  'gold5',
+  'platinum5',
+  'diamond5',
+  'diamond1',
+];
+
+function getProblemSummary(description: string): string {
+  const normalized = description.replace(/\r\n/g, '\n');
+  const problemMatch = normalized.match(/##\s*문제\s*\n+([\s\S]*?)(\n##\s*입력|\n##\s*출력|$)/);
+  const source = problemMatch?.[1] ?? normalized;
+  return source
+    .replace(/#{1,6}\s/g, '')
+    .replace(/`/g, '')
+    .replace(/\n+/g, ' ')
+    .trim();
+}
+
+function ChallengeRow({ challenge, index }: { challenge: Challenge; index: number }) {
   const navigate = useNavigate();
 
   return (
-    <div className={`flex flex-col rounded-xl border transition-all duration-300 overflow-hidden ${
-      isExpanded ? 'bg-white dark:bg-[#1e1e1e] border-gray-300 dark:border-[#444] shadow-lg' : 'bg-gray-50 dark:bg-[#161616] border-gray-200 dark:border-[#333] hover:border-gray-300 dark:hover:border-[#555] hover:bg-white dark:hover:bg-[#1a1a1a]'
-    }`}>
-      {/* Header section (always visible) */}
-      <div className="p-5 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wider ${difficultyColors[challenge.difficulty]}`}>
-              {difficultyLabels[challenge.difficulty]}
-            </span>
-            {challenge.tags.map(tag => (
-              <span key={tag} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border ${tagColors[tag]}`}>
-                <Tag size={12} />
-                {tagLabels[tag]}
-              </span>
-            ))}
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{challenge.title}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-            {challenge.description}
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-4 shrink-0 justify-end md:justify-start mt-2 md:mt-0">
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
-                  onClick={(e) => { 
-                    e.stopPropagation(); 
-                    // IDE 화면으로 이동하면서 상태로 challenge 정보를 넘깁니다.
-                    navigate('/', { state: { challenge } }); 
-                  }}>
-            <PlayCircle size={16} />
-            문제 풀기
-          </button>
-          <div className="text-gray-500 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#333] transition-colors">
-            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-          </div>
-        </div>
+    <div className="grid grid-cols-[56px_120px_1fr_220px_140px] gap-3 items-center px-4 py-3 border-b border-gray-200 dark:border-[#242424] hover:bg-gray-50/80 dark:hover:bg-[#191919] transition-colors">
+      <div className="text-sm text-gray-500">{index + 1}</div>
+      <div>
+        <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-semibold border ${getDifficultyBadgeClass(challenge.difficulty)}`}>
+          {DIFFICULTY_LABELS[challenge.difficulty] ?? challenge.difficulty}
+        </span>
       </div>
-
-      {/* Expanded details section */}
-      {isExpanded && (
-        <div className="px-5 pb-5 border-t border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1a1a1a] pt-4 flex flex-col gap-5 animate-in slide-in-from-top-2 fade-in duration-200 transition-colors">
-          {challenge.expectedOutput && (
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Target size={16} className="text-blue-600 dark:text-blue-400" />
-                <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">기대 출력</h4>
-              </div>
-              <div className="bg-white dark:bg-[#0d0d0d] border border-gray-200 dark:border-[#333] rounded-lg p-3 font-mono text-sm text-green-600 dark:text-green-400 break-words shadow-inner">
-                {challenge.expectedOutput}
-              </div>
-            </div>
-          )}
-          
-          {challenge.failurePoints && challenge.failurePoints.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle size={16} className="text-red-600 dark:text-red-400" />
-                <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">자주 틀리는 포인트</h4>
-              </div>
-              <ul className="space-y-2">
-                {challenge.failurePoints.map((point, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <span className="text-red-500 mt-0.5">•</span>
-                    <span>{point}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={() => navigate(`/challenges/${challenge.id}`)}
+        className="text-left"
+      >
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+          {challenge.title}
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mt-1">{getProblemSummary(challenge.description)}</p>
+      </button>
+      <div className="flex flex-wrap gap-1.5">
+        {challenge.tags.map((tag) => (
+          <span key={tag} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border ${tagColors[tag]}`}>
+            <Tag size={10} />
+            {tagLabels[tag]}
+          </span>
+        ))}
+      </div>
+      <div className="flex justify-end">
+        <button
+          className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors"
+          onClick={() => navigate('/', { state: { challenge } })}
+        >
+          <PlayCircle size={14} />
+          문제 풀기
+        </button>
+      </div>
     </div>
   );
 }
@@ -128,8 +96,11 @@ function ChallengeCard({ challenge }: { challenge: Challenge }) {
 export function Challenges() {
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterDifficulty, setFilterDifficulty] = useState<Difficulty | 'all'>('all');
-  const [filterTag, setFilterTag] = useState<ChallengeTag | 'all'>('all');
+  const [searchText, setSearchText] = useState('');
+  const [minDifficulty, setMinDifficulty] = useState<Difficulty>('iron5');
+  const [maxDifficulty, setMaxDifficulty] = useState<Difficulty>('diamond1');
+  const [selectedTags, setSelectedTags] = useState<Set<ChallengeTag>>(new Set());
+  const [sortBy, setSortBy] = useState<SortOption>('difficultyAsc');
 
   useEffect(() => {
     getProblems()
@@ -151,86 +122,244 @@ export function Challenges() {
   }, []);
 
   const filteredChallenges = useMemo(() => {
-    return challenges.filter(c => {
-      const matchDiff = filterDifficulty === 'all' || c.difficulty === filterDifficulty;
-      const matchTag = filterTag === 'all' || c.tags.includes(filterTag);
-      return matchDiff && matchTag;
+    const keyword = searchText.trim().toLowerCase();
+    const minIndex = DIFFICULTY_LEVELS.indexOf(minDifficulty);
+    const maxIndex = DIFFICULTY_LEVELS.indexOf(maxDifficulty);
+
+    const filtered = challenges.filter((challenge) => {
+      const matchKeyword =
+        keyword.length === 0 ||
+        challenge.title.toLowerCase().includes(keyword) ||
+        getProblemSummary(challenge.description).toLowerCase().includes(keyword);
+
+      const challengeIndex = DIFFICULTY_LEVELS.indexOf(challenge.difficulty);
+      const matchDifficulty = challengeIndex >= minIndex && challengeIndex <= maxIndex;
+
+      const matchTag =
+        selectedTags.size === 0 ||
+        challenge.tags.some((tag) => selectedTags.has(tag));
+
+      return matchKeyword && matchDifficulty && matchTag;
     });
-  }, [challenges, filterDifficulty, filterTag]);
+
+    return filtered.sort((a, b) => {
+      if (sortBy === 'title') {
+        return a.title.localeCompare(b.title, 'ko');
+      }
+
+      const aIndex = DIFFICULTY_LEVELS.indexOf(a.difficulty);
+      const bIndex = DIFFICULTY_LEVELS.indexOf(b.difficulty);
+      return sortBy === 'difficultyAsc' ? aIndex - bIndex : bIndex - aIndex;
+    });
+  }, [challenges, searchText, minDifficulty, maxDifficulty, selectedTags, sortBy]);
+
+  const toggleTag = (tag: ChallengeTag) => {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  };
+
+  const resetFilters = () => {
+    setSearchText('');
+    setMinDifficulty('iron5');
+    setMaxDifficulty('diamond1');
+    setSelectedTags(new Set());
+    setSortBy('difficultyAsc');
+  };
 
   return (
-    <div className="w-full h-full flex flex-col bg-white dark:bg-[#121212] overflow-hidden transition-colors duration-200">
-      {/* Header */}
-      <div className="flex flex-col items-center justify-center py-8 bg-gray-50 dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shrink-0 relative transition-colors duration-200">
-        <div className="flex items-center gap-3 mb-3">
-          <BookOpen className="text-blue-600 dark:text-blue-500" size={32} />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white tracking-wide">챌린지 허브</h1>
-        </div>
-        <p className="text-gray-600 dark:text-gray-400 text-sm mb-6 max-w-lg text-center leading-relaxed">
-          엄선된 문제들을 통해 B++ 실력을 향상시키세요.<br/>
-          난이도나 주제별로 필터링하고, 자주 틀리는 부분을 확인하며 언어를 마스터해보세요.
-        </p>
-
-        {/* Filters */}
-        <div className="flex flex-wrap items-center justify-center gap-4">
-          <div className="flex items-center gap-2 bg-white dark:bg-[#0d0d0d] p-1 rounded-lg border border-gray-200 dark:border-[#333] transition-colors">
-            <span className="px-3 text-xs font-semibold text-gray-500 uppercase">난이도</span>
-            <div className="h-4 w-px bg-gray-200 dark:bg-[#333]" />
-            <select 
-              value={filterDifficulty} 
-              onChange={(e) => setFilterDifficulty(e.target.value as any)}
-              className="bg-transparent text-sm text-gray-700 dark:text-gray-300 px-2 py-1 outline-none cursor-pointer"
-            >
-              <option value="all">모든 난이도</option>
-              <option value="beginner">초급</option>
-              <option value="intermediate">중급</option>
-              <option value="advanced">고급</option>
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 bg-white dark:bg-[#0d0d0d] p-1 rounded-lg border border-gray-200 dark:border-[#333] transition-colors">
-            <span className="px-3 text-xs font-semibold text-gray-500 uppercase">태그</span>
-            <div className="h-4 w-px bg-gray-200 dark:bg-[#333]" />
-            <select 
-              value={filterTag} 
-              onChange={(e) => setFilterTag(e.target.value as any)}
-              className="bg-transparent text-sm text-gray-700 dark:text-gray-300 px-2 py-1 outline-none cursor-pointer"
-            >
-              <option value="all">모든 주제</option>
-              <option value="io">입출력</option>
-              <option value="control">제어문</option>
-              <option value="func">함수</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Challenge List */}
-      <div className="flex-1 overflow-y-auto p-6 relative">
-        <div className="max-w-5xl mx-auto flex flex-col gap-4 pb-12">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 size={32} className="animate-spin text-blue-500 mb-3" />
-              <p className="text-gray-500 text-sm">문제를 불러오는 중...</p>
-            </div>
-          ) : filteredChallenges.length > 0 ? (
-            filteredChallenges.map(challenge => (
-              <ChallengeCard key={challenge.id} challenge={challenge} />
-            ))
-          ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <Code2 size={48} className="text-gray-300 dark:text-[#333] mb-4" />
-              <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">조건에 맞는 챌린지가 없습니다</h3>
-              <p className="text-gray-500 text-sm">필터를 조정하여 다른 결과를 확인해보세요.</p>
-              <button 
-                onClick={() => { setFilterDifficulty('all'); setFilterTag('all'); }}
-                className="mt-6 px-4 py-2 bg-white dark:bg-[#2d2d2d] hover:bg-gray-50 dark:hover:bg-[#3d3d3d] text-gray-700 dark:text-white rounded-lg text-sm transition-colors border border-gray-200 dark:border-[#444] shadow-sm"
+    <div className="w-full h-full bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 overflow-hidden">
+      <div className="h-full grid grid-cols-1 lg:grid-cols-[300px_1fr]">
+        <aside className="border-r border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1e1e1e] overflow-y-auto">
+          <div className="p-5 space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold tracking-wide">필터</h2>
+              <button
+                onClick={resetFilters}
+                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
               >
-                필터 초기화
+                <RotateCcw size={12} />
+                초기화
               </button>
             </div>
-          )}
-        </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500">검색</label>
+              <div className="mt-2 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  placeholder="문제 제목/설명 검색"
+                  className="w-full pl-9 pr-3 py-2 rounded-md border border-gray-300 dark:border-[#333] bg-white dark:bg-[#0d0d0d] text-sm outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold text-gray-500 mb-3">난이도</div>
+              <div className="px-3 py-4 rounded-lg border border-gray-200 dark:border-[#333] bg-white dark:bg-[#161616]">
+                <div className="relative mb-2">
+                  {/* Slider Track */}
+                  <div className="relative h-1 bg-gray-300 dark:bg-[#444] rounded-full">
+                    <div
+                      className="absolute h-1 bg-blue-500 rounded-full top-0"
+                      style={{
+                        left: `${(DIFFICULTY_LEVELS.indexOf(minDifficulty) / (DIFFICULTY_LEVELS.length - 1)) * 100}%`,
+                        right: `${100 - (DIFFICULTY_LEVELS.indexOf(maxDifficulty) / (DIFFICULTY_LEVELS.length - 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+
+                  {/* Range Inputs */}
+                  <div className="relative h-5 pointer-events-none -mt-3">
+                    <input
+                      type="range"
+                      min="0"
+                      max={DIFFICULTY_LEVELS.length - 1}
+                      value={DIFFICULTY_LEVELS.indexOf(minDifficulty)}
+                      onChange={(e) => {
+                        const newIndex = parseInt(e.target.value, 10);
+                        const newMin = DIFFICULTY_LEVELS[newIndex];
+                        if (DIFFICULTY_LEVELS.indexOf(newMin) <= DIFFICULTY_LEVELS.indexOf(maxDifficulty)) {
+                          setMinDifficulty(newMin);
+                        }
+                      }}
+                      className="absolute w-full h-full top-0 left-0 pointer-events-none appearance-none bg-transparent cursor-pointer z-4 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-blue-500 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:active:cursor-grabbing [&::-webkit-slider-track]:bg-transparent [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-blue-500 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:shadow-sm [&::-moz-range-thumb]:active:cursor-grabbing [&::-moz-range-track]:bg-transparent"
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max={DIFFICULTY_LEVELS.length - 1}
+                      value={DIFFICULTY_LEVELS.indexOf(maxDifficulty)}
+                      onChange={(e) => {
+                        const newIndex = parseInt(e.target.value, 10);
+                        const newMax = DIFFICULTY_LEVELS[newIndex];
+                        if (DIFFICULTY_LEVELS.indexOf(newMax) >= DIFFICULTY_LEVELS.indexOf(minDifficulty)) {
+                          setMaxDifficulty(newMax);
+                        }
+                      }}
+                      className="absolute w-full h-full top-0 left-0 pointer-events-none appearance-none bg-transparent cursor-pointer z-5 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-blue-500 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:active:cursor-grabbing [&::-webkit-slider-track]:bg-transparent [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-blue-500 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:shadow-sm [&::-moz-range-thumb]:active:cursor-grabbing [&::-moz-range-track]:bg-transparent"
+                    />
+                  </div>
+
+                  {/* Difficulty Tier Badges Below Track */}
+                  <div className="relative h-7 -mt-1">
+                    <div className="absolute inset-0 flex items-start" style={{ width: '100%', paddingLeft: 0, paddingRight: 0 }}>
+                      {difficultyTrackStops.map((difficulty) => {
+                        const percentage = (DIFFICULTY_LEVELS.indexOf(difficulty) / (DIFFICULTY_LEVELS.length - 1)) * 100;
+                        return (
+                          <div
+                            key={difficulty}
+                            className="flex flex-col items-center gap-0.5"
+                            style={{
+                              position: 'absolute',
+                              left: `${percentage}%`,
+                              transform: 'translateX(-50%)',
+                            }}
+                          >
+                            <div className="w-0.5 h-0.5 bg-gray-400 dark:bg-gray-500" />
+                            <span className={`inline-flex px-1 py-0.5 rounded text-[8px] font-semibold border whitespace-nowrap ${getDifficultyBadgeClass(difficulty)}`}>
+                              {DIFFICULTY_LABELS[difficulty].split(' ')[1]}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-center pt-0">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {DIFFICULTY_LABELS[minDifficulty]} ~ {DIFFICULTY_LABELS[maxDifficulty]}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold text-gray-500 mb-2">태그</div>
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(tagLabels) as ChallengeTag[]).map((tag) => {
+                  const active = selectedTags.has(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      className={`px-2.5 py-1 rounded-md border text-xs transition-colors ${
+                        active
+                          ? tagColors[tag]
+                          : 'border-gray-300 dark:border-[#333] text-gray-600 dark:text-gray-300 hover:border-blue-400'
+                      }`}
+                    >
+                      {tagLabels[tag]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500">정렬</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="w-full mt-2 px-3 py-2 rounded-md border border-gray-300 dark:border-[#333] bg-white dark:bg-[#0d0d0d] text-sm outline-none focus:border-blue-500"
+              >
+                <option value="difficultyAsc">난이도 낮은 순</option>
+                <option value="difficultyDesc">난이도 높은 순</option>
+                <option value="title">제목순</option>
+              </select>
+            </div>
+          </div>
+        </aside>
+
+        <section className="h-full overflow-y-auto">
+          <div className="p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h1 className="text-xl font-bold">문제 목록</h1>
+              <p className="text-sm text-gray-500">{filteredChallenges.length}문제</p>
+            </div>
+
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <Loader2 size={32} className="animate-spin text-blue-500 mb-3" />
+                <p className="text-gray-500 text-sm">문제를 불러오는 중...</p>
+              </div>
+            ) : filteredChallenges.length > 0 ? (
+              <div className="rounded-xl border border-gray-200 dark:border-[#333] bg-white dark:bg-[#161616] overflow-x-auto">
+                <div className="min-w-[860px]">
+                  <div className="grid grid-cols-[56px_120px_1fr_220px_140px] gap-3 px-4 py-3 border-b border-gray-200 dark:border-[#242424] text-xs font-semibold text-gray-500">
+                    <div>#</div>
+                    <div>난이도</div>
+                    <div>제목</div>
+                    <div>태그</div>
+                    <div className="text-right">실행</div>
+                  </div>
+                  {filteredChallenges.map((challenge, index) => (
+                    <ChallengeRow key={challenge.id} challenge={challenge} index={index} />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <Code2 size={48} className="text-gray-300 dark:text-[#333] mb-4" />
+                <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">조건에 맞는 챌린지가 없습니다</h3>
+                <p className="text-gray-500 text-sm">필터를 조정하여 다른 결과를 확인해보세요.</p>
+                <button
+                  onClick={resetFilters}
+                  className="mt-6 px-4 py-2 bg-white dark:bg-[#2d2d2d] hover:bg-gray-50 dark:hover:bg-[#3d3d3d] text-gray-700 dark:text-white rounded-lg text-sm transition-colors border border-gray-200 dark:border-[#444] shadow-sm"
+                >
+                  필터 초기화
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

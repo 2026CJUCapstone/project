@@ -41,7 +41,7 @@ async def _receive_start_payload(websocket: WebSocket) -> dict[str, Any]:
     return payload
 
 
-@router.websocket("/ws/terminal")
+@router.websocket("/terminal")
 async def terminal_endpoint(websocket: WebSocket):
     await websocket.accept()
 

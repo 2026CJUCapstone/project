@@ -50,6 +50,12 @@ const COMMUNITY_API_BASE_URL = normalizeBase(
 const POSTS_PATH = '/api/v1/community/posts';
 const STORAGE_KEY = 'bpp.community.posts.v1';
 
+function getAuthHeader(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const token = window.localStorage.getItem('authToken');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // ── localStorage 폴백 ──────────────────────────────────────────────
 function loadLocalPosts(): CommunityPost[] {
   try {
@@ -134,7 +140,11 @@ export async function createCommunityPost(
     const remote = await tryRemote(async () => {
       const res = await fetch(`${COMMUNITY_API_BASE_URL}${POSTS_PATH}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...getAuthHeader(),
+        },
         body: JSON.stringify({
           problemId: payload.problemId,
           problem_id: payload.problemId,
@@ -168,7 +178,13 @@ export async function deleteCommunityPost(postId: string): Promise<void> {
     const remote = await tryRemote(async () => {
       const res = await fetch(
         `${COMMUNITY_API_BASE_URL}${POSTS_PATH}/${encodeURIComponent(postId)}`,
-        { method: 'DELETE' },
+        {
+          method: 'DELETE',
+          headers: {
+            Accept: 'application/json',
+            ...getAuthHeader(),
+          },
+        },
       );
       if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
       return true;

@@ -48,6 +48,7 @@ export function Header() {
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('authToken');
     clearLeaderboardProfile();
   };
 

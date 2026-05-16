@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, UserPlus, LogIn } from 'lucide-react';
+import { login, register } from '../services/authApi';
 import { createAvatarUrl } from '../services/leaderboardProfile';
 
 interface AuthModalProps {
@@ -10,11 +11,13 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
+  const [nickname, setNickname] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Close on Escape key
   useEffect(() => {
@@ -29,19 +32,48 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
+    setAuthError('');
     if (!isLogin && password !== confirmPassword) {
       setPasswordError('비밀번호가 일치하지 않습니다.');
       return;
     }
     setPasswordError('');
-    const emailName = email.split('@')[0]?.trim() || 'Coder';
-    const name = (isLogin ? emailName : username.trim() || emailName).slice(0, 64);
-    const avatarUrl = createAvatarUrl(name);
-    
-    onLogin(name, avatarUrl);
-    onClose();
+
+    const normalizedUsername = username.trim().slice(0, 64);
+
+    try {
+      setIsSubmitting(true);
+
+      if (normalizedUsername.length < 3) {
+        throw new Error('사용자 이름은 3자 이상이어야 합니다.');
+      }
+      if (password.length < 8) {
+        throw new Error('비밀번호는 8자 이상이어야 합니다.');
+      }
+
+      if (isLogin) {
+        const token = await login(normalizedUsername, password);
+        localStorage.setItem('authToken', token.accessToken);
+      } else {
+        await register(normalizedUsername, password, nickname.trim() || undefined);
+        const token = await login(normalizedUsername, password);
+        localStorage.setItem('authToken', token.accessToken);
+      }
+
+      const displayName = nickname.trim() || normalizedUsername;
+      const avatarUrl = createAvatarUrl(displayName);
+      onLogin(displayName, avatarUrl);
+      onClose();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '인증 중 오류가 발생했습니다.';
+      setAuthError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -72,31 +104,32 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">사용자 이름</label>
+            <input
+              type="text"
+              required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+              placeholder="developer_123"
+            />
+          </div>
+
           {!isLogin && (
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">사용자 이름</label>
-              <input 
-                type="text" 
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                닉네임 <span className="text-gray-400 dark:text-gray-500 font-normal">(선택)</span>
+              </label>
+              <input
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                placeholder="developer_123"
+                placeholder="표시될 이름 (미입력 시 사용자 이름 사용)"
               />
             </div>
           )}
-          
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">이메일 주소</label>
-            <input 
-              type="email" 
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-              placeholder="you@example.com"
-            />
-          </div>
           
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 flex justify-between">
@@ -134,17 +167,19 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
 
           <button 
             type="submit"
+            disabled={isSubmitting}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 dark:hover:bg-blue-500 text-white font-medium rounded-lg shadow-lg shadow-blue-500/20 transition-all active:scale-[0.98] mt-2"
           >
-            {isLogin ? '로그인' : '계정 생성'}
+            {isSubmitting ? '처리 중...' : (isLogin ? '로그인' : '계정 생성')}
           </button>
+          {authError && <p className="text-xs text-red-500 mt-1">{authError}</p>}
         </form>
 
         <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-[#333] pt-6 transition-colors">
           {isLogin ? "계정이 없으신가요? " : "이미 계정이 있으신가요? "}
           <button 
             type="button"
-            onClick={() => { setIsLogin(!isLogin); setPassword(''); setConfirmPassword(''); setPasswordError(''); }}
+            onClick={() => { setIsLogin(!isLogin); setPassword(''); setConfirmPassword(''); setNickname(''); setPasswordError(''); }}
             className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
           >
             {isLogin ? '회원가입' : '로그인'}

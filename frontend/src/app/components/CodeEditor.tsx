@@ -1,12 +1,8 @@
 import Editor, { useMonaco } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
-import { FileCode2, Copy, Check, BookOpen, ChevronDown, ChevronUp, Target, Send, Award, Loader2, Clock, CheckCircle, XCircle } from "lucide-react";
+import { FileCode2, Copy, Check, Loader2, Clock } from "lucide-react";
 import { useLocation } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
-import { judgeCode } from "../services/judgeApi";
-import type { JudgeSummary } from "../services/judgeApi";
-import { submitLeaderboardScore } from "../services/problemApi";
-import { getLeaderboardProfile } from "../services/leaderboardProfile";
 
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
@@ -24,72 +20,13 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     setLanguage,
   } = useCompilerStore();
   const [copied, setCopied] = useState(false);
-  const [isChallengeOpen, setIsChallengeOpen] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [score, setScore] = useState<number | null>(null);
-  const [earnedPoints, setEarnedPoints] = useState<number | null>(null);
-  const [judgeResult, setJudgeResult] = useState<JudgeSummary | null>(null);
-  const [isJudgeDetailOpen, setIsJudgeDetailOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const editorRef = useRef<any>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHydratingEditorRef = useRef(false);
   const [hasHydratedEditor, setHasHydratedEditor] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
-  
-  // URL 상태에서 challenge 전체 정보를 받아옵니다.
-  const challenge = location.state?.challenge;
-  const challengeId = challenge?.id;
-
-  const handleSubmitChallenge = async () => {
-    if (!editorRef.current) return;
-    setIsSubmitting(true);
-    setScore(null);
-    setEarnedPoints(null);
-    setJudgeResult(null);
-
-    try {
-      const code = editorRef.current.getValue();
-      const testCases = challenge?.testCases ?? [
-        { input: "", expectedOutput: challenge?.expectedOutput ?? "" }
-      ];
-      const result = await judgeCode(code, testCases);
-      setJudgeResult(result);
-      setIsJudgeDetailOpen(true);
-
-      const calculatedScore = Math.round((result.passedCount / result.totalCount) * 100);
-      setScore(calculatedScore);
-
-      let points = 20;
-      if (challenge?.difficulty === 'intermediate') points = 50;
-      if (challenge?.difficulty === 'advanced') points = 100;
-
-      let awardedPoints = 0;
-      if (calculatedScore === 100 && challengeId) {
-        const normalizedChallengeId = String(challengeId);
-        const profile = getLeaderboardProfile();
-
-        try {
-          const scoreResult = await submitLeaderboardScore({
-            username: profile.name,
-            points,
-            challengeId: normalizedChallengeId,
-            avatarUrl: profile.avatar,
-          });
-          awardedPoints = scoreResult.awardedPoints;
-        } catch (error) {
-          console.error('Failed to submit leaderboard score', error);
-        }
-      }
-
-      setEarnedPoints(awardedPoints);
-    } catch {
-      setScore(0);
-      setEarnedPoints(0);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const challengeId = location.state?.challenge?.id;
 
   let defaultCode = `import std.io;
 
@@ -340,136 +277,6 @@ func main() -> u64 {
         </button>
       </div>
 
-      {/* 챌���지가 있을 경우 표시되는 접이식 패널 */}
-      {challenge && (
-        <div className="flex flex-col bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#333] shrink-0 transition-colors duration-200">
-          <button
-            onClick={() => setIsChallengeOpen(!isChallengeOpen)}
-            className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition-colors focus:outline-none"
-          >
-            <div className="flex items-center gap-2">
-              <BookOpen size={16} className="text-blue-500 dark:text-blue-400" />
-              <span className="text-sm font-bold text-gray-800 dark:text-gray-200">현재 챌린지: {challenge.title}</span>
-            </div>
-            {isChallengeOpen ? (
-              <ChevronUp size={16} className="text-gray-500" />
-            ) : (
-              <ChevronDown size={16} className="text-gray-500" />
-            )}
-          </button>
-          
-          {isChallengeOpen && (
-            <div className="px-4 pb-4 pt-1 flex flex-col gap-3 animate-in slide-in-from-top-2 fade-in duration-200">
-              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                {challenge.description}
-              </p>
-              <div>
-                <div className="flex items-center gap-1.5 mb-1.5 text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                  <Target size={14} className="text-green-600 dark:text-green-400" />
-                  기대 출력
-                </div>
-                <div className="bg-white dark:bg-[#0d0d0d] border border-gray-200 dark:border-[#333] rounded p-2.5 font-mono text-xs text-green-600 dark:text-green-400 break-words">
-                  {challenge.expectedOutput}
-                </div>
-              </div>
-
-              {/* 채점 결과 및 제출 버튼 */}
-              <div className="mt-1 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                {score !== null && (
-                  <div className={`flex items-center gap-4 px-3 py-2 rounded-lg border ${score === 100 ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">채점 결과</span>
-                      <span className={`text-sm font-bold leading-none ${score === 100 ? 'text-green-400' : 'text-red-400'}`}>
-                        {score} <span className="text-xs font-medium opacity-70">/ 100 점</span>
-                      </span>
-                    </div>
-                    <div className="w-px h-6 bg-[#333]"></div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">획득 포인트</span>
-                      <span className="text-sm font-bold text-yellow-400 flex items-center gap-1 leading-none">
-                        <Award size={14} className="text-yellow-500" />
-                        +{earnedPoints} <span className="text-xs font-medium opacity-70">XP</span>
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <button 
-                  onClick={handleSubmitChallenge}
-                  disabled={isSubmitting}
-                  className={`flex items-center justify-center gap-2 px-5 py-2 text-sm font-semibold rounded-lg transition-colors ml-auto
-                    ${isSubmitting 
-                      ? 'bg-[#333] text-gray-500 cursor-not-allowed' 
-                      : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      채점 중...
-                    </>
-                  ) : (
-                    <>
-                      <Send size={16} />
-                      제출하기
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* 채점 상세 결과 (접기/펼치기) */}
-              {judgeResult && (
-                <div className="border-t border-gray-200 dark:border-[#333] mt-2 pt-1">
-                  <button
-                    onClick={() => setIsJudgeDetailOpen(!isJudgeDetailOpen)}
-                    className="flex items-center justify-between w-full py-2 hover:opacity-80 transition-opacity"
-                  >
-                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      채점 상세 ({judgeResult.passedCount}/{judgeResult.totalCount} 통과)
-                    </span>
-                    {isJudgeDetailOpen ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
-                  </button>
-
-                  {isJudgeDetailOpen && (
-                    <div className="flex flex-col gap-2 pb-1 animate-in slide-in-from-top-2 fade-in duration-200">
-                      {judgeResult.results.map((r, idx) => (
-                        <div key={idx} className={`p-2.5 rounded border ${
-                          r.passed ? "border-green-500/20 bg-green-500/5" : "border-red-500/20 bg-red-500/5"
-                        }`}>
-                          <div className="flex items-center gap-2 mb-1.5">
-                            {r.passed ? (
-                              <CheckCircle size={13} className="text-green-400" />
-                            ) : (
-                              <XCircle size={13} className="text-red-400" />
-                            )}
-                            <span className="text-xs font-semibold text-gray-300 dark:text-gray-300">테스트 #{idx + 1}</span>
-                            <span className="text-[10px] text-gray-500 ml-auto">{r.executionTime}ms</span>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-[11px]">
-                            <div>
-                              <p className="text-gray-500 mb-0.5">입력</p>
-                              <code className="block bg-white/5 dark:bg-[#0d0d0d] rounded px-1.5 py-1 text-gray-400 whitespace-pre-wrap">{r.input || "(없음)"}</code>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-0.5">기대 출력</p>
-                              <code className="block bg-white/5 dark:bg-[#0d0d0d] rounded px-1.5 py-1 text-green-400 whitespace-pre-wrap">{r.expected}</code>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 mb-0.5">실제 출력</p>
-                              <code className={`block bg-white/5 dark:bg-[#0d0d0d] rounded px-1.5 py-1 whitespace-pre-wrap ${r.passed ? "text-green-400" : "text-red-400"}`}>{r.actual || "(없음)"}</code>
-                            </div>
-                          </div>
-                          {r.error && <p className="text-[11px] text-red-400 mt-1">오류: {r.error}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-      
       <div className="flex-1 w-full pt-2 bg-white dark:bg-transparent transition-colors duration-200">
         <Editor
           height="100%"

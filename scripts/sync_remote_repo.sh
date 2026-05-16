@@ -28,7 +28,8 @@ git -C "$DEPLOY_PATH" clean -fdx \
   -e .sandbox-work/ \
   -e backend/.venv/ \
   -e frontend/dist/ \
-  -e frontend/node_modules/
+  -e frontend/node_modules/ \
+  -e .data/
 
 if [ "$RUN_DEPLOY_SCRIPT" = "1" ]; then
   cd "$DEPLOY_PATH"

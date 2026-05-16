@@ -3,11 +3,10 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recha
 import { ProblemFormModal } from "../components/ProblemFormModal";
 import { getProblems, createProblem, deleteProblem, updateProblem } from "../services/problemApi";
 import type { Problem, ProblemCreateRequest } from "../services/problemApi";
+import { DIFFICULTY_LABELS } from "../constants/difficulty";
 
 const difficultyLabel: Record<string, string> = {
-  beginner: "쉬움",
-  intermediate: "보통",
-  advanced: "어려움",
+  ...DIFFICULTY_LABELS,
 };
 
 export function Admin() {
@@ -177,13 +176,14 @@ export function Admin() {
                     <th className="py-2 px-3">제목</th>
                     <th className="py-2 px-3">난이도</th>
                     <th className="py-2 px-3">태그</th>
+                    <th className="py-2 px-3">테스트</th>
                     <th className="py-2 px-3">관리</th>
                   </tr>
                 </thead>
                 <tbody>
                   {problems.length === 0 ? (
                     <tr className="text-sm text-gray-500 border-b border-[#222]">
-                      <td className="py-3 px-3" colSpan={5}>
+                      <td className="py-3 px-3" colSpan={6}>
                         등록된 문제가 없습니다.
                       </td>
                     </tr>
@@ -200,6 +200,12 @@ export function Admin() {
                                 {tag === 'io' ? '입출력' : tag === 'control' ? '제어문' : '함수'}
                               </span>
                             ))}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-1 text-xs">
+                            <span className="text-emerald-300">예시 {(p.testCases ?? []).length}개</span>
+                            <span className="text-amber-300">숨김 {(p.hiddenTestCases ?? []).length}개</span>
                           </div>
                         </td>
                         <td className="py-3 px-3">
@@ -227,7 +233,7 @@ export function Admin() {
                 <ProblemFormModal
                   onClose={() => { setShowForm(false); setEditingProblem(null); }}
                   onSubmit={handleAddProblem}
-                  initialData={editingProblem ? { title: editingProblem.title, difficulty: editingProblem.difficulty, tags: editingProblem.tags, description: editingProblem.description, testCases: editingProblem.testCases } : undefined}
+                  initialData={editingProblem ? { title: editingProblem.title, difficulty: editingProblem.difficulty, tags: editingProblem.tags, description: editingProblem.description, testCases: editingProblem.testCases, hiddenTestCases: editingProblem.hiddenTestCases } : undefined}
                 />
               )}
 
@@ -271,12 +277,12 @@ export function Admin() {
                           data={(() => {
                             const counts: Record<string, number> = {};
                             problems.forEach(p => { counts[p.difficulty] = (counts[p.difficulty] || 0) + 1; });
-                            const labels: Record<string, string> = { beginner: '쉬움', intermediate: '보통', advanced: '어려움' };
+                            const labels: Record<string, string> = DIFFICULTY_LABELS;
                             return Object.entries(counts).map(([k, v]) => ({ name: labels[k] || k, value: v }));
                           })()}
                           cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                         >
-                          {['#22c55e', '#eab308', '#ef4444'].map((color, i) => <Cell key={i} fill={color} />)}
+                          {['#78716c', '#a16207', '#64748b', '#ca8a04', '#0891b2', '#2563eb'].map((color, i) => <Cell key={i} fill={color} />)}
                         </Pie>
                         <Tooltip contentStyle={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, color: '#fff' }} />
                         <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />

@@ -3,6 +3,7 @@ import { Layout } from "./Layout";
 import { IDE } from "./pages/IDE";
 import { Leaderboard } from "./pages/Leaderboard";
 import { Challenges } from "./pages/Challenges";
+import { ChallengeDetail } from "./pages/ChallengeDetail";
 import { Community } from "./pages/Community";
 import { Admin } from "./pages/Admin";
 
@@ -16,6 +17,7 @@ export const routeDefinitions = [
       { index: true, Component: IDE },
       { path: "leaderboard", Component: Leaderboard },
       { path: "challenges", Component: Challenges },
+      { path: "challenges/:challengeId", Component: ChallengeDetail },
       { path: "community", Component: Community },
     ],
   },

@@ -1,4 +1,18 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${WEBCOMPILER_POSTGRES_DB:-compiler}
+      POSTGRES_USER: ${WEBCOMPILER_POSTGRES_USER:-compiler}
+      POSTGRES_PASSWORD: ${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${WEBCOMPILER_POSTGRES_USER:-compiler} -d ${WEBCOMPILER_POSTGRES_DB:-compiler}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -13,7 +27,10 @@ services:
       SANDBOX_CPU_LIMIT: 1.0
       SANDBOX_PIDS_LIMIT: 64
       SANDBOX_NOFILE_LIMIT: 1024
-      DATABASE_URL: sqlite:////data/bpp_project.db
+      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}@postgres:5432/${WEBCOMPILER_POSTGRES_DB:-compiler}
+    depends_on:
+      postgres:
+        condition: service_healthy
     working_dir: ${PROJECT_ROOT}/backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     volumes:
@@ -33,3 +50,6 @@ services:
       - backend
     ports:
       - "${WEBCOMPILER_FRONTEND_PORT_MAPPING:-5173:80}"
+
+volumes:
+  postgres_data:

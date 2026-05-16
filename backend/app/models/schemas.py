@@ -114,10 +114,24 @@ class TestCase(CamelModel):
 
 class ProblemBase(CamelModel):
     title: str
-    difficulty: Literal["beginner", "intermediate", "advanced"]
+    difficulty: Literal[
+        "iron5", "iron4", "iron3", "iron2", "iron1",
+        "bronze5", "bronze4", "bronze3", "bronze2", "bronze1",
+        "silver5", "silver4", "silver3", "silver2", "silver1",
+        "gold5", "gold4", "gold3", "gold2", "gold1",
+        "platinum5", "platinum4", "platinum3", "platinum2", "platinum1",
+        "diamond5", "diamond4", "diamond3", "diamond2", "diamond1",
+    ]
     tags: List[Literal["io", "control", "func"]]
     description: str
-    test_cases: List[TestCase]
+    test_cases: List[TestCase] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("test_cases", "testCases", "sample_test_cases", "sampleTestCases"),
+    )
+    hidden_test_cases: List[TestCase] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("hidden_test_cases", "hiddenTestCases"),
+    )
 
 
 class ProblemCreate(ProblemBase):
@@ -131,6 +145,8 @@ class ProblemRead(CamelModel):
     difficulty: str
     tags: List[str]
     description: str
+    test_cases: List[TestCase]
+    hidden_test_cases: List[TestCase] = Field(default_factory=list)
     created_at: datetime
 
 class ProblemDetail(ProblemBase):
@@ -139,6 +155,7 @@ class ProblemDetail(ProblemBase):
 
 class UserCreate(CamelModel):
     username: str = Field(min_length=3, max_length=50)
+    nickname: Optional[str] = Field(default=None, min_length=2, max_length=30)
     password: str = Field(min_length=8)
 
 class UserLogin(CamelModel):
@@ -148,6 +165,7 @@ class UserLogin(CamelModel):
 class UserRead(CamelModel):
     id: str
     username: str
+    nickname: Optional[str] = None
     total_score: int
     avatar_url: Optional[str] = None
 
@@ -161,6 +179,8 @@ class SubmissionRequest(CamelModel):
 
 class TestCaseResult(CamelModel):
     case_number: int
+    phase: Literal["sample", "hidden"]
+    is_visible: bool = True
     status: Literal["Correct", "Wrong", "Error"]
     input: str
     expected: str
@@ -170,6 +190,11 @@ class SubmissionResponse(CamelModel):
     status: str
     total_cases: int
     passed_cases: int
+    sample_total_cases: int
+    sample_passed_cases: int
+    hidden_total_cases: int
+    hidden_passed_cases: int
+    hidden_completed: bool
     total_score: int
     details: List[TestCaseResult]
 
@@ -184,3 +209,21 @@ class CommentRead(CommentBase):
     problem_id: str
     user_id: str
     created_at: datetime
+
+
+class CommunityPostCreate(CamelModel):
+    problem_id: str = Field(min_length=1, max_length=128)
+    content: str = Field(min_length=1, max_length=1000)
+
+
+class CommunityPostRead(CamelModel):
+    id: str
+    problem_id: str
+    author: str
+    avatar_url: Optional[str] = None
+    content: str
+    created_at: datetime
+
+
+class CommunityPostCountsRequest(CamelModel):
+    problem_ids: List[str]
