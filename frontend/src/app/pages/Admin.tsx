@@ -205,7 +205,7 @@ export function Admin() {
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-1 text-xs">
                             <span className="text-emerald-300">예시 {(p.testCases ?? []).length}개</span>
-                            <span className="text-amber-300">숨김 {(p.hiddenTestCases ?? []).length}개</span>
+                            <span className="text-amber-300">채점 {(p.hiddenTestCases ?? []).length}개</span>
                           </div>
                         </td>
                         <td className="py-3 px-3">

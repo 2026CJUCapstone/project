@@ -32,7 +32,7 @@ def _normalize_problem_test_cases(raw_test_cases: object) -> tuple[list[dict], l
     return [normalize_case(test_case) for test_case in sample_cases], [normalize_case(test_case) for test_case in hidden_cases]
 
 
-def _serialize_problem(problem: db_models.Problem) -> dict:
+def _serialize_problem(problem: db_models.Problem, include_hidden: bool = False) -> dict:
     sample_cases, hidden_cases = _normalize_problem_test_cases(problem.test_cases)
     return {
         "id": problem.id,
@@ -42,7 +42,7 @@ def _serialize_problem(problem: db_models.Problem) -> dict:
         "tags": problem.tags,
         "description": problem.description,
         "test_cases": sample_cases,
-        "hidden_test_cases": hidden_cases,
+        "hidden_test_cases": hidden_cases if include_hidden else [],
         "created_at": problem.created_at,
     }
 
@@ -84,10 +84,15 @@ def create_problem(
     db.add(db_problem)
     db.commit()
     db.refresh(db_problem)
-    return _serialize_problem(db_problem)
+    return _serialize_problem(db_problem, include_hidden=True)
 
 @router.get("/", response_model=List[schemas.ProblemRead])
-def list_problems(difficulty: Optional[str] = Query(None), tag: Optional[str] = Query(None), db: Session = Depends(get_db)):
+def list_problems(
+    difficulty: Optional[str] = Query(None),
+    tag: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: db_models.User | None = Depends(get_optional_current_user),
+):
     query = db.query(db_models.Problem)
     if difficulty:
         query = query.filter(db_models.Problem.difficulty == difficulty)
@@ -96,8 +101,13 @@ def list_problems(difficulty: Optional[str] = Query(None), tag: Optional[str] = 
     
     if tag:
         problems = [p for p in problems if tag in p.tags]
-            
-    return [_serialize_problem(problem) for problem in problems]
+    return [
+        _serialize_problem(
+            problem,
+            include_hidden=current_user is not None and problem.creator_id == current_user.id,
+        )
+        for problem in problems
+    ]
 
 @router.put("/{id}", response_model=schemas.ProblemRead)
 def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depends(get_db), current_user: db_models.User = Depends(get_current_user)):
@@ -118,7 +128,7 @@ def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depend
     
     db.commit()
     db.refresh(db_problem)
-    return _serialize_problem(db_problem)
+    return _serialize_problem(db_problem, include_hidden=True)
 
 @router.delete("/{id}")
 def delete_problem(id: str, db: Session = Depends(get_db), current_user: db_models.User = Depends(get_current_user)):
@@ -250,21 +260,19 @@ async def submit_problem(
         if case_result.status == "Correct":
             sample_passed_count += 1
 
-    hidden_completed = sample_passed_count == len(sample_cases)
+    grading_completed = sample_passed_count == len(sample_cases)
 
-    if hidden_completed:
+    if grading_completed:
         for index, tc in enumerate(hidden_cases, start=1):
-            case_result = await run_case(tc, index, "hidden", False)
-            details.append(case_result)
+            case_result = await run_case(tc, index, "sample", False)
             if case_result.status == "Correct":
                 hidden_passed_count += 1
 
-    total_cases = len(sample_cases) + len(hidden_cases)
-    passed_cases = sample_passed_count + hidden_passed_count
+    grading_passed = grading_completed and hidden_passed_count == len(hidden_cases)
 
     if sample_passed_count != len(sample_cases):
         final_status = "SampleFailed"
-    elif hidden_completed and hidden_passed_count == len(hidden_cases):
+    elif grading_passed:
         final_status = "Accepted"
     else:
         final_status = "Rejected"
@@ -285,13 +293,12 @@ async def submit_problem(
 
     return schemas.SubmissionResponse(
         status=final_status,
-        total_cases=total_cases,
-        passed_cases=passed_cases,
+        total_cases=len(sample_cases),
+        passed_cases=sample_passed_count,
         sample_total_cases=len(sample_cases),
         sample_passed_cases=sample_passed_count,
-        hidden_total_cases=len(hidden_cases),
-        hidden_passed_cases=hidden_passed_count,
-        hidden_completed=hidden_completed,
+        grading_completed=grading_completed,
+        grading_passed=grading_passed,
         total_score=total_score,
-        details=details,
+        details=[detail for detail in details if detail.is_visible],
     )

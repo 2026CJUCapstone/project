@@ -179,7 +179,7 @@ class SubmissionRequest(CamelModel):
 
 class TestCaseResult(CamelModel):
     case_number: int
-    phase: Literal["sample", "hidden"]
+    phase: Literal["sample"]
     is_visible: bool = True
     status: Literal["Correct", "Wrong", "Error"]
     input: str
@@ -192,9 +192,8 @@ class SubmissionResponse(CamelModel):
     passed_cases: int
     sample_total_cases: int
     sample_passed_cases: int
-    hidden_total_cases: int
-    hidden_passed_cases: int
-    hidden_completed: bool
+    grading_completed: bool
+    grading_passed: bool
     total_score: int
     details: List[TestCaseResult]
 

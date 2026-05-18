@@ -18,12 +18,9 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
   const sampleProgress = result
     ? Math.round((result.samplePassedCases / Math.max(result.sampleTotalCases, 1)) * 100)
     : 0;
-  const hiddenProgress = result
-    ? Math.round((result.hiddenPassedCases / Math.max(result.hiddenTotalCases, 1)) * 100)
-    : 0;
-  const overallProgress = result
-    ? Math.round((result.passedCases / Math.max(result.totalCases, 1)) * 100)
-    : 0;
+  const gradingStatus = result?.gradingCompleted
+    ? result.gradingPassed ? '통과' : '실패'
+    : '미진행';
 
   const handleSubmit = async () => {
     setIsJudging(true);
@@ -71,7 +68,7 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
         {!result && !isJudging && (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm">
             <Send size={32} className="mb-3 text-gray-600" />
-            <p>예시 테스트를 먼저 확인한 뒤 전체 채점을 진행합니다</p>
+            <p>예제 채점을 먼저 확인한 뒤 채점을 진행합니다</p>
             <p className="text-xs mt-1 text-gray-600">공개 예시 {testCases.length}개</p>
           </div>
         )}
@@ -107,23 +104,14 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
                   {result.status === 'Accepted' ? '정답입니다!' : '채점 완료'}
                 </p>
                 <p className="text-xs text-gray-400">
-                  예시 {result.samplePassedCases}/{result.sampleTotalCases} 통과
-                  {result.hiddenCompleted ? ` · 숨김 ${result.hiddenPassedCases}/${result.hiddenTotalCases} 통과` : ' · 숨김 테스트는 진행되지 않음'}
+                  예제 채점 {result.samplePassedCases}/{result.sampleTotalCases} 통과 · 채점 {gradingStatus}
                 </p>
-                <p className="text-[11px] text-gray-500 mt-1">전체 진행률 {overallProgress}%</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-[#333] bg-[#111] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">전체 진행률</p>
-                <p className="text-2xl font-bold text-white mb-2">{overallProgress}%</p>
-                <div className="h-2 rounded-full bg-[#1f1f1f] overflow-hidden">
-                  <div className={`h-full ${result.status === 'Accepted' ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${overallProgress}%` }} />
-                </div>
-              </div>
-              <div className="rounded-lg border border-[#333] bg-[#111] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">예시 테스트</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">예제 채점</p>
                 <p className="text-2xl font-bold text-blue-300 mb-2">{sampleProgress}%</p>
                 <div className="h-2 rounded-full bg-[#1f1f1f] overflow-hidden mb-2">
                   <div className="h-full bg-blue-500" style={{ width: `${sampleProgress}%` }} />
@@ -131,15 +119,18 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
                 <p className="text-[11px] text-gray-500">{result.samplePassedCases}/{result.sampleTotalCases} 통과</p>
               </div>
               <div className="rounded-lg border border-[#333] bg-[#111] p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">숨김 테스트</p>
-                <p className="text-2xl font-bold text-amber-300 mb-2">{result.hiddenCompleted ? `${hiddenProgress}%` : '--'}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">채점</p>
+                <p className={`text-2xl font-bold mb-2 ${result.gradingPassed ? 'text-green-300' : 'text-amber-300'}`}>
+                  {gradingStatus}
+                </p>
                 <div className="h-2 rounded-full bg-[#1f1f1f] overflow-hidden mb-2">
-                  <div className="h-full bg-amber-500" style={{ width: `${result.hiddenCompleted ? hiddenProgress : 0}%` }} />
+                  <div
+                    className={`h-full ${result.gradingPassed ? 'bg-green-500' : 'bg-amber-500'}`}
+                    style={{ width: `${result.gradingCompleted ? 100 : 0}%` }}
+                  />
                 </div>
                 <p className="text-[11px] text-gray-500">
-                  {result.hiddenCompleted
-                    ? `${result.hiddenPassedCases}/${result.hiddenTotalCases} 통과`
-                    : '예시를 모두 통과하면 진행'}
+                  {result.gradingCompleted ? '전체 채점 완료' : '예제 채점을 통과하면 진행'}
                 </p>
               </div>
             </div>
@@ -161,7 +152,7 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
                   <span className="text-xs font-semibold text-gray-300">
                     테스트 #{idx + 1}
                   </span>
-                  <span className="text-[10px] text-blue-300 ml-auto uppercase tracking-wider">예시</span>
+                  <span className="text-[10px] text-blue-300 ml-auto uppercase tracking-wider">예제</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>
@@ -185,17 +176,6 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
               </div>
               );
             })}
-
-            {result.hiddenTotalCases > 0 && (
-              <div className="rounded-lg border border-[#333] bg-[#111] p-3">
-                <p className="text-xs font-semibold text-gray-300 mb-1">숨김 테스트 진행률</p>
-                <p className="text-xs text-gray-400">
-                  {result.hiddenCompleted
-                    ? `숨김 테스트 ${result.hiddenPassedCases}/${result.hiddenTotalCases}개 통과 (${hiddenProgress}%)`
-                    : '예시 테스트를 모두 통과하지 못해 숨김 테스트는 실행되지 않았습니다.'}
-                </p>
-              </div>
-            )}
           </div>
         )}
       </div>

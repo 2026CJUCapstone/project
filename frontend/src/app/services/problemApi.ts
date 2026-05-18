@@ -8,6 +8,12 @@ function normalizeApiBaseUrl(value: string): string {
 const apiBaseFromBaseUrl = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL.replace(/\/$/, '');
 const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL || apiBaseFromBaseUrl);
 
+function authHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const token = window.localStorage.getItem('authToken');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export interface TestCase {
   input: string;
   expectedOutput: string;
@@ -41,7 +47,7 @@ export type ProblemCreateRequest = Omit<Problem, 'id' | 'createdAt'>;
 
 export interface SubmissionDetail {
   caseNumber: number;
-  phase: 'sample' | 'hidden';
+  phase: 'sample';
   isVisible: boolean;
   status: 'Correct' | 'Wrong' | 'Error';
   input: string;
@@ -55,9 +61,8 @@ export interface ProblemSubmissionResult {
   passedCases: number;
   sampleTotalCases: number;
   samplePassedCases: number;
-  hiddenTotalCases: number;
-  hiddenPassedCases: number;
-  hiddenCompleted: boolean;
+  gradingCompleted: boolean;
+  gradingPassed: boolean;
   totalScore: number;
   details: SubmissionDetail[];
 }
@@ -84,7 +89,9 @@ export interface LeaderboardScoreResult extends LeaderboardEntry {
 
 // 문제 목록 조회
 export async function getProblems(): Promise<Problem[]> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/problems/`);
+  const res = await fetch(`${API_BASE_URL}/api/v1/problems/`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) throw new Error('문제 목록을 불러오지 못했습니다.');
   return res.json();
 }
@@ -93,7 +100,7 @@ export async function getProblems(): Promise<Problem[]> {
 export async function createProblem(data: ProblemCreateRequest): Promise<Problem> {
   const res = await fetch(`${API_BASE_URL}/api/v1/problems/`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('문제 추가에 실패했습니다.');
@@ -104,6 +111,7 @@ export async function createProblem(data: ProblemCreateRequest): Promise<Problem
 export async function deleteProblem(id: string): Promise<void> {
   const res = await fetch(`${API_BASE_URL}/api/v1/problems/${id}`, {
     method: 'DELETE',
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error('문제 삭제에 실패했습니다.');
 }
@@ -112,7 +120,7 @@ export async function deleteProblem(id: string): Promise<void> {
 export async function updateProblem(id: string, data: ProblemCreateRequest): Promise<Problem> {
   const res = await fetch(`${API_BASE_URL}/api/v1/problems/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('문제 수정에 실패했습니다.');
@@ -120,17 +128,9 @@ export async function updateProblem(id: string, data: ProblemCreateRequest): Pro
 }
 
 export async function submitProblem(id: string, code: string, language: string): Promise<ProblemSubmissionResult> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (typeof window !== 'undefined') {
-    const token = window.localStorage.getItem('authToken');
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-  }
-
   const res = await fetch(`${API_BASE_URL}/api/v1/problems/${id}/submit`, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ code, language }),
   });
 

@@ -164,20 +164,20 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-700">숨김 테스트 케이스</label>
+          <label className="text-sm font-medium text-gray-700">채점 테스트 케이스</label>
           {hiddenTestCases.map((tc, idx) => (
             <div key={idx} className="flex gap-2 items-start">
               <div className="flex-1 flex flex-col gap-1">
                 <input
                   type="text"
-                  placeholder={`숨김 입력 ${idx + 1}`}
+                  placeholder={`채점 입력 ${idx + 1}`}
                   value={tc.input}
                   onChange={(e) => updateHiddenTestCase(idx, "input", e.target.value)}
                   className="border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-blue-500"
                 />
                 <input
                   type="text"
-                  placeholder={`숨김 기대 출력 ${idx + 1}`}
+                  placeholder={`채점 기대 출력 ${idx + 1}`}
                   value={tc.expectedOutput}
                   onChange={(e) => updateHiddenTestCase(idx, "expectedOutput", e.target.value)}
                   className="border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-blue-500"
@@ -199,7 +199,7 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
             onClick={addHiddenTestCase}
             className="text-sm text-blue-500 hover:text-blue-700 self-start"
           >
-            + 숨김 테스트 케이스 추가
+            + 채점 테스트 케이스 추가
           </button>
         </div>
 
