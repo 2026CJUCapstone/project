@@ -69,4 +69,16 @@ describe("compilerStore", () => {
     expect(state.backendStatus).toBe("offline");
     expect(state.lastError).toContain("백엔드 연결 실패");
   });
+
+  it("stores main and problem code in separate slots", () => {
+    const store = useCompilerStore.getState();
+
+    store.saveCode("main code", "main");
+    store.saveCode("problem one", "problem:p-1");
+    store.saveCode("problem two", "problem:p-2");
+
+    expect(store.loadCode("main")).toBe("main code");
+    expect(store.loadCode("problem:p-1")).toBe("problem one");
+    expect(store.loadCode("problem:p-2")).toBe("problem two");
+  });
 });

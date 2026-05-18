@@ -7,13 +7,15 @@ import {
   Send,
   Trash2,
   AlertTriangle,
-  Cloud,
-  HardDrive,
   LogIn,
   Megaphone,
   BookOpen,
   Coffee,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { getProblems, type Problem } from '../services/problemApi';
 import {
   getSavedLeaderboardProfile,
@@ -26,7 +28,6 @@ import {
   deleteCommunityPost,
   fetchCommunityPostCounts,
   fetchCommunityPosts,
-  isCommunityRemoteConfigured,
   type CommunityPost,
 } from '../services/communityApi';
 
@@ -73,6 +74,33 @@ interface PostBoardProps {
 
 function isAdminUser(user: LeaderboardProfile | null): boolean {
   return Boolean(user && user.name.trim().toLowerCase() === 'admin');
+}
+
+function MarkdownBody({ children, compact = false }: { children: string; compact?: boolean }) {
+  return (
+    <div
+      className={`prose max-w-none dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-white prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-code:text-blue-600 dark:prose-code:text-blue-300 prose-pre:bg-gray-100 dark:prose-pre:bg-[#1a1a1a] prose-pre:border prose-pre:border-gray-200 dark:prose-pre:border-[#333] ${
+        compact ? 'prose-sm' : 'prose-sm md:prose-base'
+      }`}
+    >
+      <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function getProblemSummary(description: string): string {
+  const normalized = description.replace(/\r\n/g, '\n');
+  const problemMatch = normalized.match(/##\s*문제\s*\n+([\s\S]*?)(\n##\s*입력|\n##\s*출력|$)/);
+  const source = problemMatch?.[1] ?? normalized;
+  return source
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\n+/g, ' ')
+    .trim();
 }
 
 function PostBoard({
@@ -274,9 +302,7 @@ function PostBoard({
                   <Trash2 size={14} />
                 </button>
               </div>
-              <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
-                {post.content}
-              </p>
+              <MarkdownBody compact>{post.content}</MarkdownBody>
             </li>
           ))}
         </ul>
@@ -289,10 +315,9 @@ interface ProblemBoardProps {
   user: LeaderboardProfile | null;
   onRequireLogin: () => void;
   initialProblemId?: string | null;
-  initialDraft?: string;
 }
 
-function ProblemBoard({ user, onRequireLogin, initialProblemId, initialDraft }: ProblemBoardProps) {
+function ProblemBoard({ user, onRequireLogin, initialProblemId }: ProblemBoardProps) {
   const [problems, setProblems] = useState<Problem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -360,9 +385,7 @@ function ProblemBoard({ user, onRequireLogin, initialProblemId, initialDraft }: 
           <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
             {selectedProblem.title}
           </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3">
-            {selectedProblem.description}
-          </p>
+          <MarkdownBody compact>{selectedProblem.description}</MarkdownBody>
         </div>
 
         <PostBoard
@@ -370,7 +393,6 @@ function ProblemBoard({ user, onRequireLogin, initialProblemId, initialDraft }: 
           user={user}
           onRequireLogin={onRequireLogin}
           placeholder="이 문제에 대한 생각을 공유해보세요..."
-          initialDraft={initialDraft}
         />
       </section>
     );
@@ -399,7 +421,7 @@ function ProblemBoard({ user, onRequireLogin, initialProblemId, initialDraft }: 
               </span>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
-              {problem.description}
+              {getProblemSummary(problem.description)}
             </p>
           </button>
         </li>
@@ -421,13 +443,6 @@ export function Community() {
   const [pendingProblemId, setPendingProblemId] = useState<string | null>(
     navState?.problemId ?? null,
   );
-  const [pendingDraft, setPendingDraft] = useState<string>(
-    navState?.problemId
-      ? `[문제 #${navState.problemId}·${navState.problemTitle ?? ''}] `
-      : '',
-  );
-
-  const remoteConfigured = isCommunityRemoteConfigured();
 
   useEffect(() => {
     setUser(getSavedLeaderboardProfile());
@@ -439,7 +454,6 @@ export function Community() {
       if (navState.tab) setTab(navState.tab);
       if (navState.problemId) {
         setPendingProblemId(navState.problemId);
-        setPendingDraft(`[문제 #${navState.problemId}·${navState.problemTitle ?? ''}] `);
       }
       navigate(location.pathname, { replace: true, state: null });
     }
@@ -457,21 +471,6 @@ export function Community() {
               <MessageSquare className="text-purple-500" size={24} />
               커뮤니티
             </h1>
-            <span
-              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border ${
-                remoteConfigured
-                  ? 'text-green-600 border-green-500/40 bg-green-500/10'
-                  : 'text-amber-600 border-amber-500/40 bg-amber-500/10'
-              }`}
-              title={
-                remoteConfigured
-                  ? '백엔드 API에 연결되어 게시글이 영속화됩니다.'
-                  : 'VITE_COMMUNITY_API_URL 또는 VITE_API_URL 미설정 — 브라우저 로컬에만 저장됩니다.'
-              }
-            >
-              {remoteConfigured ? <Cloud size={12} /> : <HardDrive size={12} />}
-              {remoteConfigured ? '서버 저장' : '로컬 저장'}
-            </span>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{tabMeta.description}</p>
         </header>
@@ -518,7 +517,6 @@ export function Community() {
             user={user}
             onRequireLogin={() => setIsAuthOpen(true)}
             initialProblemId={pendingProblemId}
-            initialDraft={pendingDraft}
           />
         )}
         {tab === 'free' && (

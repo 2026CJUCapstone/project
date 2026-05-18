@@ -13,6 +13,13 @@ export type TerminalLine = {
   text: string;
 };
 
+export type SourceSelectionRange = {
+  startLine: number;
+  endLine: number;
+  startColumn: number;
+  endColumn: number;
+};
+
 interface CompilerState {
   code: string;
   setCode: (code: string) => void;
@@ -34,6 +41,8 @@ interface CompilerState {
   setActiveGraphTab: (tab: 'AST' | 'SSA' | 'IR' | 'ASM') => void;
   selectedText: string;
   setSelectedText: (text: string) => void;
+  selectedSourceRange: SourceSelectionRange | null;
+  setSelectedSourceRange: (range: SourceSelectionRange | null) => void;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   // 컴파일 관련 상태
@@ -53,11 +62,15 @@ interface CompilerState {
   lastSavedTime: number | null;
   autoSaveEnabled: boolean;
   setAutoSaveEnabled: (enabled: boolean) => void;
-  saveCode: (code: string) => void;
-  loadCode: () => string | null;
+  codeStorageScope: string;
+  setCodeStorageScope: (scope: string) => void;
+  saveCode: (code: string, scope?: string | null) => void;
+  loadCode: (scope?: string | null) => string | null;
 }
 
-const STORAGE_KEY = 'b-compiler-editor-code';
+const LEGACY_STORAGE_KEY = 'b-compiler-editor-code';
+const STORAGE_KEY_PREFIX = 'b-compiler-editor-code';
+const MAIN_STORAGE_SCOPE = 'main';
 let activeRunController: AbortController | null = null;
 let activeTerminalSocket: WebSocket | null = null;
 let terminalStopRequested = false;
@@ -102,6 +115,15 @@ function closeTerminalSocket() {
   if (current && current.readyState !== WebSocket.CLOSED) {
     current.close();
   }
+}
+
+function normalizeStorageScope(scope?: string | null): string {
+  const normalized = scope?.trim();
+  return normalized || MAIN_STORAGE_SCOPE;
+}
+
+function codeStorageKey(scope?: string | null): string {
+  return `${STORAGE_KEY_PREFIX}:${normalizeStorageScope(scope)}`;
 }
 
 export const useCompilerStore = create<CompilerState>((set, get) => ({
@@ -185,6 +207,8 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   },
   selectedText: '',
   setSelectedText: (text) => set({ selectedText: text }),
+  selectedSourceRange: null,
+  setSelectedSourceRange: (range) => set({ selectedSourceRange: range }),
   theme: 'dark',
   toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
   
@@ -425,19 +449,30 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   lastSavedTime: null,
   autoSaveEnabled: true,
   setAutoSaveEnabled: (enabled) => set({ autoSaveEnabled: enabled }),
+  codeStorageScope: MAIN_STORAGE_SCOPE,
+  setCodeStorageScope: (scope) => set({ codeStorageScope: normalizeStorageScope(scope) }),
   
-  saveCode: (code) => {
+  saveCode: (code, scope) => {
     try {
-      localStorage.setItem(STORAGE_KEY, code);
+      const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
+      localStorage.setItem(codeStorageKey(targetScope), code);
       set({ lastSavedTime: Date.now() });
     } catch (error) {
       console.error('코드 저장 실패:', error);
     }
   },
   
-  loadCode: () => {
+  loadCode: (scope) => {
     try {
-      return localStorage.getItem(STORAGE_KEY);
+      const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
+      const scopedCode = localStorage.getItem(codeStorageKey(targetScope));
+      if (scopedCode !== null) return scopedCode;
+
+      if (targetScope === MAIN_STORAGE_SCOPE) {
+        return localStorage.getItem(LEGACY_STORAGE_KEY);
+      }
+
+      return null;
     } catch (error) {
       console.error('코드 불러오기 실패:', error);
       return null;

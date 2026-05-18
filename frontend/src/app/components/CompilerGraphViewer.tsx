@@ -28,7 +28,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
-import { useCompilerStore } from '../store/compilerStore';
+import { useCompilerStore, type SourceSelectionRange } from '../store/compilerStore';
 import type { ASMLine, ASTGraph, IRInstruction, SSAGraph } from '../services/compilerApi';
 
 function layoutNodes(nodes: Node[], edges: Edge[], w = 160, h = 56, opts?: { nodesep?: number; ranksep?: number }): Node[] {
@@ -90,6 +90,7 @@ function ASTNode({ data }: NodeProps) {
 function SSANode({ data }: NodeProps) {
   const highlight = data.highlight as boolean;
   const lines = (data.lines as string[]) || [];
+  const highlightedLines = (data.highlightedLines as boolean[]) || [];
   return (
     <div
       className={`min-w-[220px] overflow-hidden rounded-lg border shadow-[0_10px_24px_-20px_rgba(15,23,42,0.85)] transition-all ${
@@ -111,7 +112,14 @@ function SSANode({ data }: NodeProps) {
       </div>
       <div className="space-y-1 bg-white/95 px-3.5 py-3 dark:bg-[#101313]">
         {lines.map((line: string, index: number) => (
-          <div key={index} className="font-mono text-[10.5px] leading-relaxed text-slate-600 dark:text-teal-100/80">
+          <div
+            key={index}
+            className={`rounded px-1 font-mono text-[10.5px] leading-relaxed ${
+              highlightedLines[index]
+                ? 'bg-cyan-100 text-cyan-950 dark:bg-cyan-500/15 dark:text-cyan-50'
+                : 'text-slate-600 dark:text-teal-100/80'
+            }`}
+          >
             {line}
           </div>
         ))}
@@ -146,15 +154,218 @@ function mkEdge(id: string, source: string, target: string, color: string, label
   };
 }
 
-function convertASTGraph(astGraph: ASTGraph, selectedText: string): { nodes: Node[]; edges: Edge[] } {
-  const search = selectedText.trim().toLowerCase();
+type SelectionContext = {
+  text: string;
+  range: SourceSelectionRange | null;
+  hasSelection: boolean;
+  terms: string[];
+  functionNames: string[];
+  highlightFunctionSection: boolean;
+};
+
+const IGNORED_SOURCE_WORDS = new Set([
+  'import',
+  'from',
+  'func',
+  'var',
+  'const',
+  'let',
+  'std',
+  'io',
+  'u64',
+  'i64',
+  'i32',
+  'i16',
+  'i8',
+  'bool',
+  'true',
+  'false',
+]);
+
+const SOURCE_WORD_ALIASES: Record<string, string[]> = {
+  return: ['ret'],
+  if: ['br', 'cmp', 'je', 'jne', 'jle', 'jge'],
+  while: ['br', 'jmp', 'cmp', 'jle', 'jge'],
+  print: ['call', 'std_io__print'],
+  println: ['call', 'std_io__println'],
+  emitln: ['call', 'std_io__emitln'],
+};
+
+function normalizeForSearch(value: string): string {
+  return value.toLowerCase();
+}
+
+function extractSelectedTextFromRange(code: string, range: SourceSelectionRange | null): string {
+  if (!range) return '';
+  const lines = code.split(/\r?\n/);
+  const start = Math.max(0, range.startLine - 1);
+  const end = Math.min(lines.length - 1, range.endLine - 1);
+  if (start > end) return '';
+
+  return lines
+    .slice(start, end + 1)
+    .map((line, index, selectedLines) => {
+      if (selectedLines.length === 1) {
+        return line.slice(Math.max(0, range.startColumn - 1), Math.max(0, range.endColumn - 1));
+      }
+      if (index === 0) return line.slice(Math.max(0, range.startColumn - 1));
+      if (index === selectedLines.length - 1) return line.slice(0, Math.max(0, range.endColumn - 1));
+      return line;
+    })
+    .join('\n');
+}
+
+function collectFunctionNamesInText(text: string): string[] {
+  const names = new Set<string>();
+  for (const match of text.matchAll(/\bfunc\s+([A-Za-z_]\w*)\s*\(/g)) {
+    names.add(match[1]);
+  }
+  return [...names];
+}
+
+function collectEnclosingFunctionNames(code: string, range: SourceSelectionRange | null): string[] {
+  if (!range) return [];
+  const names = new Set<string>();
+  const lines = code.split(/\r?\n/);
+  let currentName: string | null = null;
+  let braceDepth = 0;
+
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const functionMatch = line.match(/\bfunc\s+([A-Za-z_]\w*)\s*\(/);
+    if (functionMatch) {
+      currentName = functionMatch[1];
+      braceDepth = 0;
+    }
+
+    if (currentName && lineNumber >= range.startLine && lineNumber <= range.endLine) {
+      names.add(currentName);
+    }
+
+    if (currentName) {
+      braceDepth += (line.match(/\{/g) ?? []).length;
+      braceDepth -= (line.match(/\}/g) ?? []).length;
+      if (braceDepth <= 0 && line.includes('}')) {
+        currentName = null;
+        braceDepth = 0;
+      }
+    }
+  });
+
+  return [...names];
+}
+
+function buildSelectionContext(code: string, selectedText: string, range: SourceSelectionRange | null): SelectionContext {
+  const rangeText = extractSelectedTextFromRange(code, range);
+  const text = selectedText.trim() ? selectedText : rangeText;
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return {
+      text: '',
+      range: null,
+      hasSelection: false,
+      terms: [],
+      functionNames: [],
+      highlightFunctionSection: false,
+    };
+  }
+
+  const terms = new Set<string>();
+  const functionNames = new Set<string>([
+    ...collectFunctionNamesInText(trimmed),
+    ...collectEnclosingFunctionNames(code, range),
+  ]);
+
+  for (const match of trimmed.matchAll(/\b[A-Za-z_]\w*\b/g)) {
+    const word = match[0].toLowerCase();
+    if (SOURCE_WORD_ALIASES[word]) {
+      terms.add(word);
+      SOURCE_WORD_ALIASES[word].forEach((alias) => terms.add(alias.toLowerCase()));
+      continue;
+    }
+    if (!IGNORED_SOURCE_WORDS.has(word) && word.length >= 2) {
+      terms.add(word);
+    }
+  }
+
+  for (const match of trimmed.matchAll(/\b\d+\b/g)) {
+    terms.add(match[0].toLowerCase());
+  }
+
+  for (const match of trimmed.matchAll(/"([^"]+)"|'([^']+)'/g)) {
+    const literal = (match[1] || match[2] || '').trim();
+    if (literal.length >= 2) {
+      terms.add(literal.toLowerCase());
+      for (const word of literal.matchAll(/[A-Za-z_]\w*/g)) {
+        if (word[0].length >= 2) terms.add(word[0].toLowerCase());
+      }
+    }
+  }
+
+  functionNames.forEach((name) => terms.add(name.toLowerCase()));
+
+  const selectedLineCount = range ? range.endLine - range.startLine + 1 : trimmed.split(/\r?\n/).length;
+  const highlightFunctionSection =
+    functionNames.size > 0 && (/\bfunc\s+[A-Za-z_]\w*\s*\(/.test(trimmed) || selectedLineCount > 1);
+
+  return {
+    text: trimmed,
+    range,
+    hasSelection: true,
+    terms: [...terms].sort((a, b) => b.length - a.length),
+    functionNames: [...functionNames],
+    highlightFunctionSection,
+  };
+}
+
+function sourceLocationOverlaps(
+  location: { line: number; endLine: number } | undefined,
+  range: SourceSelectionRange | null,
+): boolean {
+  if (!location || !range) return false;
+  return location.line <= range.endLine && location.endLine >= range.startLine;
+}
+
+function textMatchesSelection(text: string, context: SelectionContext): boolean {
+  if (!context.hasSelection) return false;
+  const normalized = normalizeForSearch(text);
+  return context.terms.some((term) => normalized.includes(term));
+}
+
+function functionNameFromLabel(label: string): string {
+  return label.split(' · ')[0].trim();
+}
+
+function lineFunctionLabel(line: string): string | null {
+  const match = line.trim().match(/^([A-Za-z_]\w*):$/);
+  return match?.[1] ?? null;
+}
+
+function shouldHighlightTextLine(line: string, context: SelectionContext, currentFunctionName: string | null): boolean {
+  if (!context.hasSelection) return false;
+  if (textMatchesSelection(line, context)) return true;
+  if (
+    currentFunctionName &&
+    context.highlightFunctionSection &&
+    context.functionNames.includes(currentFunctionName)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function convertASTGraph(astGraph: ASTGraph, selection: SelectionContext): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = astGraph.nodes.map((node, index) => ({
     id: node.id,
     type: 'ast',
     data: {
       label: node.type,
       sub: node.label !== node.type ? node.label : undefined,
-      highlight: search ? node.label.toLowerCase().includes(search) || node.type.toLowerCase().includes(search) : false,
+      highlight:
+        sourceLocationOverlaps(node.sourceLocation, selection.range) ||
+        textMatchesSelection(`${node.type} ${node.label}`, selection) ||
+        (selection.highlightFunctionSection && node.type === 'FunctionDecl' && selection.functionNames.includes(node.label)),
       isRoot: index === 0,
       w: 170,
       h: 62,
@@ -166,20 +377,31 @@ function convertASTGraph(astGraph: ASTGraph, selectedText: string): { nodes: Nod
   return { nodes: layoutNodes(nodes, edges, 170, 62, { nodesep: 64, ranksep: 88 }), edges };
 }
 
-function convertSSAGraph(ssaGraph: SSAGraph, selectedText: string): { nodes: Node[]; edges: Edge[] } {
-  const search = selectedText.trim().toLowerCase();
-  const nodes: Node[] = ssaGraph.blocks.map((block) => ({
-    id: block.id,
-    type: 'ssa',
-    data: {
-      label: block.label,
-      highlight: search ? block.label.toLowerCase().includes(search) || block.instructions.some((line) => line.toLowerCase().includes(search)) : false,
-      lines: block.instructions,
-      w: 230,
-      h: 72 + block.instructions.length * 18,
-    },
-    position: { x: 0, y: 0 },
-  }));
+function convertSSAGraph(ssaGraph: SSAGraph, selection: SelectionContext): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = ssaGraph.blocks.map((block) => {
+    const blockFunctionName = functionNameFromLabel(block.label);
+    const highlightedLines = block.instructions.map((line) =>
+      shouldHighlightTextLine(line, selection, blockFunctionName),
+    );
+    const highlight =
+      textMatchesSelection(block.label, selection) ||
+      highlightedLines.some(Boolean) ||
+      (selection.highlightFunctionSection && selection.functionNames.includes(blockFunctionName));
+
+    return {
+      id: block.id,
+      type: 'ssa',
+      data: {
+        label: block.label,
+        highlight,
+        highlightedLines,
+        lines: block.instructions,
+        w: 230,
+        h: 72 + block.instructions.length * 18,
+      },
+      position: { x: 0, y: 0 },
+    };
+  });
 
   const edges: Edge[] = ssaGraph.edges.map((edge, index) => {
     const color = edge.type === 'true' ? '#22c55e' : edge.type === 'false' ? '#ef4444' : '#14b8a6';
@@ -276,12 +498,23 @@ function colorASM(text: string): JSX.Element {
   );
 }
 
-function CodeView({ lines, selectedText, colorize }: { lines: string[]; selectedText: string; colorize: (text: string) => JSX.Element }) {
-  const search = selectedText.trim().toLowerCase();
+function CodeView({
+  lines,
+  selection,
+  colorize,
+}: {
+  lines: string[];
+  selection: SelectionContext;
+  colorize: (text: string) => JSX.Element;
+}) {
+  let currentFunctionName: string | null = null;
   return (
     <div className="overflow-hidden border-y border-slate-200 bg-white dark:border-[#333] dark:bg-[#0d0d0d]">
       {lines.map((line, index) => {
-        const highlighted = search.length > 0 && line.toLowerCase().includes(search);
+        const label = lineFunctionLabel(line);
+        if (label) currentFunctionName = label;
+        if (!line.trim()) currentFunctionName = null;
+        const highlighted = shouldHighlightTextLine(line, selection, currentFunctionName);
         return (
           <div
             key={index}
@@ -345,14 +578,19 @@ export function CompilerGraphViewer({ code }: { code: string }) {
     language,
     lastCompile,
     lastCompiledCode,
+    selectedSourceRange,
     selectedText,
     setActiveGraphTab,
     setGraphViewerOpen,
     theme,
   } = useCompilerStore();
 
-  const astData = useMemo(() => (lastCompile?.ast ? convertASTGraph(lastCompile.ast, selectedText) : null), [lastCompile?.ast, selectedText]);
-  const ssaData = useMemo(() => (lastCompile?.ssa ? convertSSAGraph(lastCompile.ssa, selectedText) : null), [lastCompile?.ssa, selectedText]);
+  const selection = useMemo(
+    () => buildSelectionContext(code, selectedText, selectedSourceRange),
+    [code, selectedSourceRange, selectedText],
+  );
+  const astData = useMemo(() => (lastCompile?.ast ? convertASTGraph(lastCompile.ast, selection) : null), [lastCompile?.ast, selection]);
+  const ssaData = useMemo(() => (lastCompile?.ssa ? convertSSAGraph(lastCompile.ssa, selection) : null), [lastCompile?.ssa, selection]);
   const irLines = useMemo(() => (lastCompile?.ir?.instructions?.length ? convertIRLines(lastCompile.ir.instructions) : []), [lastCompile?.ir]);
   const asmLines = useMemo(() => (lastCompile?.asm?.lines?.length ? convertASMLines(lastCompile.asm.lines) : []), [lastCompile?.asm]);
 
@@ -546,7 +784,7 @@ export function CompilerGraphViewer({ code }: { code: string }) {
               {activeGraphTab === 'IR' ? <GitBranch size={14} className="text-violet-400" /> : <FileCode2 size={14} className="text-rose-400" />}
               {activeGraphTab === 'IR' ? 'Intermediate Representation' : 'Assembly Output'}
             </div>
-            <CodeView lines={textLines} selectedText={selectedText} colorize={activeGraphTab === 'IR' ? colorIR : colorASM} />
+            <CodeView lines={textLines} selection={selection} colorize={activeGraphTab === 'IR' ? colorIR : colorASM} />
           </div>
         )}
       </div>

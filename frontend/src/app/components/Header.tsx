@@ -18,6 +18,7 @@ export function Header() {
     theme,
     toggleTheme,
     code,
+    codeStorageScope,
     saveCode,
     cancelRun,
     isRunning,
@@ -86,7 +87,7 @@ export function Header() {
                 <option value="javascript">JavaScript</option>
               </select>
               <button
-                onClick={() => saveCode(code)}
+                onClick={() => saveCode(code, codeStorageScope)}
                 className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors"
                 title="저장"
               >

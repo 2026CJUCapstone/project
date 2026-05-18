@@ -9,11 +9,13 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const location = useLocation();
   const {
     setSelectedText,
+    setSelectedSourceRange,
     autoSaveEnabled,
     lastSavedTime,
     saveCode,
     loadCode,
     setCode,
+    setCodeStorageScope,
     compileAndStartTerminal,
     compile,
     language,
@@ -27,6 +29,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const [hasHydratedEditor, setHasHydratedEditor] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const challengeId = location.state?.challenge?.id;
+  const codeStorageScope = challengeId ? `problem:${challengeId}` : 'main';
 
   let defaultCode = `import std.io;
 
@@ -165,11 +168,13 @@ func main() -> u64 {
   useEffect(() => {
     if (!editorReady || !editorRef.current) return;
 
+    setCodeStorageScope(codeStorageScope);
+
     if (challengeId) {
       setLanguage('bpp');
     }
 
-    const nextCode = challengeId ? defaultCode : loadCode() || defaultCode;
+    const nextCode = loadCode(codeStorageScope) ?? defaultCode;
 
     isHydratingEditorRef.current = true;
     if (editorRef.current.getValue() !== nextCode) {
@@ -177,10 +182,12 @@ func main() -> u64 {
     }
     if (onCodeChange) onCodeChange(nextCode);
     setCode(nextCode);
+    setSelectedText('');
+    setSelectedSourceRange(null);
     setSaveStatus('saved');
     isHydratingEditorRef.current = false;
     setHasHydratedEditor(true);
-  }, [challengeId, defaultCode, editorReady, loadCode, onCodeChange, setCode, setLanguage]);
+  }, [challengeId, codeStorageScope, defaultCode, editorReady, loadCode, onCodeChange, setCode, setCodeStorageScope, setLanguage, setSelectedSourceRange, setSelectedText]);
 
   // 자동저장 - debounce 방식으로 코드 변경 후 2초 뒤 저장
   useEffect(() => {
@@ -195,7 +202,7 @@ func main() -> u64 {
       autoSaveTimerRef.current = setTimeout(() => {
         if (editorRef.current) {
           const code = editorRef.current.getValue();
-          saveCode(code);
+          saveCode(code, codeStorageScope);
           setSaveStatus('saved');
         }
       }, 2000);
@@ -206,7 +213,7 @@ func main() -> u64 {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [autoSaveEnabled, saveStatus, saveCode, hasHydratedEditor]);
+  }, [autoSaveEnabled, codeStorageScope, saveStatus, saveCode, hasHydratedEditor]);
 
   // 마지막 저장 시간 포맷팅
   const getLastSavedText = () => {
@@ -230,7 +237,7 @@ func main() -> u64 {
         // Ctrl+S 눌러도 자동저장 시스템 활용
         if (editorRef.current && saveStatus !== 'saved') {
           const code = editorRef.current.getValue();
-          saveCode(code);
+          saveCode(code, codeStorageScope);
           setSaveStatus('saved');
         }
       }
@@ -248,7 +255,7 @@ func main() -> u64 {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [compileAndStartTerminal, compile, saveStatus, saveCode]);
+  }, [codeStorageScope, compileAndStartTerminal, compile, saveStatus, saveCode]);
 
   // 마지막 저장 시간 업데이트 (1초마다)
   const [, forceUpdate] = useState(0);
@@ -292,6 +299,16 @@ func main() -> u64 {
               if (model) {
                 const selectedStr = model.getValueInRange(selection);
                 setSelectedText(selectedStr);
+                setSelectedSourceRange(
+                  selectedStr.trim()
+                    ? {
+                        startLine: selection.startLineNumber,
+                        endLine: selection.endLineNumber,
+                        startColumn: selection.startColumn,
+                        endColumn: selection.endColumn,
+                      }
+                    : null,
+                );
               }
             });
           }}
