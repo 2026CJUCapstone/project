@@ -58,8 +58,17 @@ JAVA_CLASS_RE = re.compile(r"\bpublic\s+class\s+(?P<name>[A-Za-z_]\w*)")
 JAVA_FALLBACK_CLASS_RE = re.compile(r"\bclass\s+(?P<name>[A-Za-z_]\w*)")
 JAVA_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 JAVA_LINE_COMMENT_RE = re.compile(r"//.*$")
-BPP_DIAGNOSTIC_RE = re.compile(r"^\[(?P<severity>ERROR|WARN|WARNING|INFO)\]\s+(?P<message>.*)$")
+BPP_DIAGNOSTIC_RE = re.compile(
+    r"^\[(?P<severity>ERROR|WARN|WARNING|INFO)\](?P<tags>(?:\[[^\]]+\])*)\s*(?P<message>.*)$"
+)
 BPP_LINE_COL_RE = re.compile(r"\bline (?P<line>\d+), column (?P<column>\d+)\b")
+BPP_ARROW_LOCATION_RE = re.compile(r"^-->\s*(?P<line>\d+):(?P<column>\d+)\b")
+BPP_TAG_RE = re.compile(r"\[([^\]]+)\]")
+BPP_GENERIC_MESSAGE_PREFIXES = (
+    "failed to load module:",
+    "compiler pipeline completed with diagnostics",
+    "parse failed",
+)
 
 
 class SandboxExecutionError(RuntimeError):
@@ -324,6 +333,11 @@ class DockerCompilerRunner:
         lines = [line.strip() for line in stderr.splitlines() if line.strip()]
         diagnostics: list[Diagnostic] = []
 
+        if language == "bpp":
+            diagnostics = self._parse_bpp_diagnostics(lines)
+            if diagnostics:
+                return diagnostics
+
         for line in lines:
             diagnostic = self._parse_gcc_style(line)
             if diagnostic is None and language == "java":
@@ -386,12 +400,61 @@ class DockerCompilerRunner:
             line_no = int(location.group("line"))
             column_no = int(location.group("column"))
 
+        tags = BPP_TAG_RE.findall(match.group("tags") or "")
+        code = next((tag for tag in reversed(tags) if re.fullmatch(r"[A-Z]\d+", tag)), None)
+
         return Diagnostic(
             line=line_no,
             column=column_no,
             message=message,
             severity=severity,
+            code=code,
         )
+
+    def _parse_bpp_diagnostics(self, lines: list[str]) -> list[Diagnostic]:
+        diagnostics: list[Diagnostic] = []
+
+        for line in lines:
+            location = BPP_ARROW_LOCATION_RE.match(line)
+            if location and diagnostics:
+                diagnostics[-1].line = int(location.group("line"))
+                diagnostics[-1].column = int(location.group("column"))
+                continue
+
+            diagnostic = self._parse_bpp_style(line)
+            if diagnostic is not None and diagnostic.message:
+                diagnostics.append(diagnostic)
+
+        if not diagnostics:
+            return []
+
+        specific = [
+            diagnostic
+            for diagnostic in diagnostics
+            if not self._is_bpp_generic_message(diagnostic.message)
+        ]
+        return self._dedupe_diagnostics(specific or diagnostics)
+
+    def _is_bpp_generic_message(self, message: str) -> bool:
+        normalized = message.strip().lower()
+        return any(normalized.startswith(prefix) for prefix in BPP_GENERIC_MESSAGE_PREFIXES)
+
+    def _dedupe_diagnostics(self, diagnostics: list[Diagnostic]) -> list[Diagnostic]:
+        seen: set[tuple[str, int, int, str, str | None]] = set()
+        unique: list[Diagnostic] = []
+        for diagnostic in diagnostics:
+            key = (
+                diagnostic.severity,
+                diagnostic.line,
+                diagnostic.column,
+                diagnostic.message,
+                diagnostic.code,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(diagnostic)
+        return unique
 
     def _parse_language_specific_fallback(
         self,

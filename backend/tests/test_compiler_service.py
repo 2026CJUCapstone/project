@@ -42,6 +42,36 @@ def test_parse_bpp_diagnostics_extracts_line_and_column():
     assert "unexpected token" in diagnostics[0].message
 
 
+def test_parse_bpp_bracketed_parse_diagnostics_keeps_specific_error():
+    runner = DockerCompilerRunner()
+
+    diagnostics = runner._parse_diagnostics(
+        "[ERROR] Expected ';' after import\n"
+        "\n"
+        "[ERROR][parse][P1001] Unexpected token\n"
+        "  --> 1:13 near `,`\n"
+        "  expected: ';'\n"
+        "  got: ',' ,\n"
+        "[ERROR][parse][P1680] parse failed\n"
+        "[NOTE] error count: 1\n"
+        "[ERROR][parse][P1001] Unexpected token\n"
+        "  --> 1:13 near `,`\n"
+        "  expected: ';'\n"
+        "  got: ',' ,\n"
+        "[ERROR][parse][P1680] parse failed\n"
+        "[NOTE] error count: 1\n"
+        "[ERROR] failed to load module: /tmp/bpp_run_yAD6vz/src/user/main.bpp\n"
+        "[ERROR] compiler pipeline completed with diagnostics (total 1 error(s))\n",
+        "bpp",
+        success=False,
+    )
+
+    assert [(d.line, d.column, d.message, d.code) for d in diagnostics] == [
+        (1, 1, "Expected ';' after import", None),
+        (1, 13, "Unexpected token", "P1001"),
+    ]
+
+
 def test_parse_python_fallback_uses_traceback_line_number():
     runner = DockerCompilerRunner()
 

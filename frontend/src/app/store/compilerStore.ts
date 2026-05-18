@@ -235,18 +235,20 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
 
       if (result.errors?.length) {
         for (const err of result.errors) {
+          const code = err.code ? ` (${err.code})` : '';
           nextOutput.push({
             type: 'error',
-            text: `  [${err.severity}] Line ${err.line}:${err.column} — ${err.message}`,
+            text: `  [${err.severity}] Line ${err.line}:${err.column} — ${err.message}${code}`,
           });
         }
       }
 
       if (result.warnings?.length) {
         for (const warn of result.warnings) {
+          const code = warn.code ? ` (${warn.code})` : '';
           nextOutput.push({
             type: 'warning',
-            text: `  [warning] Line ${warn.line}:${warn.column} — ${warn.message}`,
+            text: `  [warning] Line ${warn.line}:${warn.column} — ${warn.message}${code}`,
           });
         }
       }
