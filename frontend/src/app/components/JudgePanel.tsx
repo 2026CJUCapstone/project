@@ -150,7 +150,7 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
                     <XCircle size={14} className="text-red-400" />
                   )}
                   <span className="text-xs font-semibold text-gray-300">
-                    테스트 #{idx + 1}
+                    예제 #{idx + 1}
                   </span>
                   <span className="text-[10px] text-blue-300 ml-auto uppercase tracking-wider">예제</span>
                 </div>

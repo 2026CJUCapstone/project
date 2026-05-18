@@ -124,7 +124,7 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-700">예시 테스트 케이스</label>
+          <label className="text-sm font-medium text-gray-700">예제 채점</label>
           {testCases.map((tc, idx) => (
             <div key={idx} className="flex gap-2 items-start">
               <div className="flex-1 flex flex-col gap-1">
@@ -159,12 +159,12 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
             onClick={addTestCase}
             className="text-sm text-blue-500 hover:text-blue-700 self-start"
           >
-            + 예시 테스트 케이스 추가
+            + 예제 채점 추가
           </button>
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-gray-700">채점 테스트 케이스</label>
+          <label className="text-sm font-medium text-gray-700">채점</label>
           {hiddenTestCases.map((tc, idx) => (
             <div key={idx} className="flex gap-2 items-start">
               <div className="flex-1 flex flex-col gap-1">
@@ -199,7 +199,7 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
             onClick={addHiddenTestCase}
             className="text-sm text-blue-500 hover:text-blue-700 self-start"
           >
-            + 채점 테스트 케이스 추가
+            + 채점 추가
           </button>
         </div>
 

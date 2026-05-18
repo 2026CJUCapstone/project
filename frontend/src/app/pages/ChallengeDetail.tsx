@@ -140,7 +140,7 @@ export function ChallengeDetail() {
               {challenge.testCases.map((testCase, index) => (
                 <div key={index} className="rounded-lg border border-gray-200 dark:border-[#333] p-4 bg-white/60 dark:bg-[#111]">
                   <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider mb-3">
-                    예시 {index + 1}
+                    예제 {index + 1}
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -157,7 +157,7 @@ export function ChallengeDetail() {
             </div>
           ) : (
             <div className="mt-8 rounded-lg border border-gray-200 dark:border-[#333] p-4 text-sm text-gray-600 dark:text-gray-400">
-              등록된 테스트케이스가 없습니다.
+              등록된 예제가 없습니다.
             </div>
           )}
         </section>

@@ -176,7 +176,7 @@ export function Admin() {
                     <th className="py-2 px-3">제목</th>
                     <th className="py-2 px-3">난이도</th>
                     <th className="py-2 px-3">태그</th>
-                    <th className="py-2 px-3">테스트</th>
+                    <th className="py-2 px-3">채점</th>
                     <th className="py-2 px-3">관리</th>
                   </tr>
                 </thead>
@@ -204,7 +204,7 @@ export function Admin() {
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-1 text-xs">
-                            <span className="text-emerald-300">예시 {(p.testCases ?? []).length}개</span>
+                            <span className="text-emerald-300">예제 채점 {(p.testCases ?? []).length}개</span>
                             <span className="text-amber-300">채점 {(p.hiddenTestCases ?? []).length}개</span>
                           </div>
                         </td>
