@@ -2,9 +2,17 @@ services:
   backend:
     environment:
       CORS_ORIGINS: ${WEBCOMPILER_CORS_ORIGINS:-https://cuha.cju.ac.kr}
+    networks:
+      - default
+      - shared_postgres
 
   frontend:
     build:
       args:
         VITE_API_URL: ${WEBCOMPILER_API_BASE:-/webcompiler}
         VITE_APP_BASE_PATH: ${WEBCOMPILER_BASE_PATH:-/webcompiler/}
+
+networks:
+  shared_postgres:
+    external: true
+    name: ${WEBCOMPILER_SHARED_POSTGRES_NETWORK:-webcompiler-shared}

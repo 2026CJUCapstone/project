@@ -27,7 +27,7 @@ services:
       SANDBOX_CPU_LIMIT: 1.0
       SANDBOX_PIDS_LIMIT: 64
       SANDBOX_NOFILE_LIMIT: 1024
-      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}@postgres:5432/${WEBCOMPILER_POSTGRES_DB:-compiler}
+      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}@${WEBCOMPILER_POSTGRES_HOST:-postgres}:${WEBCOMPILER_POSTGRES_PORT:-5432}/${WEBCOMPILER_POSTGRES_DB:-compiler}
     depends_on:
       postgres:
         condition: service_healthy

@@ -23,6 +23,15 @@ export WEBCOMPILER_API_BASE="${WEBCOMPILER_API_BASE:-/webcompiler}"
 export WEBCOMPILER_CORS_ORIGINS="${WEBCOMPILER_CORS_ORIGINS:-https://cuha.cju.ac.kr}"
 export WEBCOMPILER_POSTGRES_DB="${WEBCOMPILER_POSTGRES_DB:-compiler}"
 export WEBCOMPILER_POSTGRES_USER="${WEBCOMPILER_POSTGRES_USER:-compiler}"
+export WEBCOMPILER_POSTGRES_PASSWORD="${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}"
+
+export WEBCOMPILER_SHARED_POSTGRES_NETWORK="${WEBCOMPILER_SHARED_POSTGRES_NETWORK:-webcompiler-shared}"
+SHARED_POSTGRES_NAME="${WEBCOMPILER_SHARED_POSTGRES_NAME:-webcompiler-postgres}"
+SHARED_POSTGRES_VOLUME="${WEBCOMPILER_SHARED_POSTGRES_VOLUME:-webcompiler-postgres-data}"
+SHARED_POSTGRES_NETWORK="$WEBCOMPILER_SHARED_POSTGRES_NETWORK"
+SHARED_POSTGRES_IMAGE="${WEBCOMPILER_SHARED_POSTGRES_IMAGE:-postgres:16-alpine}"
+export WEBCOMPILER_POSTGRES_HOST="${WEBCOMPILER_POSTGRES_HOST:-$SHARED_POSTGRES_NAME}"
+export WEBCOMPILER_POSTGRES_PORT="${WEBCOMPILER_POSTGRES_PORT:-5432}"
 
 BLUE_BACKEND_PORT="${WEBCOMPILER_BLUE_BACKEND_PORT:-18001}"
 BLUE_FRONTEND_PORT="${WEBCOMPILER_BLUE_FRONTEND_PORT:-15174}"
@@ -104,30 +113,98 @@ postgres_container_name() {
   printf 'webcompiler-%s-postgres-1\n' "$1"
 }
 
-sync_database_from_active_to_target() {
-  local source_color="$1"
-  local target_color="$2"
+backend_container_name() {
+  printf 'webcompiler-%s-backend-1\n' "$1"
+}
 
-  if [[ -z "$source_color" || "$source_color" == "$target_color" ]]; then
+container_is_on_network() {
+  local container="$1"
+  local network="$2"
+  docker inspect "$container" --format '{{json .NetworkSettings.Networks}}' 2>/dev/null \
+    | grep -q "\"$network\""
+}
+
+wait_for_shared_postgres() {
+  local timeout="${1:-60}"
+  local deadline
+  deadline=$((SECONDS + timeout))
+
+  until docker exec "$SHARED_POSTGRES_NAME" \
+    pg_isready \
+      -U "$WEBCOMPILER_POSTGRES_USER" \
+      -d "$WEBCOMPILER_POSTGRES_DB" \
+      >/dev/null 2>&1; do
+    if (( SECONDS >= deadline )); then
+      log "shared postgres did not become ready"
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+ensure_shared_postgres() {
+  if ! docker network inspect "$SHARED_POSTGRES_NETWORK" >/dev/null 2>&1; then
+    log "creating shared postgres network $SHARED_POSTGRES_NETWORK"
+    docker network create "$SHARED_POSTGRES_NETWORK" >/dev/null
+  fi
+
+  if docker ps -a --format '{{.Names}}' | grep -Fxq "$SHARED_POSTGRES_NAME"; then
+    if ! docker ps --format '{{.Names}}' | grep -Fxq "$SHARED_POSTGRES_NAME"; then
+      log "starting shared postgres $SHARED_POSTGRES_NAME"
+      docker start "$SHARED_POSTGRES_NAME" >/dev/null
+    fi
+    if ! container_is_on_network "$SHARED_POSTGRES_NAME" "$SHARED_POSTGRES_NETWORK"; then
+      docker network connect "$SHARED_POSTGRES_NETWORK" "$SHARED_POSTGRES_NAME"
+    fi
+  else
+    log "creating shared postgres $SHARED_POSTGRES_NAME"
+    docker run -d \
+      --name "$SHARED_POSTGRES_NAME" \
+      --restart unless-stopped \
+      --network "$SHARED_POSTGRES_NETWORK" \
+      -e "POSTGRES_DB=$WEBCOMPILER_POSTGRES_DB" \
+      -e "POSTGRES_USER=$WEBCOMPILER_POSTGRES_USER" \
+      -e "POSTGRES_PASSWORD=$WEBCOMPILER_POSTGRES_PASSWORD" \
+      -v "$SHARED_POSTGRES_VOLUME:/var/lib/postgresql/data" \
+      "$SHARED_POSTGRES_IMAGE" >/dev/null
+  fi
+
+  wait_for_shared_postgres
+}
+
+shared_database_has_app_tables() {
+  local table_count
+  table_count="$(
+    docker exec "$SHARED_POSTGRES_NAME" \
+      psql \
+        -U "$WEBCOMPILER_POSTGRES_USER" \
+        -d "$WEBCOMPILER_POSTGRES_DB" \
+        -tAc "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('problems', 'users', 'user_problem_scores');"
+  )"
+  [[ "${table_count//[[:space:]]/}" != "0" ]]
+}
+
+bootstrap_shared_database_from_color() {
+  local source_color="$1"
+
+  if [[ -z "$source_color" ]]; then
+    return
+  fi
+
+  if shared_database_has_app_tables; then
+    log "shared postgres already has application tables; skipping bootstrap"
     return
   fi
 
   local source_container
-  local target_container
   source_container="$(postgres_container_name "$source_color")"
-  target_container="$(postgres_container_name "$target_color")"
 
   if ! docker ps --format '{{.Names}}' | grep -Fxq "$source_container"; then
-    log "active postgres $source_container is not running; skipping database sync"
+    log "active postgres $source_container is not running; skipping shared database bootstrap"
     return
   fi
 
-  if ! docker ps --format '{{.Names}}' | grep -Fxq "$target_container"; then
-    log "target postgres $target_container is not running; skipping database sync"
-    return
-  fi
-
-  log "syncing database from $source_color to $target_color"
+  log "bootstrapping shared postgres from $source_color database"
   docker exec "$source_container" \
     pg_dump \
       -U "$WEBCOMPILER_POSTGRES_USER" \
@@ -136,14 +213,30 @@ sync_database_from_active_to_target() {
       --if-exists \
       --no-owner \
       --no-privileges \
-    | docker exec -i "$target_container" \
+    | docker exec -i "$SHARED_POSTGRES_NAME" \
         psql \
           -v ON_ERROR_STOP=1 \
           -U "$WEBCOMPILER_POSTGRES_USER" \
           -d "$WEBCOMPILER_POSTGRES_DB" \
           >/dev/null
+}
 
-  compose_for_color "$target_color" restart backend
+connect_backend_to_shared_postgres() {
+  local color="$1"
+  local backend_container
+  backend_container="$(backend_container_name "$color")"
+
+  if ! docker ps -a --format '{{.Names}}' | grep -Fxq "$backend_container"; then
+    log "backend $backend_container does not exist; skipping shared postgres network attach"
+    return
+  fi
+
+  if ! container_is_on_network "$backend_container" "$SHARED_POSTGRES_NETWORK"; then
+    log "attaching $backend_container to shared postgres network"
+    docker network connect "$SHARED_POSTGRES_NETWORK" "$backend_container"
+  fi
+
+  compose_for_color "$color" restart backend
 }
 
 write_edge_configs() {
@@ -312,6 +405,9 @@ if [[ -f "$STATE_FILE" ]]; then
   active_color="$(tr -d '[:space:]' < "$STATE_FILE")"
 fi
 
+ensure_shared_postgres
+bootstrap_shared_database_from_color "$active_color"
+
 target_color="${WEBCOMPILER_TARGET_COLOR:-$(next_color "$active_color")}"
 target_backend_port="$(color_backend_port "$target_color")"
 target_frontend_port="$(color_frontend_port "$target_color")"
@@ -322,7 +418,7 @@ bash "$PROJECT_ROOT/scripts/build_sandbox_image.sh"
 log "deploying $target_color stack on frontend:$target_frontend_port backend:$target_backend_port"
 compose_for_color "$target_color" up --build -d --remove-orphans
 
-sync_database_from_active_to_target "$active_color" "$target_color"
+connect_backend_to_shared_postgres "$target_color"
 
 log "checking $target_color stack health"
 wait_for_url "http://127.0.0.1:${target_backend_port}/health" "$target_color backend"

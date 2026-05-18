@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PROJECT_ROOT="$ROOT_DIR"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-webcompiler-local}"
+export WEBCOMPILER_SHARED_POSTGRES_NETWORK="${WEBCOMPILER_SHARED_POSTGRES_NETWORK:-${COMPOSE_PROJECT_NAME}-shared}"
 
 for color in blue green; do
   docker compose \
@@ -14,9 +16,10 @@ for color in blue green; do
 done
 
 docker compose \
-  -p "${COMPOSE_PROJECT_NAME:-webcompiler}" \
+  -p "$COMPOSE_PROJECT_NAME" \
   -f "$PROJECT_ROOT/docker-compose.yml" \
   -f "$PROJECT_ROOT/docker-compose.deploy.yml" \
   down --remove-orphans
 
 docker rm -f webcompiler-edge-frontend webcompiler-edge-backend >/dev/null 2>&1 || true
+docker network rm "$WEBCOMPILER_SHARED_POSTGRES_NETWORK" >/dev/null 2>&1 || true
