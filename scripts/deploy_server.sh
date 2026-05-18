@@ -21,6 +21,8 @@ fi
 export WEBCOMPILER_BASE_PATH="${WEBCOMPILER_BASE_PATH:-/webcompiler/}"
 export WEBCOMPILER_API_BASE="${WEBCOMPILER_API_BASE:-/webcompiler}"
 export WEBCOMPILER_CORS_ORIGINS="${WEBCOMPILER_CORS_ORIGINS:-https://cuha.cju.ac.kr}"
+export WEBCOMPILER_POSTGRES_DB="${WEBCOMPILER_POSTGRES_DB:-compiler}"
+export WEBCOMPILER_POSTGRES_USER="${WEBCOMPILER_POSTGRES_USER:-compiler}"
 
 BLUE_BACKEND_PORT="${WEBCOMPILER_BLUE_BACKEND_PORT:-18001}"
 BLUE_FRONTEND_PORT="${WEBCOMPILER_BLUE_FRONTEND_PORT:-15174}"
@@ -96,6 +98,52 @@ compose_for_color() {
     -f "$PROJECT_ROOT/docker-compose.yml" \
     -f "$PROJECT_ROOT/docker-compose.deploy.yml" \
     "${@:2}"
+}
+
+postgres_container_name() {
+  printf 'webcompiler-%s-postgres-1\n' "$1"
+}
+
+sync_database_from_active_to_target() {
+  local source_color="$1"
+  local target_color="$2"
+
+  if [[ -z "$source_color" || "$source_color" == "$target_color" ]]; then
+    return
+  fi
+
+  local source_container
+  local target_container
+  source_container="$(postgres_container_name "$source_color")"
+  target_container="$(postgres_container_name "$target_color")"
+
+  if ! docker ps --format '{{.Names}}' | grep -Fxq "$source_container"; then
+    log "active postgres $source_container is not running; skipping database sync"
+    return
+  fi
+
+  if ! docker ps --format '{{.Names}}' | grep -Fxq "$target_container"; then
+    log "target postgres $target_container is not running; skipping database sync"
+    return
+  fi
+
+  log "syncing database from $source_color to $target_color"
+  docker exec "$source_container" \
+    pg_dump \
+      -U "$WEBCOMPILER_POSTGRES_USER" \
+      -d "$WEBCOMPILER_POSTGRES_DB" \
+      --clean \
+      --if-exists \
+      --no-owner \
+      --no-privileges \
+    | docker exec -i "$target_container" \
+        psql \
+          -v ON_ERROR_STOP=1 \
+          -U "$WEBCOMPILER_POSTGRES_USER" \
+          -d "$WEBCOMPILER_POSTGRES_DB" \
+          >/dev/null
+
+  compose_for_color "$target_color" restart backend
 }
 
 write_edge_configs() {
@@ -273,6 +321,8 @@ bash "$PROJECT_ROOT/scripts/build_sandbox_image.sh"
 
 log "deploying $target_color stack on frontend:$target_frontend_port backend:$target_backend_port"
 compose_for_color "$target_color" up --build -d --remove-orphans
+
+sync_database_from_active_to_target "$active_color" "$target_color"
 
 log "checking $target_color stack health"
 wait_for_url "http://127.0.0.1:${target_backend_port}/health" "$target_color backend"
