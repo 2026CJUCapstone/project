@@ -223,38 +223,6 @@ function collectFunctionNamesInText(text: string): string[] {
   return [...names];
 }
 
-function collectEnclosingFunctionNames(code: string, range: SourceSelectionRange | null): string[] {
-  if (!range) return [];
-  const names = new Set<string>();
-  const lines = code.split(/\r?\n/);
-  let currentName: string | null = null;
-  let braceDepth = 0;
-
-  lines.forEach((line, index) => {
-    const lineNumber = index + 1;
-    const functionMatch = line.match(/\bfunc\s+([A-Za-z_]\w*)\s*\(/);
-    if (functionMatch) {
-      currentName = functionMatch[1];
-      braceDepth = 0;
-    }
-
-    if (currentName && lineNumber >= range.startLine && lineNumber <= range.endLine) {
-      names.add(currentName);
-    }
-
-    if (currentName) {
-      braceDepth += (line.match(/\{/g) ?? []).length;
-      braceDepth -= (line.match(/\}/g) ?? []).length;
-      if (braceDepth <= 0 && line.includes('}')) {
-        currentName = null;
-        braceDepth = 0;
-      }
-    }
-  });
-
-  return [...names];
-}
-
 function buildSelectionContext(code: string, selectedText: string, range: SourceSelectionRange | null): SelectionContext {
   const rangeText = extractSelectedTextFromRange(code, range);
   const text = selectedText.trim() ? selectedText : rangeText;
@@ -272,42 +240,49 @@ function buildSelectionContext(code: string, selectedText: string, range: Source
   }
 
   const terms = new Set<string>();
-  const functionNames = new Set<string>([
-    ...collectFunctionNamesInText(trimmed),
-    ...collectEnclosingFunctionNames(code, range),
-  ]);
+  const functionNames = new Set<string>(collectFunctionNamesInText(trimmed));
+  const numericTerms = new Set<string>();
+  let hasNonNumericTerm = false;
 
   for (const match of trimmed.matchAll(/\b[A-Za-z_]\w*\b/g)) {
     const word = match[0].toLowerCase();
     if (SOURCE_WORD_ALIASES[word]) {
       terms.add(word);
       SOURCE_WORD_ALIASES[word].forEach((alias) => terms.add(alias.toLowerCase()));
+      hasNonNumericTerm = true;
       continue;
     }
     if (!IGNORED_SOURCE_WORDS.has(word) && word.length >= 2) {
       terms.add(word);
+      hasNonNumericTerm = true;
     }
   }
 
   for (const match of trimmed.matchAll(/\b\d+\b/g)) {
-    terms.add(match[0].toLowerCase());
+    numericTerms.add(match[0].toLowerCase());
   }
 
   for (const match of trimmed.matchAll(/"([^"]+)"|'([^']+)'/g)) {
     const literal = (match[1] || match[2] || '').trim();
     if (literal.length >= 2) {
       terms.add(literal.toLowerCase());
+      hasNonNumericTerm = true;
       for (const word of literal.matchAll(/[A-Za-z_]\w*/g)) {
-        if (word[0].length >= 2) terms.add(word[0].toLowerCase());
+        if (word[0].length >= 2) {
+          terms.add(word[0].toLowerCase());
+          hasNonNumericTerm = true;
+        }
       }
     }
   }
 
-  functionNames.forEach((name) => terms.add(name.toLowerCase()));
+  numericTerms.forEach((term) => {
+    if (term.length > 1 || !hasNonNumericTerm) {
+      terms.add(term);
+    }
+  });
 
-  const selectedLineCount = range ? range.endLine - range.startLine + 1 : trimmed.split(/\r?\n/).length;
-  const highlightFunctionSection =
-    functionNames.size > 0 && (/\bfunc\s+[A-Za-z_]\w*\s*\(/.test(trimmed) || selectedLineCount > 1);
+  const highlightFunctionSection = functionNames.size > 0 && /\bfunc\s+[A-Za-z_]\w*\s*\(/.test(trimmed);
 
   return {
     text: trimmed,
