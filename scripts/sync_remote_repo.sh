@@ -25,6 +25,7 @@ git -C "$DEPLOY_PATH" fetch --depth 1 origin "$DEPLOY_BRANCH"
 git -C "$DEPLOY_PATH" checkout --force -B "$DEPLOY_BRANCH" FETCH_HEAD
 
 git -C "$DEPLOY_PATH" clean -fdx \
+  -e .deploy/ \
   -e .sandbox-work/ \
   -e backend/.venv/ \
   -e frontend/dist/ \
