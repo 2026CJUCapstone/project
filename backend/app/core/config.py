@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     SANDBOX_IMAGE: str = "compiler-sandbox"
-    EXECUTION_TIMEOUT: int = 10
+    EXECUTION_TIMEOUT: int = 30
     SANDBOX_WORKDIR_ROOT: str = "/tmp/compiler-sandbox"
     SANDBOX_MEMORY_MB: int = 256
     SANDBOX_CPU_LIMIT: float = 1.0

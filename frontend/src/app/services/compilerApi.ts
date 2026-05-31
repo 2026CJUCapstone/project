@@ -9,7 +9,7 @@ function normalizeApiBaseUrl(value: string): string {
 
 const apiBaseFromBaseUrl = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL.replace(/\/$/, '');
 const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL || apiBaseFromBaseUrl);
-const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '10000', 10);
+const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || '60000', 10);
 
 export type CompilerLanguage = 'bpp' | 'python' | 'c' | 'cpp' | 'java' | 'javascript';
 

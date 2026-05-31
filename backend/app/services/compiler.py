@@ -116,12 +116,48 @@ class DockerCompilerRunner:
         target: str = "all",
     ) -> dict:
         started_at = time.monotonic()
+        requested_targets = self._resolve_requested_targets(target) if language == "bpp" else set()
+        dump_tasks: dict[str, asyncio.Task[dict]] = {}
+        if language == "bpp":
+            if "ssa" in requested_targets:
+                dump_tasks["ssa"] = asyncio.create_task(
+                    self._execute(
+                        mode="dump-ssa",
+                        source_code=source_code,
+                        language=language,
+                        optimize=optimize,
+                    )
+                )
+            if "ir" in requested_targets:
+                dump_tasks["ir"] = asyncio.create_task(
+                    self._execute(
+                        mode="dump-ir",
+                        source_code=source_code,
+                        language=language,
+                        optimize=optimize,
+                    )
+                )
+            if "asm" in requested_targets:
+                dump_tasks["asm"] = asyncio.create_task(
+                    self._execute(
+                        mode="asm",
+                        source_code=source_code,
+                        language=language,
+                        optimize=optimize,
+                    )
+                )
+
         result = await self._execute(
             mode="compile",
             source_code=source_code,
             language=language,
             optimize=optimize,
         )
+        dump_results_by_target: dict[str, dict] = {}
+        if dump_tasks:
+            dump_results = await asyncio.gather(*dump_tasks.values())
+            dump_results_by_target = dict(zip(dump_tasks.keys(), dump_results))
+
         diagnostics = self._parse_diagnostics(result["stderr"], language, result["exit_code"] == 0)
         errors = [item.to_dict() for item in diagnostics if item.severity == "error"]
         warnings = [item.to_dict() for item in diagnostics if item.severity == "warning"]
@@ -139,44 +175,13 @@ class DockerCompilerRunner:
         if result["exit_code"] != 0 or language != "bpp":
             return response
 
-        requested_targets = self._resolve_requested_targets(target)
         if "ast" in requested_targets:
             ast_graph = build_bpp_ast_graph(source_code)
             response["ast"] = ast_graph
             response["metadata"]["node_count"] = len(ast_graph["nodes"])
 
-        dump_tasks: dict[str, asyncio.Task[dict]] = {}
-        if "ssa" in requested_targets:
-            dump_tasks["ssa"] = asyncio.create_task(
-                self._execute(
-                    mode="dump-ssa",
-                    source_code=source_code,
-                    language=language,
-                    optimize=optimize,
-                )
-            )
-        if "ir" in requested_targets:
-            dump_tasks["ir"] = asyncio.create_task(
-                self._execute(
-                    mode="dump-ir",
-                    source_code=source_code,
-                    language=language,
-                    optimize=optimize,
-                )
-            )
-        if "asm" in requested_targets:
-            dump_tasks["asm"] = asyncio.create_task(
-                self._execute(
-                    mode="asm",
-                    source_code=source_code,
-                    language=language,
-                    optimize=optimize,
-                )
-            )
-
-        if dump_tasks:
-            dump_results = await asyncio.gather(*dump_tasks.values())
-            for target_name, dump_result in zip(dump_tasks.keys(), dump_results):
+        if dump_results_by_target:
+            for target_name, dump_result in dump_results_by_target.items():
                 if dump_result["exit_code"] != 0:
                     continue
                 if target_name == "ssa":

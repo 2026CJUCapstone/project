@@ -21,7 +21,7 @@ services:
       APP_PORT: 8000
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://127.0.0.1
       SANDBOX_IMAGE: compiler-sandbox
-      EXECUTION_TIMEOUT: 10
+      EXECUTION_TIMEOUT: 30
       SANDBOX_WORKDIR_ROOT: ${PROJECT_ROOT}/.sandbox-work
       SANDBOX_MEMORY_MB: 256
       SANDBOX_CPU_LIMIT: 1.0
