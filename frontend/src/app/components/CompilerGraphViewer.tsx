@@ -29,7 +29,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { useCompilerStore, type SourceSelectionRange } from '../store/compilerStore';
-import type { ASMLine, ASTGraph, IRInstruction, SSAGraph } from '../services/compilerApi';
+import type { ASMLine, ASTGraph, IRInstruction, SSAGraph, SourceRange } from '../services/compilerApi';
 
 function layoutNodes(nodes: Node[], edges: Edge[], w = 160, h = 56, opts?: { nodesep?: number; ranksep?: number }): Node[] {
   const g = new (dagre as any).graphlib.Graph();
@@ -155,45 +155,30 @@ function mkEdge(id: string, source: string, target: string, color: string, label
 }
 
 type SelectionContext = {
-  text: string;
   range: SourceSelectionRange | null;
   hasSelection: boolean;
-  terms: string[];
-  functionNames: string[];
-  highlightFunctionSection: boolean;
 };
 
-const IGNORED_SOURCE_WORDS = new Set([
-  'import',
-  'from',
-  'func',
-  'var',
-  'const',
-  'let',
-  'std',
-  'io',
-  'u64',
-  'i64',
-  'i32',
-  'i16',
-  'i8',
-  'bool',
-  'true',
-  'false',
-]);
-
-const SOURCE_WORD_ALIASES: Record<string, string[]> = {
-  return: ['ret'],
-  if: ['br', 'cmp', 'je', 'jne', 'jle', 'jge'],
-  while: ['br', 'jmp', 'cmp', 'jle', 'jge'],
-  print: ['call', 'std_io__print'],
-  println: ['call', 'std_io__println'],
-  emitln: ['call', 'std_io__emitln'],
+type SourceRangeLike = {
+  line?: number;
+  column?: number;
+  startLine?: number;
+  startColumn?: number;
+  endLine?: number;
+  endColumn?: number;
 };
 
-function normalizeForSearch(value: string): string {
-  return value.toLowerCase();
-}
+type NormalizedSourceRange = {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+};
+
+type RenderedCodeLine = {
+  text: string;
+  sourceRanges: SourceRange[];
+};
 
 function extractSelectedTextFromRange(code: string, range: SourceSelectionRange | null): string {
   if (!range) return '';
@@ -215,14 +200,6 @@ function extractSelectedTextFromRange(code: string, range: SourceSelectionRange 
     .join('\n');
 }
 
-function collectFunctionNamesInText(text: string): string[] {
-  const names = new Set<string>();
-  for (const match of text.matchAll(/\bfunc\s+([A-Za-z_]\w*)\s*\(/g)) {
-    names.add(match[1]);
-  }
-  return [...names];
-}
-
 function buildSelectionContext(code: string, selectedText: string, range: SourceSelectionRange | null): SelectionContext {
   const rangeText = extractSelectedTextFromRange(code, range);
   const text = selectedText.trim() ? selectedText : rangeText;
@@ -230,104 +207,71 @@ function buildSelectionContext(code: string, selectedText: string, range: Source
 
   if (!trimmed) {
     return {
-      text: '',
       range: null,
       hasSelection: false,
-      terms: [],
-      functionNames: [],
-      highlightFunctionSection: false,
     };
   }
 
-  const terms = new Set<string>();
-  const functionNames = new Set<string>(collectFunctionNamesInText(trimmed));
-  const numericTerms = new Set<string>();
-  let hasNonNumericTerm = false;
-
-  for (const match of trimmed.matchAll(/\b[A-Za-z_]\w*\b/g)) {
-    const word = match[0].toLowerCase();
-    if (SOURCE_WORD_ALIASES[word]) {
-      terms.add(word);
-      SOURCE_WORD_ALIASES[word].forEach((alias) => terms.add(alias.toLowerCase()));
-      hasNonNumericTerm = true;
-      continue;
-    }
-    if (!IGNORED_SOURCE_WORDS.has(word) && word.length >= 2) {
-      terms.add(word);
-      hasNonNumericTerm = true;
-    }
-  }
-
-  for (const match of trimmed.matchAll(/\b\d+\b/g)) {
-    numericTerms.add(match[0].toLowerCase());
-  }
-
-  for (const match of trimmed.matchAll(/"([^"]+)"|'([^']+)'/g)) {
-    const literal = (match[1] || match[2] || '').trim();
-    if (literal.length >= 2) {
-      terms.add(literal.toLowerCase());
-      hasNonNumericTerm = true;
-      for (const word of literal.matchAll(/[A-Za-z_]\w*/g)) {
-        if (word[0].length >= 2) {
-          terms.add(word[0].toLowerCase());
-          hasNonNumericTerm = true;
-        }
-      }
-    }
-  }
-
-  numericTerms.forEach((term) => {
-    if (term.length > 1 || !hasNonNumericTerm) {
-      terms.add(term);
-    }
-  });
-
-  const highlightFunctionSection = functionNames.size > 0 && /\bfunc\s+[A-Za-z_]\w*\s*\(/.test(trimmed);
-
   return {
-    text: trimmed,
     range,
     hasSelection: true,
-    terms: [...terms].sort((a, b) => b.length - a.length),
-    functionNames: [...functionNames],
-    highlightFunctionSection,
   };
 }
 
+function normalizeSourceRange(range: SourceRangeLike | SourceSelectionRange | undefined | null): NormalizedSourceRange | null {
+  if (!range) return null;
+  const sourceRange = range as SourceRangeLike;
+  const startLine = sourceRange.startLine ?? sourceRange.line;
+  const startColumn = sourceRange.startColumn ?? sourceRange.column ?? 1;
+  const endLine = sourceRange.endLine ?? startLine;
+  const endColumn = sourceRange.endColumn ?? startColumn;
+
+  if (
+    typeof startLine !== 'number' ||
+    typeof startColumn !== 'number' ||
+    typeof endLine !== 'number' ||
+    typeof endColumn !== 'number' ||
+    !Number.isFinite(startLine) ||
+    !Number.isFinite(startColumn) ||
+    !Number.isFinite(endLine) ||
+    !Number.isFinite(endColumn)
+  ) {
+    return null;
+  }
+
+  return {
+    startLine: Math.max(1, startLine),
+    startColumn: Math.max(1, startColumn),
+    endLine: Math.max(1, endLine),
+    endColumn: Math.max(1, endColumn),
+  };
+}
+
+function isBeforeOrEqual(lineA: number, columnA: number, lineB: number, columnB: number): boolean {
+  return lineA < lineB || (lineA === lineB && columnA <= columnB);
+}
+
+function rangesOverlap(a: SourceRangeLike | SourceSelectionRange | undefined, b: SourceRangeLike | SourceSelectionRange | undefined): boolean {
+  const left = normalizeSourceRange(a);
+  const right = normalizeSourceRange(b);
+  if (!left || !right) return false;
+
+  return (
+    isBeforeOrEqual(left.startLine, left.startColumn, right.endLine, right.endColumn) &&
+    isBeforeOrEqual(right.startLine, right.startColumn, left.endLine, left.endColumn)
+  );
+}
+
 function sourceLocationOverlaps(
-  location: { line: number; endLine: number } | undefined,
+  location: SourceRangeLike | undefined,
   range: SourceSelectionRange | null,
 ): boolean {
-  if (!location || !range) return false;
-  return location.line <= range.endLine && location.endLine >= range.startLine;
+  return rangesOverlap(location, range ?? undefined);
 }
 
-function textMatchesSelection(text: string, context: SelectionContext): boolean {
-  if (!context.hasSelection) return false;
-  const normalized = normalizeForSearch(text);
-  return context.terms.some((term) => normalized.includes(term));
-}
-
-function functionNameFromLabel(label: string): string {
-  return label.split(' · ')[0].trim();
-}
-
-function lineFunctionLabel(line: string): string | null {
-  const match = line.trim().match(/^([A-Za-z_]\w*):$/);
-  return match?.[1] ?? null;
-}
-
-function shouldHighlightTextLine(line: string, context: SelectionContext, currentFunctionName: string | null): boolean {
-  if (!context.hasSelection) return false;
-  if (textMatchesSelection(line, context)) return true;
-  if (
-    currentFunctionName &&
-    context.highlightFunctionSection &&
-    context.functionNames.includes(currentFunctionName)
-  ) {
-    return true;
-  }
-  return false;
+function sourceRangesOverlapSelection(ranges: SourceRange[] | undefined, selection: SelectionContext): boolean {
+  if (!selection.hasSelection || !selection.range || !ranges?.length) return false;
+  return ranges.some((range) => rangesOverlap(range, selection.range ?? undefined));
 }
 
 function convertASTGraph(astGraph: ASTGraph, selection: SelectionContext): { nodes: Node[]; edges: Edge[] } {
@@ -337,10 +281,7 @@ function convertASTGraph(astGraph: ASTGraph, selection: SelectionContext): { nod
     data: {
       label: node.type,
       sub: node.label !== node.type ? node.label : undefined,
-      highlight:
-        sourceLocationOverlaps(node.sourceLocation, selection.range) ||
-        textMatchesSelection(`${node.type} ${node.label}`, selection) ||
-        (selection.highlightFunctionSection && node.type === 'FunctionDecl' && selection.functionNames.includes(node.label)),
+      highlight: sourceLocationOverlaps(node.sourceLocation, selection.range),
       isRoot: index === 0,
       w: 170,
       h: 62,
@@ -352,16 +293,10 @@ function convertASTGraph(astGraph: ASTGraph, selection: SelectionContext): { nod
   return { nodes: layoutNodes(nodes, edges, 170, 62, { nodesep: 64, ranksep: 88 }), edges };
 }
 
-function convertSSAGraph(ssaGraph: SSAGraph, selection: SelectionContext): { nodes: Node[]; edges: Edge[] } {
+function convertSSAGraph(ssaGraph: SSAGraph, _selection: SelectionContext): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = ssaGraph.blocks.map((block) => {
-    const blockFunctionName = functionNameFromLabel(block.label);
-    const highlightedLines = block.instructions.map((line) =>
-      shouldHighlightTextLine(line, selection, blockFunctionName),
-    );
-    const highlight =
-      textMatchesSelection(block.label, selection) ||
-      highlightedLines.some(Boolean) ||
-      (selection.highlightFunctionSection && selection.functionNames.includes(blockFunctionName));
+    const highlightedLines = block.instructions.map(() => false);
+    const highlight = false;
 
     return {
       id: block.id,
@@ -386,25 +321,42 @@ function convertSSAGraph(ssaGraph: SSAGraph, selection: SelectionContext): { nod
   return { nodes: layoutNodes(nodes, edges, 230, 90, { nodesep: 76, ranksep: 96 }), edges };
 }
 
-function convertIRLines(instructions: IRInstruction[]): string[] {
+function convertIRLines(instructions: IRInstruction[]): RenderedCodeLine[] {
   return instructions.map((instruction) => {
     const parts: string[] = [];
     if (instruction.result) parts.push(`${instruction.result} = `);
     parts.push(instruction.opcode);
     if (instruction.operands.length) parts.push(` ${instruction.operands.join(', ')}`);
     if (instruction.comment) parts.push(`  ; ${instruction.comment}`);
-    return parts.join('');
+    return {
+      text: parts.join(''),
+      sourceRanges: instruction.sourceRanges ?? [],
+    };
   });
 }
 
-function convertASMLines(lines: ASMLine[]): string[] {
+function convertASMLines(lines: ASMLine[]): RenderedCodeLine[] {
   return lines.map((line) => {
     const parts: string[] = [];
-    if (line.label) return `${line.label}:`;
+    if (line.text !== undefined) {
+      return {
+        text: line.text,
+        sourceRanges: line.sourceRanges ?? [],
+      };
+    }
+    if (line.label) {
+      return {
+        text: `${line.label}:`,
+        sourceRanges: line.sourceRanges ?? [],
+      };
+    }
     if (line.instruction) parts.push(`  ${line.instruction}`);
     if (line.operands.length) parts.push(`  ${line.operands.join(', ')}`);
     if (line.comment) parts.push(`  ; ${line.comment}`);
-    return parts.join('');
+    return {
+      text: parts.join(''),
+      sourceRanges: line.sourceRanges ?? [],
+    };
   });
 }
 
@@ -478,18 +430,14 @@ function CodeView({
   selection,
   colorize,
 }: {
-  lines: string[];
+  lines: RenderedCodeLine[];
   selection: SelectionContext;
   colorize: (text: string) => JSX.Element;
 }) {
-  let currentFunctionName: string | null = null;
   return (
     <div className="overflow-hidden border-y border-slate-200 bg-white dark:border-[#333] dark:bg-[#0d0d0d]">
       {lines.map((line, index) => {
-        const label = lineFunctionLabel(line);
-        if (label) currentFunctionName = label;
-        if (!line.trim()) currentFunctionName = null;
-        const highlighted = shouldHighlightTextLine(line, selection, currentFunctionName);
+        const highlighted = sourceRangesOverlapSelection(line.sourceRanges, selection);
         return (
           <div
             key={index}
@@ -504,7 +452,7 @@ function CodeView({
             <span className="w-11 shrink-0 border-r border-slate-200 px-3 text-right text-[11px] text-slate-400 dark:border-[#252525] dark:text-gray-500">
               {index + 1}
             </span>
-            <span className="min-w-0 whitespace-pre px-3 text-slate-700 dark:text-gray-200">{colorize(line)}</span>
+            <span className="min-w-0 whitespace-pre px-3 text-slate-700 dark:text-gray-200">{colorize(line.text)}</span>
           </div>
         );
       })}

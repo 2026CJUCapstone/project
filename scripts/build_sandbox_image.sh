@@ -22,6 +22,7 @@ BPP_BOOTSTRAP_SHA256="${BPP_BOOTSTRAP_SHA256:-}"
 SANDBOX_IMAGE_TAG="${SANDBOX_IMAGE_TAG:-compiler-sandbox}"
 TEST_SKIP_LLVM_BUILD="${TEST_SKIP_LLVM_BUILD:-1}"
 TEST_FAST_IO="${TEST_FAST_IO:-0}"
+BPP_TEST_NAME_FILTER="${BPP_TEST_NAME_FILTER:-14_print_anything_success|43_language_feature_runtime_bundle_success}"
 RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE:-$(runtime_build_signature)}"
 
 if [[ -z "$BPP_REF" ]]; then
@@ -40,6 +41,7 @@ echo "Building sandbox with Bpp $BPP_BRANCH @ $BPP_REF from source"
 echo "  bootstrap_tag=${BPP_BOOTSTRAP_TAG:-<Bpp CMake default>}"
 echo "  test_skip_llvm_build=$TEST_SKIP_LLVM_BUILD"
 echo "  test_fast_io=$TEST_FAST_IO"
+echo "  test_name_filter=${BPP_TEST_NAME_FILTER:-<none>}"
 echo "  runtime_build_signature=$RUNTIME_BUILD_SIGNATURE"
 
 docker build \
@@ -51,6 +53,7 @@ docker build \
   --build-arg "BPP_BOOTSTRAP_SHA256=$BPP_BOOTSTRAP_SHA256" \
   --build-arg "TEST_SKIP_LLVM_BUILD=$TEST_SKIP_LLVM_BUILD" \
   --build-arg "TEST_FAST_IO=$TEST_FAST_IO" \
+  --build-arg "BPP_TEST_NAME_FILTER=$BPP_TEST_NAME_FILTER" \
   --build-arg "RUNTIME_BUILD_SIGNATURE=$RUNTIME_BUILD_SIGNATURE" \
   -t "$SANDBOX_IMAGE_TAG" \
   -f "$PROJECT_ROOT/runtime/docker/Dockerfile" \

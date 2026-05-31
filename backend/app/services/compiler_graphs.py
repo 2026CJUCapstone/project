@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -356,6 +357,47 @@ def build_bpp_asm(output: str, source_code: str) -> dict:
     return {"lines": asm_lines}
 
 
+def build_bpp_asm_from_json(output: str, source_filename: str | None = None) -> dict | None:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return None
+
+    asm_payload = payload.get("asm") if isinstance(payload, dict) else None
+    raw_lines = asm_payload.get("lines") if isinstance(asm_payload, dict) else None
+    if not isinstance(raw_lines, list):
+        return None
+
+    lines: list[dict] = []
+    for raw_line in raw_lines:
+        if not isinstance(raw_line, dict):
+            continue
+
+        text = _string_or_empty(raw_line.get("text"))
+        instruction = _string_or_empty(raw_line.get("instruction"))
+        raw_operands = raw_line.get("operands")
+        operands = [str(item) for item in raw_operands if item is not None] if isinstance(raw_operands, list) else []
+        label = _string_or_none(raw_line.get("label"))
+        if label is None and not instruction and text.strip().endswith(":"):
+            label = text.strip()[:-1]
+
+        line: dict = {
+            "address": _string_or_empty(raw_line.get("address")),
+            "label": label,
+            "instruction": instruction,
+            "operands": operands,
+            "comment": _string_or_none(raw_line.get("comment")),
+            "text": text,
+            "sourceRanges": _normalize_source_ranges(raw_line.get("sourceRanges"), source_filename),
+        }
+        lines.append(line)
+
+    if source_filename:
+        lines = _filter_asm_lines_to_source_sections(lines)
+
+    return {"lines": lines}
+
+
 def _split_function_sections(output: str, source_code: str) -> list[_FunctionSection]:
     source_names = extract_user_function_names(source_code)
     if not source_names:
@@ -460,3 +502,93 @@ def _normalize_statement(line: str, prefix: str = "") -> str:
         statement = statement[len(prefix) :].strip()
     statement = statement or prefix or "statement"
     return statement[:64]
+
+
+def _string_or_empty(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _string_or_none(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
+
+
+def _normalize_source_ranges(value: object, source_filename: str | None = None) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+
+    ranges: list[dict] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        try:
+            start_line = int(item["startLine"])
+            start_column = int(item["startColumn"])
+            end_line = int(item["endLine"])
+            end_column = int(item["endColumn"])
+        except (KeyError, TypeError, ValueError):
+            continue
+
+        file_name = _string_or_none(item.get("file"))
+        if source_filename and not _source_file_matches(file_name, source_filename):
+            continue
+
+        ranges.append(
+            {
+                "file": file_name,
+                "startLine": max(1, start_line),
+                "startColumn": max(1, start_column),
+                "endLine": max(1, end_line),
+                "endColumn": max(1, end_column),
+            }
+        )
+
+    return ranges
+
+
+def _filter_asm_lines_to_source_sections(lines: list[dict]) -> list[dict]:
+    sections: list[list[dict]] = []
+    current_section: list[dict] = []
+
+    for line in lines:
+        if _is_global_asm_label(line):
+            if current_section:
+                sections.append(current_section)
+            current_section = [line]
+            continue
+        if current_section:
+            current_section.append(line)
+
+    if current_section:
+        sections.append(current_section)
+
+    filtered: list[dict] = []
+    for section in sections:
+        if any(line.get("sourceRanges") for line in section):
+            filtered.extend(section)
+
+    if filtered:
+        return filtered
+
+    return [line for line in lines if line.get("sourceRanges")]
+
+
+def _is_global_asm_label(line: dict) -> bool:
+    label = _string_or_none(line.get("label"))
+    if label:
+        return not label.startswith(".")
+    text = _string_or_empty(line.get("text")).strip()
+    return bool(text.endswith(":") and not text.startswith("."))
+
+
+def _source_file_matches(file_name: str | None, source_filename: str) -> bool:
+    if not file_name:
+        return False
+
+    normalized = file_name.replace("\\", "/")
+    basename = normalized.rsplit("/", 1)[-1]
+    return basename == source_filename and "/src/std/" not in normalized

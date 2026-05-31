@@ -23,6 +23,7 @@ from docker.types import Ulimit
 from app.core.config import settings
 from app.services.compiler_graphs import (
     build_bpp_asm,
+    build_bpp_asm_from_json,
     build_bpp_ast_graph,
     build_bpp_ir,
     build_bpp_ssa_graph,
@@ -183,7 +184,13 @@ class DockerCompilerRunner:
                 elif target_name == "ir":
                     response["ir"] = build_bpp_ir(dump_result["stdout"], source_code)
                 elif target_name == "asm":
-                    response["asm"] = build_bpp_asm(dump_result["stdout"], source_code)
+                    response["asm"] = build_bpp_asm_from_json(
+                        dump_result["stdout"],
+                        self._resolve_filename(language, source_code),
+                    ) or build_bpp_asm(
+                        dump_result["stdout"],
+                        source_code,
+                    )
 
         response["execution_time"] = round((time.monotonic() - started_at) * 1000, 2)
         return response

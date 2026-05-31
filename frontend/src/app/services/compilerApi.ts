@@ -46,6 +46,14 @@ export interface ASTNode {
   metadata?: Record<string, any>;
 }
 
+export interface SourceRange {
+  file?: string | null;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
+
 export interface ASTGraph {
   nodes: ASTNode[];
   edges: {
@@ -80,6 +88,7 @@ export interface IRInstruction {
   operands: string[];
   result?: string;
   comment?: string;
+  sourceRanges?: SourceRange[];
 }
 
 export interface ASMLine {
@@ -88,6 +97,8 @@ export interface ASMLine {
   instruction: string;
   operands: string[];
   comment?: string;
+  text?: string;
+  sourceRanges?: SourceRange[];
 }
 
 export interface CompileError {

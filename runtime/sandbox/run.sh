@@ -141,7 +141,7 @@ emit_bpp_asm() {
   else
     bpp_flags+=(-O0)
   fi
-  bpp "${bpp_flags[@]}" -asm "$SOURCE_FILE"
+  bpp "${bpp_flags[@]}" --emit-source-map --emit-json "$SOURCE_FILE"
 }
 
 run_bpp() {

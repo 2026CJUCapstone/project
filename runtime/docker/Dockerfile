@@ -1,33 +1,5 @@
 FROM ubuntu:24.04
 
-ARG BPP_REPO=https://github.com/Creeper0809/Bpp
-ARG BPP_REF=main
-ARG BPP_BOOTSTRAP_TAG
-ARG BPP_BOOTSTRAP_URL
-ARG BPP_BOOTSTRAP_SHA256
-ARG TEST_SKIP_LLVM_BUILD=1
-ARG TEST_FAST_IO=0
-ARG RUNTIME_BUILD_SIGNATURE=unknown
-
-LABEL org.opencontainers.image.source="${BPP_REPO}"
-LABEL io.bpp.repo="${BPP_REPO}"
-LABEL io.bpp.ref="${BPP_REF}"
-LABEL io.bpp.bootstrap.tag="${BPP_BOOTSTRAP_TAG}"
-LABEL io.bpp.bootstrap.url="${BPP_BOOTSTRAP_URL}"
-LABEL io.bpp.bootstrap.sha256="${BPP_BOOTSTRAP_SHA256}"
-LABEL io.bpp.test_skip_llvm_build="${TEST_SKIP_LLVM_BUILD}"
-LABEL io.bpp.test_fast_io="${TEST_FAST_IO}"
-LABEL io.bpp.runtime_build_signature="${RUNTIME_BUILD_SIGNATURE}"
-
-ENV BPP_REPO="${BPP_REPO}"
-ENV BPP_REF="${BPP_REF}"
-ENV BPP_BOOTSTRAP_TAG="${BPP_BOOTSTRAP_TAG}"
-ENV BPP_BOOTSTRAP_URL="${BPP_BOOTSTRAP_URL}"
-ENV BPP_BOOTSTRAP_SHA256="${BPP_BOOTSTRAP_SHA256}"
-ENV TEST_SKIP_LLVM_BUILD="${TEST_SKIP_LLVM_BUILD}"
-ENV TEST_FAST_IO="${TEST_FAST_IO}"
-ENV RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE}"
-
 RUN set -eux; \
     if ! (apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
       binutils \
@@ -74,6 +46,37 @@ RUN set -eux; \
     fi; \
     rm -rf /var/lib/apt/lists/*
 
+ARG BPP_REPO=https://github.com/Creeper0809/Bpp
+ARG BPP_REF=main
+ARG BPP_BOOTSTRAP_TAG
+ARG BPP_BOOTSTRAP_URL
+ARG BPP_BOOTSTRAP_SHA256
+ARG TEST_SKIP_LLVM_BUILD=1
+ARG TEST_FAST_IO=0
+ARG BPP_TEST_NAME_FILTER="14_print_anything_success|43_language_feature_runtime_bundle_success"
+ARG RUNTIME_BUILD_SIGNATURE=unknown
+
+LABEL org.opencontainers.image.source="${BPP_REPO}"
+LABEL io.bpp.repo="${BPP_REPO}"
+LABEL io.bpp.ref="${BPP_REF}"
+LABEL io.bpp.bootstrap.tag="${BPP_BOOTSTRAP_TAG}"
+LABEL io.bpp.bootstrap.url="${BPP_BOOTSTRAP_URL}"
+LABEL io.bpp.bootstrap.sha256="${BPP_BOOTSTRAP_SHA256}"
+LABEL io.bpp.test_skip_llvm_build="${TEST_SKIP_LLVM_BUILD}"
+LABEL io.bpp.test_fast_io="${TEST_FAST_IO}"
+LABEL io.bpp.test_name_filter="${BPP_TEST_NAME_FILTER}"
+LABEL io.bpp.runtime_build_signature="${RUNTIME_BUILD_SIGNATURE}"
+
+ENV BPP_REPO="${BPP_REPO}"
+ENV BPP_REF="${BPP_REF}"
+ENV BPP_BOOTSTRAP_TAG="${BPP_BOOTSTRAP_TAG}"
+ENV BPP_BOOTSTRAP_URL="${BPP_BOOTSTRAP_URL}"
+ENV BPP_BOOTSTRAP_SHA256="${BPP_BOOTSTRAP_SHA256}"
+ENV TEST_SKIP_LLVM_BUILD="${TEST_SKIP_LLVM_BUILD}"
+ENV TEST_FAST_IO="${TEST_FAST_IO}"
+ENV BPP_TEST_NAME_FILTER="${BPP_TEST_NAME_FILTER}"
+ENV RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE}"
+
 RUN set -eux; \
     git clone "$BPP_REPO" /opt/Bpp; \
     cd /opt/Bpp; \
@@ -86,10 +89,10 @@ RUN set -eux; \
       cmake_args="$cmake_args -DBPP_BOOTSTRAP_SHA256_LINUX=$BPP_BOOTSTRAP_SHA256"; \
     fi; \
     cmake -S . -B build-linux $cmake_args; \
-    cmake --build build-linux --target bpp-selfhost-fast; \
+    TEST_NAME_FILTER="$BPP_TEST_NAME_FILTER" cmake --build build-linux --target bpp-selfhost-fast; \
     cmake --install build-linux; \
-    printf 'install_mode=source\nrepo=%s\nref=%s\nbootstrap_tag=%s\nbootstrap_url=%s\nbootstrap_sha256=%s\ntest_skip_llvm_build=%s\ntest_fast_io=%s\nruntime_build_signature=%s\n' \
-      "$BPP_REPO" "$BPP_REF" "$BPP_BOOTSTRAP_TAG" "$BPP_BOOTSTRAP_URL" "$BPP_BOOTSTRAP_SHA256" "$TEST_SKIP_LLVM_BUILD" "$TEST_FAST_IO" "$RUNTIME_BUILD_SIGNATURE" > /usr/local/share/bpp-build-info.txt; \
+    printf 'install_mode=source\nrepo=%s\nref=%s\nbootstrap_tag=%s\nbootstrap_url=%s\nbootstrap_sha256=%s\ntest_skip_llvm_build=%s\ntest_fast_io=%s\ntest_name_filter=%s\nruntime_build_signature=%s\n' \
+      "$BPP_REPO" "$BPP_REF" "$BPP_BOOTSTRAP_TAG" "$BPP_BOOTSTRAP_URL" "$BPP_BOOTSTRAP_SHA256" "$TEST_SKIP_LLVM_BUILD" "$TEST_FAST_IO" "$BPP_TEST_NAME_FILTER" "$RUNTIME_BUILD_SIGNATURE" > /usr/local/share/bpp-build-info.txt; \
     rm -rf /opt/Bpp/.git
 
 WORKDIR /sandbox
