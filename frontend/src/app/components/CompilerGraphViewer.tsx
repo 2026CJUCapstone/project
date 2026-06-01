@@ -154,7 +154,7 @@ function mkEdge(id: string, source: string, target: string, color: string, label
   };
 }
 
-type SelectionContext = {
+export type SelectionContext = {
   range: SourceSelectionRange | null;
   hasSelection: boolean;
 };
@@ -269,9 +269,49 @@ function sourceLocationOverlaps(
   return rangesOverlap(location, range ?? undefined);
 }
 
-function sourceRangesOverlapSelection(ranges: SourceRange[] | undefined, selection: SelectionContext): boolean {
-  if (!selection.hasSelection || !selection.range || !ranges?.length) return false;
-  return ranges.some((range) => rangesOverlap(range, selection.range ?? undefined));
+function rangesEqual(a: NormalizedSourceRange, b: NormalizedSourceRange): boolean {
+  return (
+    a.startLine === b.startLine &&
+    a.startColumn === b.startColumn &&
+    a.endLine === b.endLine &&
+    a.endColumn === b.endColumn
+  );
+}
+
+function rangeContains(outer: NormalizedSourceRange, inner: NormalizedSourceRange): boolean {
+  return (
+    isBeforeOrEqual(outer.startLine, outer.startColumn, inner.startLine, inner.startColumn) &&
+    isBeforeOrEqual(inner.endLine, inner.endColumn, outer.endLine, outer.endColumn)
+  );
+}
+
+function rangeStrictlyContains(outer: NormalizedSourceRange, inner: NormalizedSourceRange): boolean {
+  return rangeContains(outer, inner) && !rangesEqual(outer, inner);
+}
+
+export function getHighlightedCodeLineIndexes(
+  lines: Array<{ sourceRanges?: SourceRange[] }>,
+  selection: SelectionContext,
+): Set<number> {
+  if (!selection.hasSelection || !selection.range) return new Set();
+
+  const candidates: { lineIndex: number; range: NormalizedSourceRange }[] = [];
+  lines.forEach((line, lineIndex) => {
+    line.sourceRanges?.forEach((sourceRange) => {
+      if (!rangesOverlap(sourceRange, selection.range ?? undefined)) return;
+      const normalized = normalizeSourceRange(sourceRange);
+      if (!normalized) return;
+      candidates.push({ lineIndex, range: normalized });
+    });
+  });
+
+  if (!candidates.length) return new Set();
+
+  const specificCandidates = candidates.filter(
+    (candidate) => !candidates.some((other) => rangeStrictlyContains(candidate.range, other.range)),
+  );
+
+  return new Set(specificCandidates.map((candidate) => candidate.lineIndex));
 }
 
 function convertASTGraph(astGraph: ASTGraph, selection: SelectionContext): { nodes: Node[]; edges: Edge[] } {
@@ -434,10 +474,12 @@ function CodeView({
   selection: SelectionContext;
   colorize: (text: string) => JSX.Element;
 }) {
+  const highlightedLineIndexes = useMemo(() => getHighlightedCodeLineIndexes(lines, selection), [lines, selection]);
+
   return (
     <div className="overflow-hidden border-y border-slate-200 bg-white dark:border-[#333] dark:bg-[#0d0d0d]">
       {lines.map((line, index) => {
-        const highlighted = sourceRangesOverlapSelection(line.sourceRanges, selection);
+        const highlighted = highlightedLineIndexes.has(index);
         return (
           <div
             key={index}
