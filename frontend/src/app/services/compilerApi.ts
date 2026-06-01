@@ -1,4 +1,5 @@
 // API 기본 설정 및 타입 정의
+import { getAuthHeaders } from './apiBase';
 
 function normalizeApiBaseUrl(value: string): string {
   if (!value || value === '/') {
@@ -112,6 +113,7 @@ export interface CompileError {
 export interface CompileRequest {
   code: string;
   language?: CompilerLanguage;
+  problemId?: string | null;
   options?: {
     optimize: boolean;
     target: 'ast' | 'ssa' | 'ir' | 'asm' | 'all';
@@ -142,7 +144,47 @@ export interface ExecuteRequest {
   code: string;
   language?: CompilerLanguage;
   input?: string;
+  problemId?: string | null;
   timeout?: number; // ms
+}
+
+export type CompileQueueStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
+export type CompileQueueKind = 'compile' | 'run' | 'grading';
+
+export interface CompileQueueJob {
+  id: string;
+  kind: CompileQueueKind;
+  status: CompileQueueStatus;
+  language: CompilerLanguage;
+  username?: string | null;
+  userId?: string | null;
+  problemId?: string | null;
+  problemTitle?: string | null;
+  target?: string | null;
+  sourceSizeBytes: number;
+  queuedAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  waitMs?: number | null;
+  runMs?: number | null;
+  position?: number | null;
+  error?: string | null;
+}
+
+export interface CompileQueueResponse {
+  jobs: CompileQueueJob[];
+  total: number;
+  queued: number;
+  running: number;
+}
+
+export interface CompileQueueFilters {
+  limit?: number;
+  status?: CompileQueueStatus | 'all';
+  kind?: CompileQueueKind | 'all';
+  username?: string;
+  userId?: string;
+  problemId?: string;
 }
 
 export interface ExecuteResponse {
@@ -181,6 +223,7 @@ async function requestJson<T>(path: string, init: RequestInit, options: RequestO
       signal: options.signal ?? controller.signal,
       headers: {
         'Content-Type': 'application/json',
+        ...getAuthHeaders(),
         ...(init.headers ?? {}),
       },
     });
@@ -246,6 +289,7 @@ export async function compileCode(request: CompileRequest, options: RequestOptio
       body: JSON.stringify({
         code: request.code,
         language: request.language ?? 'bpp',
+        problemId: request.problemId || undefined,
         options: request.options ?? { optimize: false, target: 'all' },
       }),
     },
@@ -267,6 +311,7 @@ export async function executeCode(request: ExecuteRequest, options: RequestOptio
         language: request.language ?? 'bpp',
         code: request.code,
         stdin: request.input,
+        problemId: request.problemId || undefined,
       }),
     },
     {
@@ -307,4 +352,23 @@ export async function checkHealth(): Promise<{ status: string; version?: string 
   } catch (_error) {
     throw new Error('백엔드 서버에 연결할 수 없습니다.');
   }
+}
+
+export async function getCompileQueue(filters: CompileQueueFilters = {}): Promise<CompileQueueResponse> {
+  const params = new URLSearchParams();
+  params.set('limit', String(filters.limit ?? 100));
+  if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+  if (filters.kind && filters.kind !== 'all') params.set('kind', filters.kind);
+  if (filters.username?.trim()) params.set('username', filters.username.trim());
+  if (filters.userId?.trim()) params.set('userId', filters.userId.trim());
+  if (filters.problemId?.trim()) params.set('problemId', filters.problemId.trim());
+
+  return await requestJson<CompileQueueResponse>(
+    `/api/v1/compiler/queue?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: {},
+    },
+    { timeout: 5000 },
+  );
 }

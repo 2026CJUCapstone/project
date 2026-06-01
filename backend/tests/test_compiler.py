@@ -1,8 +1,13 @@
+import uuid
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 
 from app.core.config import Settings
+from app.core.database import SessionLocal
 from app.main import app
+from app.models.database import User
+from app.services import auth
 from app.services import compiler as compiler_service
 
 
@@ -84,6 +89,67 @@ async def test_compile_contract(monkeypatch: pytest.MonkeyPatch):
     assert response.status_code == 200
     assert response.json()["success"] is True
     assert response.json()["metadata"]["optimization_level"] == 0
+
+
+@pytest.mark.asyncio
+async def test_compile_queue_records_public_problem_and_user_filters(monkeypatch: pytest.MonkeyPatch):
+    suffix = uuid.uuid4().hex[:10]
+    username = f"queue_{suffix}"
+    problem_id = f"problem-{suffix}"
+    db = SessionLocal()
+    try:
+        user = User(
+            username=username,
+            hashed_password=auth.get_password_hash("password123"),
+        )
+        db.add(user)
+        db.commit()
+    finally:
+        db.close()
+
+    async def fake_compile(source_code: str, language: str, optimize: bool = False, target: str = "all"):
+        return {
+            "success": True,
+            "errors": [],
+            "warnings": [],
+            "execution_time": 3.4,
+            "metadata": {"node_count": 1, "optimization_level": 0},
+        }
+
+    monkeypatch.setattr(compiler_service.compiler_instance, "compile", fake_compile)
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            compiled = await client.post(
+                "/api/v1/compiler/compile",
+                headers={"Authorization": f"Bearer {auth.create_access_token({'sub': username})}"},
+                json={
+                    "code": "func main() -> u64 { return 0; }",
+                    "language": "bpp",
+                    "problemId": problem_id,
+                    "options": {"optimize": False, "target": "all"},
+                },
+            )
+            queue = await client.get(
+                "/api/v1/compiler/queue",
+                params={"problemId": problem_id, "username": username},
+            )
+
+        assert compiled.status_code == 200
+        assert queue.status_code == 200
+        jobs = queue.json()["jobs"]
+        assert len(jobs) == 1
+        assert jobs[0]["problemId"] == problem_id
+        assert jobs[0]["username"] == username
+        assert jobs[0]["status"] == "completed"
+        assert jobs[0]["sourceSizeBytes"] > 0
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(User).filter(User.username == username).delete()
+            db.commit()
+        finally:
+            db.close()
 
 
 def test_cors_origins_parses_csv_env(monkeypatch: pytest.MonkeyPatch):

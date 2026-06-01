@@ -16,6 +16,11 @@ class CodeRequest(BaseModel):
     source_code: str = Field(validation_alias=AliasChoices("source_code", "code"))
     stdin: str | None = None
     optimize: bool = False
+    problem_id: str | None = Field(
+        default=None,
+        max_length=128,
+        validation_alias=AliasChoices("problem_id", "problemId"),
+    )
 
 
 class CodeResponse(BaseModel):
@@ -32,9 +37,16 @@ class CompileOptions(BaseModel):
 
 
 class CompileRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     code: str
     language: CompilerLanguage = "bpp"
     options: CompileOptions = Field(default_factory=CompileOptions)
+    problem_id: str | None = Field(
+        default=None,
+        max_length=128,
+        validation_alias=AliasChoices("problem_id", "problemId"),
+    )
 
 
 class CompileDiagnostic(BaseModel):
@@ -86,6 +98,33 @@ class CamelModel(BaseModel):
         populate_by_name=True,
         from_attributes=True
     )
+
+
+class CompileQueueJobRead(CamelModel):
+    id: str
+    kind: Literal["compile", "run", "grading"]
+    status: Literal["queued", "running", "completed", "failed", "canceled"]
+    language: CompilerLanguage
+    username: Optional[str] = None
+    user_id: Optional[str] = None
+    problem_id: Optional[str] = None
+    problem_title: Optional[str] = None
+    target: Optional[str] = None
+    source_size_bytes: int
+    queued_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    wait_ms: Optional[float] = None
+    run_ms: Optional[float] = None
+    position: Optional[int] = None
+    error: Optional[str] = None
+
+
+class CompileQueueResponse(CamelModel):
+    jobs: List[CompileQueueJobRead]
+    total: int
+    queued: int
+    running: int
 
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

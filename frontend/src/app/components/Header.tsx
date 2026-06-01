@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { Terminal, Play, Save, Square, Swords, Trophy, MessageSquare, Settings, Sun, Moon, Hammer, X } from 'lucide-react';
+import { Terminal, Play, Save, Square, Swords, Trophy, MessageSquare, Settings, Sun, Moon, Hammer, X, Activity } from 'lucide-react';
 import { UserProfile } from './UserProfile';
 import { AuthModal } from './AuthModal';
 import { useCompilerStore } from '../store/compilerStore';
@@ -248,7 +248,18 @@ export function Header() {
               <Trophy size={16} className="text-yellow-600 dark:text-yellow-500" />
               리더보드
             </button>
-            <button 
+            <button
+              onClick={() => navigate('/queue')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                location.pathname === '/queue'
+                  ? 'bg-gray-100 dark:bg-[#2d2d2d] text-gray-900 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2d2d2d]'
+              }`}
+            >
+              <Activity size={16} className="text-emerald-500 dark:text-emerald-400" />
+              큐
+            </button>
+            <button
               onClick={() => navigate('/community')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
                 location.pathname === '/community' 

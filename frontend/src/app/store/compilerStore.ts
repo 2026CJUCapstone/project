@@ -132,6 +132,11 @@ function codeStorageMetaKey(scope?: string | null): string {
   return `${STORAGE_META_KEY_PREFIX}:${normalizeStorageScope(scope)}`;
 }
 
+function problemIdFromScope(scope?: string | null): string | null {
+  const normalized = normalizeStorageScope(scope);
+  return normalized.startsWith('problem:') ? normalized.slice('problem:'.length) : null;
+}
+
 export const useCompilerStore = create<CompilerState>((set, get) => ({
   code: '',
   setCode: (code) => set({ code }),
@@ -224,7 +229,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   lastCompiledCode: null,
 
   compile: async () => {
-    const { code, isCompiling, language } = get();
+    const { code, codeStorageScope, isCompiling, language } = get();
     if (isCompiling) return;
 
     if (!code.trim()) {
@@ -250,6 +255,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
       const result = await compileCode({
         code,
         language,
+        problemId: problemIdFromScope(codeStorageScope),
         options: { optimize: false, target: 'all' },
       });
 
@@ -500,7 +506,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   },
   
   runCode: async () => {
-    const { code, language, isRunning } = get();
+    const { code, codeStorageScope, language, isRunning } = get();
 
     if (isRunning) {
       return;
@@ -537,6 +543,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
         {
           code,
           language,
+          problemId: problemIdFromScope(codeStorageScope),
         },
         { signal: activeRunController.signal },
       );

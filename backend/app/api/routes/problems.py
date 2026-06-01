@@ -8,6 +8,7 @@ from app.models import schemas
 from app.api.routes.auth import get_current_user, get_optional_current_user, require_admin
 from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.services.compiler import compiler_instance
+from app.services.compile_queue import compile_queue
 
 router = APIRouter()
 
@@ -284,10 +285,19 @@ async def submit_problem(
     hidden_passed_count = 0
 
     async def run_case(tc: dict, case_number: int, phase: str, visible: bool) -> schemas.TestCaseResult:
-        result = await compiler_instance.run(
-            source_code=request.code,
+        result = await compile_queue.run(
+            kind="grading",
             language=request.language,
-            stdin=tc.get("input", ""),
+            source_code=request.code,
+            user_id=current_user.id if current_user else None,
+            username=current_user.username if current_user else None,
+            problem_id=problem.id,
+            problem_title=problem.title,
+            task=lambda: compiler_instance.run(
+                source_code=request.code,
+                language=request.language,
+                stdin=tc.get("input", ""),
+            ),
         )
 
         actual_output = result.get("stdout", "").strip()

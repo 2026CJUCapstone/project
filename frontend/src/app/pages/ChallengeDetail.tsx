@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ArrowLeft, PlayCircle, Tag, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Tag, Loader2, AlertCircle, Activity } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { getProblem } from '../services/problemApi';
 import type { Problem, ProblemTag } from '../services/problemApi';
@@ -107,13 +107,22 @@ export function ChallengeDetail() {
             문제 목록
           </button>
 
-          <button
-            onClick={() => navigate('/', { state: { challenge } })}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <PlayCircle size={16} />
-            문제 풀기
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(`/queue?problemId=${encodeURIComponent(challenge.id)}`)}
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-[#444] bg-white dark:bg-[#1e1e1e] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525]"
+            >
+              <Activity size={16} />
+              큐
+            </button>
+            <button
+              onClick={() => navigate('/', { state: { challenge } })}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <PlayCircle size={16} />
+              문제 풀기
+            </button>
+          </div>
         </div>
 
         <section className="rounded-xl border border-gray-300 dark:border-[#333] bg-gray-50 dark:bg-[#161616] p-6 md:p-8">
