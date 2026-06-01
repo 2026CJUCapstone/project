@@ -47,7 +47,8 @@ jobs:
           DEPLOY_REPO: ${{ github.server_url }}/${{ github.repository }}.git
           DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
         run: |
-          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
+            -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "DEPLOY_BRANCH='${DEPLOY_BRANCH}' DEPLOY_PATH='${DEPLOY_PATH}' DEPLOY_REPO='${DEPLOY_REPO}' RUN_DEPLOY_SCRIPT=0 bash -s" \
             < scripts/sync_remote_repo.sh
 
@@ -59,5 +60,6 @@ jobs:
           DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
+            -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && GITHUB_TOKEN='${GITHUB_TOKEN}' bash scripts/deploy_server.sh"
