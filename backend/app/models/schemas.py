@@ -1,7 +1,8 @@
 from typing import List, Literal, Optional
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 from datetime import datetime
+import re
 
 
 CompilerLanguage = Literal["bpp", "python", "c", "cpp", "java", "javascript"]
@@ -87,6 +88,20 @@ class CamelModel(BaseModel):
     )
 
 
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def normalize_email(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if len(normalized) > 254 or not EMAIL_PATTERN.match(normalized):
+        raise ValueError("올바른 이메일 주소를 입력하세요.")
+    return normalized
+
+
 class LeaderboardRead(CamelModel):
     rank: int
     username: str
@@ -157,8 +172,17 @@ class ProblemDetail(ProblemBase):
 
 class UserCreate(CamelModel):
     username: str = Field(min_length=3, max_length=50)
+    email: str = Field(min_length=3, max_length=254)
     nickname: Optional[str] = Field(default=None, min_length=2, max_length=30)
     password: str = Field(min_length=8)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = normalize_email(value)
+        if normalized is None:
+            raise ValueError("이메일을 입력하세요.")
+        return normalized
 
 class UserLogin(CamelModel):
     username: str
@@ -167,26 +191,57 @@ class UserLogin(CamelModel):
 class UserRead(CamelModel):
     id: str
     username: str
+    email: Optional[str] = None
     nickname: Optional[str] = None
     total_score: int
     avatar_url: Optional[str] = None
     role: str = "user"
 
 class UserProfileUpdate(CamelModel):
+    email: Optional[str] = Field(default=None, max_length=254)
     nickname: Optional[str] = Field(default=None, min_length=2, max_length=30)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("email")
+    @classmethod
+    def validate_optional_email(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_email(value)
 
 class AdminUserRead(UserRead):
     created_at: Optional[datetime] = None
 
 class AdminUserUpdate(CamelModel):
     role: Optional[Literal["user", "admin"]] = None
+    email: Optional[str] = Field(default=None, max_length=254)
     nickname: Optional[str] = Field(default=None, min_length=2, max_length=30)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("email")
+    @classmethod
+    def validate_admin_email(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_email(value)
 
 class Token(CamelModel):
     access_token: str
     token_type: str
+
+
+class PasswordResetRequest(CamelModel):
+    username_or_email: str = Field(
+        min_length=3,
+        max_length=254,
+        validation_alias=AliasChoices("username_or_email", "usernameOrEmail", "username", "email"),
+    )
+
+
+class PasswordResetConfirm(CamelModel):
+    token: str = Field(min_length=32, max_length=256)
+    new_password: str = Field(min_length=8, max_length=256)
+
+
+class PasswordResetResponse(CamelModel):
+    message: str
+    debug_reset_token: Optional[str] = None
 
 class SubmissionRequest(CamelModel):
     code: str

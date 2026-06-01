@@ -6,7 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.main import app
-from app.models.database import CodeProject, Comment, Problem, Submission, User, UserProblemScore
+from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, Submission, User, UserProblemScore
 from app.services import auth
 from app.services import compiler as compiler_service
 
@@ -19,11 +19,12 @@ def _auth_headers(username: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {_token_for(username)}"}
 
 
-def _create_user(username: str, role: str = "user") -> User:
+def _create_user(username: str, role: str = "user", email: str | None = None) -> User:
     db = SessionLocal()
     try:
         user = User(
             username=username,
+            email=email,
             hashed_password=auth.get_password_hash("password123"),
             role=role,
         )
@@ -41,6 +42,7 @@ def _delete_users(*usernames: str) -> None:
         users = db.query(User).filter(User.username.in_(usernames)).all()
         user_ids = [user.id for user in users]
         if user_ids:
+            db.query(PasswordResetToken).filter(PasswordResetToken.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(CodeProject).filter(CodeProject.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(Comment).filter(Comment.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(Submission).filter(Submission.user_id.in_(user_ids)).delete(synchronize_session=False)
@@ -76,6 +78,58 @@ async def test_login_rate_limit_blocks_repeated_attempts():
         ]
 
     assert responses[-1].status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_password_reset_debug_token_updates_password(monkeypatch: pytest.MonkeyPatch):
+    suffix = uuid.uuid4().hex[:10]
+    username = f"reset_{suffix}"
+    email = f"{username}@example.test"
+    _create_user(username, email=email)
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            requested = await client.post(
+                "/api/v1/auth/password-reset/request",
+                json={"usernameOrEmail": email},
+            )
+            token = requested.json()["debugResetToken"]
+            confirmed = await client.post(
+                "/api/v1/auth/password-reset/confirm",
+                json={"token": token, "newPassword": "new-password-123"},
+            )
+            old_login = await client.post(
+                "/api/v1/auth/login",
+                json={"username": username, "password": "password123"},
+            )
+            new_login = await client.post(
+                "/api/v1/auth/login",
+                json={"username": email, "password": "new-password-123"},
+            )
+
+        assert requested.status_code == 200
+        assert len(token) >= 32
+        assert confirmed.status_code == 200
+        assert old_login.status_code == 401
+        assert new_login.status_code == 200
+    finally:
+        _delete_users(username)
+
+
+@pytest.mark.asyncio
+async def test_password_reset_unknown_identity_does_not_issue_token(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    identity = f"missing_{uuid.uuid4().hex[:10]}@example.test"
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/auth/password-reset/request",
+            json={"usernameOrEmail": identity},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["debugResetToken"] is None
 
 
 @pytest.mark.asyncio

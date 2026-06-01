@@ -53,6 +53,16 @@ def update_user(
                 raise HTTPException(status_code=400, detail="이미 사용 중인 닉네임입니다.")
         user.nickname = nickname
 
+    if payload.email is not None:
+        existing = (
+            db.query(db_models.User)
+            .filter(db_models.User.email == payload.email, db_models.User.id != user.id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=400, detail="이미 사용 중인 이메일입니다.")
+        user.email = payload.email
+
     if payload.avatar_url is not None:
         user.avatar_url = payload.avatar_url.strip() or None
 

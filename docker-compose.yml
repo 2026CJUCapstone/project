@@ -23,6 +23,13 @@ services:
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://127.0.0.1
       SECRET_KEY: ${SECRET_KEY:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PASSWORD_RESET_BASE_URL: ${PASSWORD_RESET_BASE_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
       SANDBOX_IMAGE: compiler-sandbox
       EXECUTION_TIMEOUT: 30
       SANDBOX_WORKDIR_ROOT: ${PROJECT_ROOT}/.sandbox-work

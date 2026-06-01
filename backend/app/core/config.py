@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     CODE_PROJECT_SCOPE_MAX_LENGTH: int = 128
     SUBMISSION_CODE_MAX_BYTES: int = 200_000
     SUBMISSION_RETENTION_PER_USER: int = 200
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
+    PASSWORD_RESET_BASE_URL: str | None = None
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_FROM: str | None = None
+    SMTP_STARTTLS: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", enable_decoding=False)
 

@@ -23,9 +23,11 @@ export function Header() {
   const [user, setUser] = useState<LeaderboardProfile | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [profileNickname, setProfileNickname] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
   const [profileAvatar, setProfileAvatar] = useState('');
   const [profileError, setProfileError] = useState('');
   const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const initialResetToken = new URLSearchParams(location.search).get('resetToken');
   
   const {
     theme,
@@ -82,8 +84,15 @@ export function Header() {
   useEffect(() => {
     if (!user) return;
     setProfileNickname(user.nickname || user.name || '');
+    setProfileEmail(user.email || '');
     setProfileAvatar(user.avatar || '');
   }, [user]);
+
+  useEffect(() => {
+    if (initialResetToken) {
+      setIsAuthModalOpen(true);
+    }
+  }, [initialResetToken]);
 
   const handleLogin = (profile: LeaderboardProfile) => {
     setUser(profile);
@@ -128,6 +137,7 @@ export function Header() {
     try {
       const updated = profileFromAuthUser(
         await updateProfile({
+          email: profileEmail.trim() || null,
           nickname: profileNickname.trim() || null,
           avatarUrl: profileAvatar.trim() || null,
         }),
@@ -295,6 +305,7 @@ export function Header() {
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)} 
         onLogin={handleLogin}
+        initialResetToken={initialResetToken}
       />
       {isProfileOpen && user && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -319,6 +330,16 @@ export function Header() {
             </div>
 
             <div className="space-y-4">
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">이메일</span>
+                <input
+                  type="email"
+                  value={profileEmail}
+                  onChange={(event) => setProfileEmail(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-[#333] bg-gray-50 dark:bg-[#141414] px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500"
+                  placeholder="you@example.com"
+                />
+              </label>
               <label className="block">
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">닉네임</span>
                 <input

@@ -13,10 +13,16 @@ interface BackendTokenResponse {
 export interface AuthUser {
   id: string;
   username: string;
+  email?: string | null;
   nickname?: string | null;
   totalScore: number;
   avatarUrl?: string | null;
   role: 'user' | 'admin' | string;
+}
+
+export interface PasswordResetResponse {
+  message: string;
+  debugResetToken?: string | null;
 }
 
 async function request<T>(path: string, body: unknown): Promise<T> {
@@ -33,8 +39,18 @@ async function request<T>(path: string, body: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function register(username: string, password: string, nickname?: string): Promise<void> {
-  await request('/api/v1/auth/register', { username, password, nickname: nickname || undefined });
+export async function register(
+  username: string,
+  email: string,
+  password: string,
+  nickname?: string,
+): Promise<void> {
+  await request('/api/v1/auth/register', {
+    username,
+    email,
+    password,
+    nickname: nickname || undefined,
+  });
 }
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
@@ -56,6 +72,7 @@ export async function getCurrentUser(): Promise<AuthUser> {
 }
 
 export async function updateProfile(payload: {
+  email?: string | null;
   nickname?: string | null;
   avatarUrl?: string | null;
 }): Promise<AuthUser> {
@@ -72,4 +89,12 @@ export async function updateProfile(payload: {
     throw await parseApiError(response, '프로필 저장에 실패했습니다.');
   }
   return (await response.json()) as AuthUser;
+}
+
+export async function requestPasswordReset(usernameOrEmail: string): Promise<PasswordResetResponse> {
+  return await request<PasswordResetResponse>('/api/v1/auth/password-reset/request', { usernameOrEmail });
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<PasswordResetResponse> {
+  return await request<PasswordResetResponse>('/api/v1/auth/password-reset/confirm', { token, newPassword });
 }

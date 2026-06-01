@@ -3,6 +3,7 @@ export interface LeaderboardProfile {
   avatar: string;
   id?: string;
   username?: string;
+  email?: string | null;
   nickname?: string | null;
   role?: 'user' | 'admin' | string;
   totalScore?: number;
@@ -28,6 +29,7 @@ function safeParseProfile(value: string | null): LeaderboardProfile | null {
       avatar: parsed.avatar,
       id: typeof parsed.id === 'string' ? parsed.id : undefined,
       username: typeof parsed.username === 'string' ? parsed.username : undefined,
+      email: typeof parsed.email === 'string' ? parsed.email : null,
       nickname: typeof parsed.nickname === 'string' ? parsed.nickname : null,
       role: typeof parsed.role === 'string' ? parsed.role : undefined,
       totalScore: typeof parsed.totalScore === 'number' ? parsed.totalScore : undefined,
@@ -49,6 +51,7 @@ export function saveLeaderboardProfile(profile: LeaderboardProfile) {
 export function profileFromAuthUser(user: {
   id: string;
   username: string;
+  email?: string | null;
   nickname?: string | null;
   avatarUrl?: string | null;
   role?: string;
@@ -58,6 +61,7 @@ export function profileFromAuthUser(user: {
   return {
     id: user.id,
     username: user.username,
+    email: user.email ?? null,
     nickname: user.nickname ?? null,
     name,
     avatar: user.avatarUrl || createAvatarUrl(name),
