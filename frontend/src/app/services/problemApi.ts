@@ -1,17 +1,9 @@
 // 문제 관리 API
 
-function normalizeApiBaseUrl(value: string): string {
-  if (!value || value === '/') return '';
-  return value.endsWith('/') ? value.slice(0, -1) : value;
-}
-
-const apiBaseFromBaseUrl = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL.replace(/\/$/, '');
-const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL || apiBaseFromBaseUrl);
+import { API_BASE_URL, getAuthHeaders, parseApiError } from './apiBase';
 
 function authHeaders(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  const token = window.localStorage.getItem('authToken');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return getAuthHeaders();
 }
 
 export interface TestCase {
@@ -38,6 +30,7 @@ export interface Problem {
   difficulty: ProblemDifficulty;
   tags: ProblemTag[];
   description: string;
+  points: number;
   testCases: TestCase[];
   hiddenTestCases: TestCase[];
   createdAt: string;
@@ -96,6 +89,14 @@ export async function getProblems(): Promise<Problem[]> {
   return res.json();
 }
 
+export async function getProblem(id: string): Promise<Problem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/problems/${encodeURIComponent(id)}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw await parseApiError(res, '문제 상세를 불러오지 못했습니다.');
+  return res.json();
+}
+
 // 문제 추가
 export async function createProblem(data: ProblemCreateRequest): Promise<Problem> {
   const res = await fetch(`${API_BASE_URL}/api/v1/problems/`, {
@@ -103,7 +104,7 @@ export async function createProblem(data: ProblemCreateRequest): Promise<Problem
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('문제 추가에 실패했습니다.');
+  if (!res.ok) throw await parseApiError(res, '문제 추가에 실패했습니다.');
   return res.json();
 }
 
@@ -113,7 +114,7 @@ export async function deleteProblem(id: string): Promise<void> {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('문제 삭제에 실패했습니다.');
+  if (!res.ok) throw await parseApiError(res, '문제 삭제에 실패했습니다.');
 }
 
 // 문제 수정
@@ -123,7 +124,7 @@ export async function updateProblem(id: string, data: ProblemCreateRequest): Pro
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('문제 수정에 실패했습니다.');
+  if (!res.ok) throw await parseApiError(res, '문제 수정에 실패했습니다.');
   return res.json();
 }
 
@@ -152,7 +153,7 @@ export async function getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
 export async function submitLeaderboardScore(data: LeaderboardScoreRequest): Promise<LeaderboardScoreResult> {
   const res = await fetch(`${API_BASE_URL}/api/v1/problems/leaderboard/score`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('리더보드 점수 저장에 실패했습니다.');

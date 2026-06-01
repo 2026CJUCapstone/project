@@ -19,10 +19,12 @@
 export interface CommunityPost {
   id: string;
   problemId: string;
+  userId?: string;
   author: string;
   avatarUrl?: string | null;
   content: string;
   createdAt: string; // ISO-8601
+  canDelete?: boolean;
 }
 
 export interface CommunityPostCreateRequest {
@@ -85,10 +87,12 @@ function normalizePost(raw: unknown): CommunityPost {
   return {
     id: String(get('id', 'id') ?? ''),
     problemId: String(get('problemId', 'problem_id') ?? ''),
+    userId: String(get('userId', 'user_id') ?? '') || undefined,
     author: String(get('author', 'author') ?? '익명'),
     avatarUrl: (get('avatarUrl', 'avatar_url') as string | null | undefined) ?? null,
     content: String(get('content', 'content') ?? ''),
     createdAt: String(get('createdAt', 'created_at') ?? new Date().toISOString()),
+    canDelete: Boolean(get('canDelete', 'can_delete') ?? false),
   };
 }
 
@@ -121,7 +125,7 @@ export async function fetchCommunityPosts(problemId: string): Promise<CommunityP
   if (COMMUNITY_API_BASE_URL) {
     const remote = await tryRemote(async () => {
       const url = `${COMMUNITY_API_BASE_URL}${POSTS_PATH}?problemId=${encodeURIComponent(problemId)}`;
-      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      const res = await fetch(url, { headers: { Accept: 'application/json', ...getAuthHeader() } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       return Array.isArray(data) ? data.map(normalizePost) : [];
@@ -137,27 +141,28 @@ export async function createCommunityPost(
   payload: CommunityPostCreateRequest,
 ): Promise<CommunityPost> {
   if (COMMUNITY_API_BASE_URL) {
-    const remote = await tryRemote(async () => {
-      const res = await fetch(`${COMMUNITY_API_BASE_URL}${POSTS_PATH}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify({
-          problemId: payload.problemId,
-          problem_id: payload.problemId,
-          author: payload.author,
-          avatarUrl: payload.avatarUrl ?? null,
-          avatar_url: payload.avatarUrl ?? null,
-          content: payload.content,
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return normalizePost(await res.json());
+    const res = await fetch(`${COMMUNITY_API_BASE_URL}${POSTS_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({
+        problemId: payload.problemId,
+        problem_id: payload.problemId,
+        author: payload.author,
+        avatarUrl: payload.avatarUrl ?? null,
+        avatar_url: payload.avatarUrl ?? null,
+        content: payload.content,
+      }),
     });
-    if (remote) return remote;
+    if (!res.ok) {
+      const errorData = (await res.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(errorData.detail || '게시글 작성에 실패했습니다.');
+    }
+    remoteAvailable = true;
+    return normalizePost(await res.json());
   }
   // 로컬 폴백
   const newPost: CommunityPost = {
@@ -167,6 +172,7 @@ export async function createCommunityPost(
     avatarUrl: payload.avatarUrl ?? null,
     content: payload.content,
     createdAt: new Date().toISOString(),
+    canDelete: true,
   };
   const all = loadLocalPosts();
   saveLocalPosts([newPost, ...all]);
@@ -175,21 +181,22 @@ export async function createCommunityPost(
 
 export async function deleteCommunityPost(postId: string): Promise<void> {
   if (COMMUNITY_API_BASE_URL && !postId.startsWith('local-')) {
-    const remote = await tryRemote(async () => {
-      const res = await fetch(
-        `${COMMUNITY_API_BASE_URL}${POSTS_PATH}/${encodeURIComponent(postId)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Accept: 'application/json',
-            ...getAuthHeader(),
-          },
+    const res = await fetch(
+      `${COMMUNITY_API_BASE_URL}${POSTS_PATH}/${encodeURIComponent(postId)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          ...getAuthHeader(),
         },
-      );
-      if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
-      return true;
-    });
-    if (remote) return;
+      },
+    );
+    if (!res.ok && res.status !== 204) {
+      const errorData = (await res.json().catch(() => ({}))) as { detail?: string };
+      throw new Error(errorData.detail || '삭제에 실패했습니다.');
+    }
+    remoteAvailable = true;
+    return;
   }
   const all = loadLocalPosts();
   saveLocalPosts(all.filter((p) => p.id !== postId));

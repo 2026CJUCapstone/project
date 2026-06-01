@@ -8,8 +8,8 @@ from app.models import schemas
 from app.services import auth
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
-optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 @router.post("/register")
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -42,6 +42,7 @@ def login(user_data: schemas.UserLogin, db: Session = Depends(get_db)):
     access_token = auth.create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
@@ -55,6 +56,49 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+@router.get("/me", response_model=schemas.UserRead)
+def read_me(current_user: db_models.User = Depends(get_current_user)):
+    return current_user
+
+
+@router.get("/profile", response_model=schemas.UserRead)
+def read_profile(current_user: db_models.User = Depends(get_current_user)):
+    return current_user
+
+
+@router.patch("/profile", response_model=schemas.UserRead)
+def update_profile(
+    payload: schemas.UserProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(get_current_user),
+):
+    if payload.nickname is not None:
+        nickname = payload.nickname.strip() or None
+        if nickname:
+            existing = (
+                db.query(db_models.User)
+                .filter(db_models.User.nickname == nickname, db_models.User.id != current_user.id)
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=400, detail="이미 사용 중인 닉네임입니다.")
+        current_user.nickname = nickname
+
+    if payload.avatar_url is not None:
+        current_user.avatar_url = payload.avatar_url.strip() or None
+
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+def require_admin(current_user: db_models.User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 권한이 필요합니다.")
+    return current_user
 
 
 def get_optional_current_user(token: str | None = Depends(optional_oauth2_scheme), db: Session = Depends(get_db)):

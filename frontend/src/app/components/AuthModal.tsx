@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { X, UserPlus, LogIn } from 'lucide-react';
-import { login, register } from '../services/authApi';
-import { createAvatarUrl } from '../services/leaderboardProfile';
+import { getCurrentUser, login, register } from '../services/authApi';
+import { profileFromAuthUser, type LeaderboardProfile } from '../services/leaderboardProfile';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLogin: (name: string, avatarUrl: string) => void;
+  onLogin: (profile: LeaderboardProfile) => void;
 }
 
 export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
@@ -64,9 +64,8 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
         localStorage.setItem('authToken', token.accessToken);
       }
 
-      const displayName = nickname.trim() || normalizedUsername;
-      const avatarUrl = createAvatarUrl(displayName);
-      onLogin(displayName, avatarUrl);
+      const user = await getCurrentUser();
+      onLogin(profileFromAuthUser(user));
       onClose();
     } catch (error) {
       const message = error instanceof Error ? error.message : '인증 중 오류가 발생했습니다.';

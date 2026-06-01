@@ -1,6 +1,11 @@
 export interface LeaderboardProfile {
   name: string;
   avatar: string;
+  id?: string;
+  username?: string;
+  nickname?: string | null;
+  role?: 'user' | 'admin' | string;
+  totalScore?: number;
 }
 
 const USER_STORAGE_KEY = 'b-compiler-user';
@@ -18,7 +23,15 @@ function safeParseProfile(value: string | null): LeaderboardProfile | null {
     if (typeof parsed.name !== 'string' || typeof parsed.avatar !== 'string') {
       return null;
     }
-    return { name: parsed.name, avatar: parsed.avatar };
+    return {
+      name: parsed.name,
+      avatar: parsed.avatar,
+      id: typeof parsed.id === 'string' ? parsed.id : undefined,
+      username: typeof parsed.username === 'string' ? parsed.username : undefined,
+      nickname: typeof parsed.nickname === 'string' ? parsed.nickname : null,
+      role: typeof parsed.role === 'string' ? parsed.role : undefined,
+      totalScore: typeof parsed.totalScore === 'number' ? parsed.totalScore : undefined,
+    };
   } catch {
     return null;
   }
@@ -31,6 +44,26 @@ export function createAvatarUrl(seed: string) {
 export function saveLeaderboardProfile(profile: LeaderboardProfile) {
   if (!canUseStorage()) return;
   window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+}
+
+export function profileFromAuthUser(user: {
+  id: string;
+  username: string;
+  nickname?: string | null;
+  avatarUrl?: string | null;
+  role?: string;
+  totalScore?: number;
+}): LeaderboardProfile {
+  const name = user.nickname?.trim() || user.username;
+  return {
+    id: user.id,
+    username: user.username,
+    nickname: user.nickname ?? null,
+    name,
+    avatar: user.avatarUrl || createAvatarUrl(name),
+    role: user.role ?? 'user',
+    totalScore: user.totalScore,
+  };
 }
 
 export function getSavedLeaderboardProfile(): LeaderboardProfile | null {

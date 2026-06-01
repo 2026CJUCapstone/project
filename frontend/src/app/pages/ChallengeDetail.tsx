@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, PlayCircle, Tag, Loader2, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { getProblems } from '../services/problemApi';
+import { getProblem } from '../services/problemApi';
 import type { Problem, ProblemTag } from '../services/problemApi';
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from '../constants/difficulty';
 
@@ -24,14 +24,19 @@ const tagColors = {
 export function ChallengeDetail() {
   const navigate = useNavigate();
   const { challengeId } = useParams<{ challengeId: string }>();
-  const [problems, setProblems] = useState<Problem[]>([]);
+  const [challenge, setChallenge] = useState<Problem | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    getProblems()
+    if (!challengeId) {
+      setLoading(false);
+      return;
+    }
+
+    getProblem(challengeId)
       .then((data) => {
-        setProblems(data);
+        setChallenge(data);
         setLoadError(null);
       })
       .catch(() => {
@@ -39,11 +44,6 @@ export function ChallengeDetail() {
       })
       .finally(() => setLoading(false));
   }, []);
-
-  const challenge = useMemo(
-    () => problems.find((problem) => String(problem.id) === String(challengeId)),
-    [problems, challengeId]
-  );
 
   if (loading) {
     return (
@@ -120,6 +120,9 @@ export function ChallengeDetail() {
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wider ${getDifficultyBadgeClass(challenge.difficulty)}`}>
               {DIFFICULTY_LABELS[challenge.difficulty as Difficulty] ?? challenge.difficulty}
+            </span>
+            <span className="px-2.5 py-1 rounded-md text-xs font-semibold border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+              {challenge.points ?? 100}점
             </span>
             {(challenge.tags ?? []).map((tag) => (
               <span key={tag} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium border ${tagColors[tag]}`}>

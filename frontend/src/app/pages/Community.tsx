@@ -17,8 +17,10 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { getProblems, type Problem } from '../services/problemApi';
+import { getCurrentUser } from '../services/authApi';
 import {
   getSavedLeaderboardProfile,
+  profileFromAuthUser,
   saveLeaderboardProfile,
   type LeaderboardProfile,
 } from '../services/leaderboardProfile';
@@ -73,7 +75,7 @@ interface PostBoardProps {
 }
 
 function isAdminUser(user: LeaderboardProfile | null): boolean {
-  return Boolean(user && user.name.trim().toLowerCase() === 'admin');
+  return user?.role === 'admin';
 }
 
 function MarkdownBody({ children, compact = false }: { children: string; compact?: boolean }) {
@@ -291,16 +293,17 @@ function PostBoard({
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    void handleDelete(post.id);
-                  }}
-                  disabled={adminOnly && !isAdminUser(user)}
-                  className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors disabled:opacity-30 disabled:hover:text-gray-400 disabled:cursor-not-allowed"
-                  title={adminOnly && !isAdminUser(user) ? '관리자만 삭제할 수 있습니다.' : '삭제'}
-                >
-                  <Trash2 size={14} />
-                </button>
+                {post.canDelete && (
+                  <button
+                    onClick={() => {
+                      void handleDelete(post.id);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
+                    title="삭제"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
               <MarkdownBody compact>{post.content}</MarkdownBody>
             </li>
@@ -445,7 +448,24 @@ export function Community() {
   );
 
   useEffect(() => {
-    setUser(getSavedLeaderboardProfile());
+    const saved = getSavedLeaderboardProfile();
+    if (saved) setUser(saved);
+    if (!localStorage.getItem('authToken')) return;
+
+    let mounted = true;
+    (async () => {
+      try {
+        const profile = profileFromAuthUser(await getCurrentUser());
+        if (!mounted) return;
+        setUser(profile);
+        saveLeaderboardProfile(profile);
+      } catch {
+        if (mounted) setUser(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // 네비게이션 state 도착 시 탭/문제 자동 선택 후 state 제거 (새로고침 대비)
@@ -533,8 +553,7 @@ export function Community() {
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
-        onLogin={(name, avatar) => {
-          const profile: LeaderboardProfile = { name, avatar };
+        onLogin={(profile: LeaderboardProfile) => {
           setUser(profile);
           saveLeaderboardProfile(profile);
         }}

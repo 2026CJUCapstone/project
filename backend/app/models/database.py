@@ -1,7 +1,12 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from app.core.database import Base
 import uuid
 from datetime import datetime, timezone
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
+
 
 class Problem(Base):
     __tablename__ = "problems"
@@ -12,7 +17,8 @@ class Problem(Base):
     tags = Column(JSON, nullable=False)         # ["io", "control", "func"]
     description = Column(Text, nullable=False)
     test_cases = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    points = Column(Integer, nullable=False, default=100)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class User(Base):
@@ -23,6 +29,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     total_score = Column(Integer, nullable=False, default=0)
     avatar_url = Column(String, nullable=True)
+    role = Column(String, nullable=False, default="user", index=True)
 
 
 class UserProblemScore(Base):
@@ -34,7 +41,38 @@ class UserProblemScore(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     challenge_id = Column(String, nullable=False, index=True)
     points_awarded = Column(Integer, nullable=False)
-    solved_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    solved_at = Column(DateTime, default=utc_now)
+
+
+class Submission(Base):
+    __tablename__ = "submissions"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    problem_id = Column(String, ForeignKey("problems.id"), nullable=False, index=True)
+    language = Column(String, nullable=False)
+    code = Column(Text, nullable=False)
+    status = Column(String, nullable=False)
+    sample_total_cases = Column(Integer, nullable=False, default=0)
+    sample_passed_cases = Column(Integer, nullable=False, default=0)
+    grading_completed = Column(Boolean, nullable=False, default=False)
+    grading_passed = Column(Boolean, nullable=False, default=False)
+    awarded_points = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=utc_now)
+
+
+class CodeProject(Base):
+    __tablename__ = "code_projects"
+    __table_args__ = (
+        UniqueConstraint("user_id", "scope", name="uq_code_projects_user_scope"),
+    )
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    scope = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False, default="main")
+    language = Column(String, nullable=False, default="bpp")
+    code = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -42,4 +80,4 @@ class Comment(Base):
     problem_id = Column(String, ForeignKey("problems.id"), nullable=False, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now)

@@ -124,6 +124,7 @@ class ProblemBase(CamelModel):
     ]
     tags: List[Literal["io", "control", "func"]]
     description: str
+    points: int = Field(default=100, ge=0, le=10000)
     test_cases: List[TestCase] = Field(
         default_factory=list,
         validation_alias=AliasChoices("test_cases", "testCases", "sample_test_cases", "sampleTestCases"),
@@ -145,6 +146,7 @@ class ProblemRead(CamelModel):
     difficulty: str
     tags: List[str]
     description: str
+    points: int = 100
     test_cases: List[TestCase]
     hidden_test_cases: List[TestCase] = Field(default_factory=list)
     created_at: datetime
@@ -168,6 +170,19 @@ class UserRead(CamelModel):
     nickname: Optional[str] = None
     total_score: int
     avatar_url: Optional[str] = None
+    role: str = "user"
+
+class UserProfileUpdate(CamelModel):
+    nickname: Optional[str] = Field(default=None, min_length=2, max_length=30)
+    avatar_url: Optional[str] = Field(default=None, max_length=500)
+
+class AdminUserRead(UserRead):
+    created_at: Optional[datetime] = None
+
+class AdminUserUpdate(CamelModel):
+    role: Optional[Literal["user", "admin"]] = None
+    nickname: Optional[str] = Field(default=None, min_length=2, max_length=30)
+    avatar_url: Optional[str] = Field(default=None, max_length=500)
 
 class Token(CamelModel):
     access_token: str
@@ -179,7 +194,7 @@ class SubmissionRequest(CamelModel):
 
 class TestCaseResult(CamelModel):
     case_number: int
-    phase: Literal["sample"]
+    phase: Literal["sample", "grading"]
     is_visible: bool = True
     status: Literal["Correct", "Wrong", "Error"]
     input: str
@@ -218,11 +233,39 @@ class CommunityPostCreate(CamelModel):
 class CommunityPostRead(CamelModel):
     id: str
     problem_id: str
+    user_id: str
     author: str
     avatar_url: Optional[str] = None
     content: str
     created_at: datetime
+    can_delete: bool = False
 
 
 class CommunityPostCountsRequest(CamelModel):
     problem_ids: List[str]
+
+
+class CodeProjectUpsert(CamelModel):
+    code: str
+    language: CompilerLanguage = "bpp"
+    title: str = Field(default="main", min_length=1, max_length=120)
+
+
+class CodeProjectRead(CodeProjectUpsert):
+    id: str
+    scope: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubmissionRead(CamelModel):
+    id: str
+    problem_id: str
+    language: CompilerLanguage
+    status: str
+    sample_total_cases: int
+    sample_passed_cases: int
+    grading_completed: bool
+    grading_passed: bool
+    awarded_points: int
+    created_at: datetime

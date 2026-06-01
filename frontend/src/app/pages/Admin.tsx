@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { Home, ListChecks, Users, LogOut, Plus, Pencil, Trash2, ShieldCheck } from "lucide-react";
 import { ProblemFormModal } from "../components/ProblemFormModal";
 import { getProblems, createProblem, deleteProblem, updateProblem } from "../services/problemApi";
 import type { Problem, ProblemCreateRequest } from "../services/problemApi";
+import { getCurrentUser, login, type AuthUser } from "../services/authApi";
+import { getAdminUsers, updateAdminUser, type AdminUser } from "../services/adminApi";
 import { DIFFICULTY_LABELS } from "../constants/difficulty";
 
 const difficultyLabel: Record<string, string> = {
@@ -13,24 +16,69 @@ export function Admin() {
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState("");
+  const [pageError, setPageError] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
   const [tab, setTab] = useState<"home" | "problems" | "users">("home");
   const [showForm, setShowForm] = useState(false);
   const [editingProblem, setEditingProblem] = useState<Problem | null>(null);
   const [problems, setProblems] = useState<Problem[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
 
   const loadProblems = useCallback(async () => {
     try {
       const data = await getProblems();
       setProblems(data);
-    } catch {
-      // API 미연동 시 빈 목록 유지
+      setPageError("");
+    } catch (loadError) {
+      setPageError(loadError instanceof Error ? loadError.message : "문제 목록을 불러오지 못했습니다.");
+    }
+  }, []);
+
+  const loadUsers = useCallback(async () => {
+    try {
+      const data = await getAdminUsers();
+      setUsers(data);
+      setPageError("");
+    } catch (loadError) {
+      setPageError(loadError instanceof Error ? loadError.message : "사용자 목록을 불러오지 못했습니다.");
     }
   }, []);
 
   useEffect(() => {
-    if (loggedIn) loadProblems();
-  }, [loggedIn, loadProblems]);
+    let mounted = true;
+    (async () => {
+      if (!localStorage.getItem('authToken')) {
+        setCheckingSession(false);
+        return;
+      }
+      try {
+        const me = await getCurrentUser();
+        if (!mounted) return;
+        if (me.role !== 'admin') {
+          localStorage.removeItem('authToken');
+          setError('관리자 권한이 필요합니다.');
+          return;
+        }
+        setCurrentUser(me);
+        setLoggedIn(true);
+      } catch {
+        if (mounted) localStorage.removeItem('authToken');
+      } finally {
+        if (mounted) setCheckingSession(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!loggedIn) return;
+    void loadProblems();
+    void loadUsers();
+  }, [loggedIn, loadProblems, loadUsers]);
 
   const handleAddProblem = async (data: ProblemCreateRequest) => {
     try {
@@ -40,8 +88,10 @@ export function Admin() {
         await createProblem(data);
       }
       await loadProblems();
-    } catch {
-      // API 미연동 시 무시
+      setPageError("");
+    } catch (submitError) {
+      setPageError(submitError instanceof Error ? submitError.message : "문제 저장에 실패했습니다.");
+      return;
     }
     setShowForm(false);
     setEditingProblem(null);
@@ -52,8 +102,8 @@ export function Admin() {
     try {
       await deleteProblem(problemId);
       await loadProblems();
-    } catch {
-      // API 미연동 시 무시
+    } catch (deleteError) {
+      setPageError(deleteError instanceof Error ? deleteError.message : "문제 삭제에 실패했습니다.");
     }
   };
 
@@ -62,15 +112,46 @@ export function Admin() {
     setShowForm(true);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (id === "admin" && password === "admin") {
+    setError("");
+    try {
+      const token = await login(id.trim(), password);
+      localStorage.setItem('authToken', token.accessToken);
+      const me = await getCurrentUser();
+      if (me.role !== 'admin') {
+        localStorage.removeItem('authToken');
+        throw new Error('관리자 권한이 필요합니다.');
+      }
+      setCurrentUser(me);
       setLoggedIn(true);
-      setError("");
-    } else {
-      setError("아이디 또는 비밀번호가 올바르지 않습니다.");
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "로그인에 실패했습니다.");
     }
   };
+
+  const handleLogout = () => {
+    localStorage.removeItem('authToken');
+    setLoggedIn(false);
+    setCurrentUser(null);
+  };
+
+  const handleRoleChange = async (user: AdminUser, role: 'user' | 'admin') => {
+    try {
+      await updateAdminUser(user.id, { role });
+      await loadUsers();
+    } catch (roleError) {
+      setPageError(roleError instanceof Error ? roleError.message : "권한 변경에 실패했습니다.");
+    }
+  };
+
+  if (checkingSession) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#0d0d0d] text-gray-300">
+        관리자 세션 확인 중...
+      </div>
+    );
+  }
 
   if (loggedIn) {
     return (
@@ -79,6 +160,7 @@ export function Admin() {
         <aside className="w-64 bg-[#161616] border-r border-[#333] flex flex-col shrink-0">
           <div className="px-5 py-5 border-b border-[#333]">
             <h1 className="text-lg font-bold text-white">B++ 관리자</h1>
+            {currentUser && <p className="text-xs text-gray-500 mt-1">{currentUser.username}</p>}
           </div>
 
           <nav className="flex flex-col py-4 flex-1">
@@ -90,7 +172,7 @@ export function Admin() {
                   : "text-gray-400 hover:bg-[#1e1e1e] hover:text-gray-200"
               }`}
             >
-              <span className="text-base">🏠</span>
+              <Home size={16} />
               Home
             </button>
 
@@ -103,7 +185,7 @@ export function Admin() {
                   : "text-gray-400 hover:bg-[#1e1e1e] hover:text-gray-200"
               }`}
             >
-              <span className="text-base">📋</span>
+              <ListChecks size={16} />
               문제 관리
             </button>
             <button
@@ -114,16 +196,17 @@ export function Admin() {
                   : "text-gray-400 hover:bg-[#1e1e1e] hover:text-gray-200"
               }`}
             >
-              <span className="text-base">👥</span>
+              <Users size={16} />
               사용자 관리
             </button>
           </nav>
 
           <div className="px-5 py-4 border-t border-[#333]">
             <button
-              onClick={() => setLoggedIn(false)}
-              className="w-full text-sm text-gray-400 hover:text-gray-200 text-left"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-2 text-sm text-gray-400 hover:text-gray-200 text-left"
             >
+              <LogOut size={14} />
               로그아웃
             </button>
           </div>
@@ -140,19 +223,24 @@ export function Admin() {
 
           {/* 콘텐츠 */}
           <div className="flex-1 overflow-y-auto p-8">
+          {pageError && (
+            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {pageError}
+            </div>
+          )}
           {tab === "home" && (
             <div className="flex flex-col gap-6">
               <p className="text-gray-400">B++ 관리자 페이지에 오신 것을 환영합니다.</p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-[#1e1e1e] border border-[#333] rounded-lg p-6 cursor-pointer hover:border-blue-500 transition-colors" onClick={() => setTab("problems")}>
-                  <span className="text-2xl mb-2 block">📋</span>
+                  <ListChecks size={26} className="mb-2 text-blue-400" />
                   <h3 className="text-white font-bold mb-1">문제 관리</h3>
-                  <p className="text-gray-500 text-sm">문제 추가, 수정, 삭제</p>
+                  <p className="text-gray-500 text-sm">문제 {problems.length}개</p>
                 </div>
                 <div className="bg-[#1e1e1e] border border-[#333] rounded-lg p-6 cursor-pointer hover:border-blue-500 transition-colors" onClick={() => setTab("users")}>
-                  <span className="text-2xl mb-2 block">👥</span>
+                  <Users size={26} className="mb-2 text-emerald-400" />
                   <h3 className="text-white font-bold mb-1">사용자 관리</h3>
-                  <p className="text-gray-500 text-sm">사용자 조회 및 관리</p>
+                  <p className="text-gray-500 text-sm">사용자 {users.length}명</p>
                 </div>
               </div>
             </div>
@@ -164,9 +252,9 @@ export function Admin() {
                 <h2 className="text-lg font-semibold text-white">문제 목록</h2>
                 <button
                   onClick={() => setShowForm(true)}
-                  className="bg-blue-500 text-white text-sm px-4 py-2 rounded hover:bg-blue-600"
+                  className="inline-flex items-center gap-2 bg-blue-500 text-white text-sm px-4 py-2 rounded hover:bg-blue-600"
                 >
-                  + 문제 추가
+                  <Plus size={14} /> 문제 추가
                 </button>
               </div>
               <table className="w-full border-collapse">
@@ -175,6 +263,7 @@ export function Admin() {
                     <th className="py-2 px-3">번호</th>
                     <th className="py-2 px-3">제목</th>
                     <th className="py-2 px-3">난이도</th>
+                    <th className="py-2 px-3">점수</th>
                     <th className="py-2 px-3">태그</th>
                     <th className="py-2 px-3">채점</th>
                     <th className="py-2 px-3">관리</th>
@@ -183,7 +272,7 @@ export function Admin() {
                 <tbody>
                   {problems.length === 0 ? (
                     <tr className="text-sm text-gray-500 border-b border-[#222]">
-                      <td className="py-3 px-3" colSpan={6}>
+                      <td className="py-3 px-3" colSpan={7}>
                         등록된 문제가 없습니다.
                       </td>
                     </tr>
@@ -193,6 +282,7 @@ export function Admin() {
                         <td className="py-3 px-3 text-gray-400">{idx + 1}</td>
                         <td className="py-3 px-3 text-gray-200">{p.title}</td>
                         <td className="py-3 px-3 text-gray-400">{difficultyLabel[p.difficulty] ?? p.difficulty}</td>
+                        <td className="py-3 px-3 text-gray-300">{p.points ?? 100}</td>
                         <td className="py-3 px-3">
                           <div className="flex gap-1 flex-wrap">
                             {(p.tags ?? []).map(tag => (
@@ -212,15 +302,15 @@ export function Admin() {
                           <div className="flex gap-2">
                             <button
                               onClick={() => handleEditProblem(p)}
-                              className="text-blue-400 hover:text-blue-300 text-sm"
+                              className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm"
                             >
-                              수정
+                              <Pencil size={13} /> 수정
                             </button>
                             <button
                               onClick={() => handleDeleteProblem(p.id)}
-                              className="text-red-500 hover:text-red-700 text-sm"
+                              className="inline-flex items-center gap-1 text-red-500 hover:text-red-400 text-sm"
                             >
-                              삭제
+                              <Trash2 size={13} /> 삭제
                             </button>
                           </div>
                         </td>
@@ -233,7 +323,7 @@ export function Admin() {
                 <ProblemFormModal
                   onClose={() => { setShowForm(false); setEditingProblem(null); }}
                   onSubmit={handleAddProblem}
-                  initialData={editingProblem ? { title: editingProblem.title, difficulty: editingProblem.difficulty, tags: editingProblem.tags, description: editingProblem.description, testCases: editingProblem.testCases, hiddenTestCases: editingProblem.hiddenTestCases } : undefined}
+                  initialData={editingProblem ? { title: editingProblem.title, difficulty: editingProblem.difficulty, tags: editingProblem.tags, points: editingProblem.points ?? 100, description: editingProblem.description, testCases: editingProblem.testCases, hiddenTestCases: editingProblem.hiddenTestCases } : undefined}
                 />
               )}
 
@@ -302,16 +392,48 @@ export function Admin() {
                   <tr className="border-b border-[#333] text-left text-sm text-gray-400">
                     <th className="py-2 px-3">번호</th>
                     <th className="py-2 px-3">아이디</th>
-                    <th className="py-2 px-3">이름</th>
+                    <th className="py-2 px-3">닉네임</th>
+                    <th className="py-2 px-3">점수</th>
+                    <th className="py-2 px-3">권한</th>
                     <th className="py-2 px-3">관리</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="text-sm text-gray-500 border-b border-[#222]">
-                    <td className="py-3 px-3" colSpan={4}>
-                      등록된 사용자가 없습니다.
-                    </td>
-                  </tr>
+                  {users.length === 0 ? (
+                    <tr className="text-sm text-gray-500 border-b border-[#222]">
+                      <td className="py-3 px-3" colSpan={6}>
+                        등록된 사용자가 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    users.map((user, idx) => (
+                      <tr key={user.id} className="text-sm border-b border-[#222] hover:bg-[#1a1a1a]">
+                        <td className="py-3 px-3 text-gray-400">{idx + 1}</td>
+                        <td className="py-3 px-3 text-gray-200">{user.username}</td>
+                        <td className="py-3 px-3 text-gray-400">{user.nickname || '-'}</td>
+                        <td className="py-3 px-3 text-gray-300">{user.totalScore}</td>
+                        <td className="py-3 px-3">
+                          <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
+                            user.role === 'admin' ? 'bg-blue-500/20 text-blue-300' : 'bg-gray-500/20 text-gray-300'
+                          }`}>
+                            {user.role === 'admin' && <ShieldCheck size={12} />}
+                            {user.role === 'admin' ? '관리자' : '사용자'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <button
+                            onClick={() => {
+                              void handleRoleChange(user, user.role === 'admin' ? 'user' : 'admin');
+                            }}
+                            disabled={user.id === currentUser?.id}
+                            className="text-blue-400 hover:text-blue-300 disabled:text-gray-600 disabled:cursor-not-allowed"
+                          >
+                            {user.role === 'admin' ? '사용자로 변경' : '관리자로 변경'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

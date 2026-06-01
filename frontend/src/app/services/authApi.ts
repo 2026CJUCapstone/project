@@ -1,10 +1,4 @@
-function normalizeApiBaseUrl(value: string): string {
-  if (!value || value === '/') return '';
-  return value.endsWith('/') ? value.slice(0, -1) : value;
-}
-
-const apiBaseFromBaseUrl = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL.replace(/\/$/, '');
-const API_BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL || apiBaseFromBaseUrl);
+import { API_BASE_URL, getAuthHeaders, parseApiError } from './apiBase';
 
 export interface LoginResponse {
   accessToken: string;
@@ -16,6 +10,15 @@ interface BackendTokenResponse {
   token_type: string;
 }
 
+export interface AuthUser {
+  id: string;
+  username: string;
+  nickname?: string | null;
+  totalScore: number;
+  avatarUrl?: string | null;
+  role: 'user' | 'admin' | string;
+}
+
 async function request<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
@@ -24,8 +27,7 @@ async function request<T>(path: string, body: unknown): Promise<T> {
   });
 
   if (!response.ok) {
-    const errorData = (await response.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(errorData.detail || '인증 요청에 실패했습니다.');
+    throw await parseApiError(response, '인증 요청에 실패했습니다.');
   }
 
   return (await response.json()) as T;
@@ -41,4 +43,33 @@ export async function login(username: string, password: string): Promise<LoginRe
     accessToken: result.access_token,
     tokenType: result.token_type,
   };
+}
+
+export async function getCurrentUser(): Promise<AuthUser> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+    headers: { Accept: 'application/json', ...getAuthHeaders() },
+  });
+  if (!response.ok) {
+    throw await parseApiError(response, '로그인 정보를 불러오지 못했습니다.');
+  }
+  return (await response.json()) as AuthUser;
+}
+
+export async function updateProfile(payload: {
+  nickname?: string | null;
+  avatarUrl?: string | null;
+}): Promise<AuthUser> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/profile`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw await parseApiError(response, '프로필 저장에 실패했습니다.');
+  }
+  return (await response.json()) as AuthUser;
 }

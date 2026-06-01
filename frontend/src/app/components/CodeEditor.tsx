@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { FileCode2, Copy, Check, Loader2, Clock } from "lucide-react";
 import { useLocation } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
+import { getCodeProject, saveCodeProject } from "../services/projectApi";
 
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
@@ -187,6 +188,30 @@ func main() -> u64 {
     setSaveStatus('saved');
     isHydratingEditorRef.current = false;
     setHasHydratedEditor(true);
+
+    let cancelled = false;
+    if (localStorage.getItem('authToken')) {
+      void (async () => {
+        try {
+          const remote = await getCodeProject(codeStorageScope);
+          if (cancelled || !remote || !editorRef.current) return;
+          isHydratingEditorRef.current = true;
+          if (editorRef.current.getValue() !== remote.code) {
+            editorRef.current.setValue(remote.code);
+          }
+          setLanguage(remote.language);
+          if (onCodeChange) onCodeChange(remote.code);
+          setCode(remote.code);
+          setSaveStatus('saved');
+          isHydratingEditorRef.current = false;
+        } catch (error) {
+          console.warn('서버 코드 불러오기 실패:', error);
+        }
+      })();
+    }
+    return () => {
+      cancelled = true;
+    };
   }, [challengeId, codeStorageScope, defaultCode, editorReady, loadCode, onCodeChange, setCode, setCodeStorageScope, setLanguage, setSelectedSourceRange, setSelectedText]);
 
   // 자동저장 - debounce 방식으로 코드 변경 후 2초 뒤 저장
@@ -203,7 +228,15 @@ func main() -> u64 {
         if (editorRef.current) {
           const code = editorRef.current.getValue();
           saveCode(code, codeStorageScope);
-          setSaveStatus('saved');
+          void saveCodeProject(codeStorageScope, {
+            code,
+            language,
+            title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
+          })
+            .catch((error) => {
+              console.warn('서버 코드 저장 실패:', error);
+            })
+            .finally(() => setSaveStatus('saved'));
         }
       }, 2000);
     }
@@ -213,7 +246,7 @@ func main() -> u64 {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [autoSaveEnabled, codeStorageScope, saveStatus, saveCode, hasHydratedEditor]);
+  }, [autoSaveEnabled, codeStorageScope, language, saveStatus, saveCode, hasHydratedEditor]);
 
   // 마지막 저장 시간 포맷팅
   const getLastSavedText = () => {
@@ -238,6 +271,13 @@ func main() -> u64 {
         if (editorRef.current && saveStatus !== 'saved') {
           const code = editorRef.current.getValue();
           saveCode(code, codeStorageScope);
+          void saveCodeProject(codeStorageScope, {
+            code,
+            language,
+            title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
+          }).catch((error) => {
+            console.warn('서버 코드 저장 실패:', error);
+          });
           setSaveStatus('saved');
         }
       }
@@ -255,7 +295,7 @@ func main() -> u64 {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [codeStorageScope, compileAndStartTerminal, compile, saveStatus, saveCode]);
+  }, [codeStorageScope, compileAndStartTerminal, compile, language, saveStatus, saveCode]);
 
   // 마지막 저장 시간 업데이트 (1초마다)
   const [, forceUpdate] = useState(0);

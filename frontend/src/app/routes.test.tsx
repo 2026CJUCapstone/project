@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { routeDefinitions } from "./routes";
-import { getLeaderboard, getProblems } from "./services/problemApi";
+import { getLeaderboard, getProblem, getProblems } from "./services/problemApi";
 
 vi.mock("./services/problemApi", () => ({
   DIFFICULTY_LEVELS: [
@@ -14,6 +14,7 @@ vi.mock("./services/problemApi", () => ({
     'diamond5', 'diamond4', 'diamond3', 'diamond2', 'diamond1',
   ],
   getProblems: vi.fn(),
+  getProblem: vi.fn(),
   createProblem: vi.fn(),
   deleteProblem: vi.fn(),
   updateProblem: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("./services/problemApi", () => ({
 describe("app routes", () => {
   beforeEach(() => {
     vi.mocked(getProblems).mockResolvedValue([]);
+    vi.mocked(getProblem).mockRejectedValue(new Error("not found"));
     vi.mocked(getLeaderboard).mockResolvedValue([
       {
         rank: 1,
@@ -58,18 +60,17 @@ describe("app routes", () => {
   });
 
   it("renders the challenge detail page", async () => {
-    vi.mocked(getProblems).mockResolvedValue([
-      {
-        id: "p-1",
-        title: "두 수의 합",
-        difficulty: "iron5",
-        tags: ["io"],
-        description: "## 문제\n\n두 수를 더하세요.",
-        testCases: [{ input: "1 2", expectedOutput: "3" }],
-        hiddenTestCases: [],
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    vi.mocked(getProblem).mockResolvedValue({
+      id: "p-1",
+      title: "두 수의 합",
+      difficulty: "iron5",
+      tags: ["io"],
+      points: 100,
+      description: "## 문제\n\n두 수를 더하세요.",
+      testCases: [{ input: "1 2", expectedOutput: "3" }],
+      hiddenTestCases: [],
+      createdAt: new Date().toISOString(),
+    });
 
     const router = createMemoryRouter(routeDefinitions, {
       initialEntries: ["/challenges/p-1"],

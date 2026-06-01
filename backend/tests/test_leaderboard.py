@@ -4,8 +4,15 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.database import SessionLocal
+from app.core.config import settings
 from app.main import app
 from app.models.database import User, UserProblemScore
+from app.services import auth
+
+
+def _admin_headers() -> dict[str, str]:
+    token = auth.create_access_token({"sub": settings.ADMIN_USERNAME})
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.mark.asyncio
@@ -23,6 +30,7 @@ async def test_leaderboard_score_submission_accumulates_and_ranks_users():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             first_response = await client.post(
                 "/api/v1/problems/leaderboard/score",
+                headers=_admin_headers(),
                 json={
                     "username": high_user,
                     "points": 40,
@@ -32,6 +40,7 @@ async def test_leaderboard_score_submission_accumulates_and_ranks_users():
             )
             second_response = await client.post(
                 "/api/v1/problems/leaderboard/score",
+                headers=_admin_headers(),
                 json={
                     "username": high_user,
                     "points": 15,
@@ -41,6 +50,7 @@ async def test_leaderboard_score_submission_accumulates_and_ranks_users():
             )
             third_response = await client.post(
                 "/api/v1/problems/leaderboard/score",
+                headers=_admin_headers(),
                 json={
                     "username": high_user,
                     "points": 15,
@@ -49,6 +59,7 @@ async def test_leaderboard_score_submission_accumulates_and_ranks_users():
             )
             await client.post(
                 "/api/v1/problems/leaderboard/score",
+                headers=_admin_headers(),
                 json={"username": low_user, "points": 10, "challengeId": low_challenge},
             )
             leaderboard_response = await client.get("/api/v1/problems/leaderboard?limit=100")

@@ -19,6 +19,7 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [difficulty, setDifficulty] = useState<ProblemCreateRequest["difficulty"]>(initialData?.difficulty ?? "iron5");
   const [tags, setTags] = useState<ProblemTag[]>(initialData?.tags ?? []);
+  const [points, setPoints] = useState(initialData?.points ?? 100);
   const [description, setDescription] = useState(initialData?.description ?? "");
   const [testCases, setTestCases] = useState<TestCase[]>(initialData?.testCases?.length ? initialData.testCases : [{ input: "", expectedOutput: "" }]);
   const [hiddenTestCases, setHiddenTestCases] = useState<TestCase[]>(initialData?.hiddenTestCases?.length ? initialData.hiddenTestCases : [{ input: "", expectedOutput: "" }]);
@@ -47,7 +48,7 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim()) return;
-    onSubmit({ title, difficulty, tags, description, testCases, hiddenTestCases });
+    onSubmit({ title, difficulty, tags, points, description, testCases, hiddenTestCases });
   };
 
   return (
@@ -109,6 +110,18 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-gray-700">점수</label>
+          <input
+            type="number"
+            min={0}
+            max={10000}
+            value={points}
+            onChange={(e) => setPoints(Number(e.target.value))}
+            className="border border-gray-300 rounded px-3 py-2 text-sm text-black outline-none focus:border-blue-500"
+          />
         </div>
 
         <div className="flex flex-col gap-1">

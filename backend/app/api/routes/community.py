@@ -4,7 +4,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.routes.auth import get_current_user
+from app.api.routes.auth import get_current_user, get_optional_current_user
+from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
@@ -12,14 +13,27 @@ from app.models import schemas
 router = APIRouter()
 
 
-def _to_community_post(comment: db_models.Comment, user: db_models.User | None) -> schemas.CommunityPostRead:
+NOTICE_BOARD_ID = "__notice__"
+
+
+def _is_admin(user: db_models.User | None) -> bool:
+    return user is not None and user.role == "admin"
+
+
+def _to_community_post(
+    comment: db_models.Comment,
+    user: db_models.User | None,
+    current_user: db_models.User | None = None,
+) -> schemas.CommunityPostRead:
     return schemas.CommunityPostRead(
         id=comment.id,
         problem_id=comment.problem_id,
+        user_id=comment.user_id,
         author=user.username if user else "unknown",
         avatar_url=user.avatar_url if user else None,
         content=comment.content,
         created_at=comment.created_at,
+        can_delete=current_user is not None and (comment.user_id == current_user.id or _is_admin(current_user)),
     )
 
 
@@ -27,6 +41,7 @@ def _to_community_post(comment: db_models.Comment, user: db_models.User | None) 
 def list_posts(
     problem_id: str = Query(..., alias="problemId"),
     db: Session = Depends(get_db),
+    current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
     comments = (
         db.query(db_models.Comment)
@@ -39,7 +54,10 @@ def list_posts(
     users = db.query(db_models.User).filter(db_models.User.id.in_(user_ids)).all() if user_ids else []
     users_by_id = {user.id: user for user in users}
 
-    return [_to_community_post(comment, users_by_id.get(comment.user_id)) for comment in comments]
+    return [
+        _to_community_post(comment, users_by_id.get(comment.user_id), current_user)
+        for comment in comments
+    ]
 
 
 @router.post("/posts", response_model=schemas.CommunityPostRead)
@@ -48,6 +66,14 @@ def create_post(
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(get_current_user),
 ):
+    if payload.problem_id == NOTICE_BOARD_ID and not _is_admin(current_user):
+        raise HTTPException(status_code=403, detail="공지 작성은 관리자만 가능합니다.")
+
+    if payload.problem_id not in SYSTEM_BOARD_IDS:
+        exists = db.query(db_models.Problem.id).filter(db_models.Problem.id == payload.problem_id).first()
+        if exists is None:
+            raise HTTPException(status_code=404, detail="Problem not found")
+
     new_comment = db_models.Comment(
         problem_id=payload.problem_id,
         user_id=current_user.id,
@@ -57,7 +83,7 @@ def create_post(
     db.commit()
     db.refresh(new_comment)
 
-    return _to_community_post(new_comment, current_user)
+    return _to_community_post(new_comment, current_user, current_user)
 
 
 @router.delete("/posts/{post_id}", status_code=204)
@@ -69,8 +95,8 @@ def delete_post(
     comment = db.query(db_models.Comment).filter(db_models.Comment.id == post_id).first()
     if comment is None:
         raise HTTPException(status_code=404, detail="Post not found")
-    if comment.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only author can delete this post")
+    if comment.user_id != current_user.id and not _is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only author or admin can delete this post")
 
     db.delete(comment)
     db.commit()

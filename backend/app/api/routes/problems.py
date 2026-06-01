@@ -4,7 +4,8 @@ from typing import List, Optional
 from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
-from app.api.routes.auth import get_current_user, get_optional_current_user
+from app.api.routes.auth import get_current_user, get_optional_current_user, require_admin
+from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.services.compiler import compiler_instance
 
 router = APIRouter()
@@ -41,6 +42,7 @@ def _serialize_problem(problem: db_models.Problem, include_hidden: bool = False)
         "difficulty": problem.difficulty,
         "tags": problem.tags,
         "description": problem.description,
+        "points": problem.points,
         "test_cases": sample_cases,
         "hidden_test_cases": hidden_cases if include_hidden else [],
         "created_at": problem.created_at,
@@ -68,7 +70,7 @@ def _leaderboard_rank(db: Session, user_id: str) -> int:
 def create_problem(
     problem: schemas.ProblemCreate,
     db: Session = Depends(get_db),
-    current_user: db_models.User = Depends(get_current_user)
+    current_user: db_models.User = Depends(require_admin)
 ):
     db_problem = db_models.Problem(
         creator_id=current_user.id,
@@ -76,6 +78,7 @@ def create_problem(
         difficulty=problem.difficulty,
         tags=problem.tags,
         description=problem.description,
+        points=problem.points,
         test_cases={
             "sample": [tc.model_dump() for tc in problem.test_cases],
             "hidden": [tc.model_dump() for tc in problem.hidden_test_cases],
@@ -93,7 +96,7 @@ def list_problems(
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
-    query = db.query(db_models.Problem)
+    query = db.query(db_models.Problem).filter(~db_models.Problem.id.in_(SYSTEM_BOARD_IDS))
     if difficulty:
         query = query.filter(db_models.Problem.difficulty == difficulty)
     
@@ -104,23 +107,24 @@ def list_problems(
     return [
         _serialize_problem(
             problem,
-            include_hidden=current_user is not None and problem.creator_id == current_user.id,
+            include_hidden=current_user is not None and (
+                current_user.role == "admin" or problem.creator_id == current_user.id
+            ),
         )
         for problem in problems
     ]
 
 @router.put("/{id}", response_model=schemas.ProblemRead)
-def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depends(get_db), current_user: db_models.User = Depends(get_current_user)):
+def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
     db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="Problem not found")    
-    if db_problem.creator_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You are not the creator of this problem")
     
     db_problem.title = problem.title
     db_problem.difficulty = problem.difficulty
     db_problem.tags = problem.tags
     db_problem.description = problem.description
+    db_problem.points = problem.points
     db_problem.test_cases = {
         "sample": [tc.model_dump() for tc in problem.test_cases],
         "hidden": [tc.model_dump() for tc in problem.hidden_test_cases],
@@ -131,13 +135,16 @@ def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depend
     return _serialize_problem(db_problem, include_hidden=True)
 
 @router.delete("/{id}")
-def delete_problem(id: str, db: Session = Depends(get_db), current_user: db_models.User = Depends(get_current_user)):
+def delete_problem(id: str, db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
     db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="Problem not found")
-    if db_problem.creator_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You are not the creator of this problem")
+    if id in SYSTEM_BOARD_IDS:
+        raise HTTPException(status_code=400, detail="System board cannot be deleted")
     
+    db.query(db_models.Comment).filter(db_models.Comment.problem_id == id).delete(synchronize_session=False)
+    db.query(db_models.Submission).filter(db_models.Submission.problem_id == id).delete(synchronize_session=False)
+    db.query(db_models.UserProblemScore).filter(db_models.UserProblemScore.challenge_id == id).delete(synchronize_session=False)
     db.delete(db_problem)
     db.commit()
     return {"message": "Successfully deleted"}
@@ -160,6 +167,7 @@ def get_leaderboard(
 def submit_leaderboard_score(
     score: schemas.LeaderboardScoreCreate,
     db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(require_admin),
 ):
     username = score.username.strip()
     if not username:
@@ -172,6 +180,7 @@ def submit_leaderboard_score(
             total_score=0,
             avatar_url=score.avatar_url,
             hashed_password="",
+            role="user",
         )
         db.add(user)
         db.flush()
@@ -210,6 +219,23 @@ def submit_leaderboard_score(
         "awarded_points": awarded_points,
         "already_solved": already_solved,
     }
+
+
+@router.get("/{id}", response_model=schemas.ProblemRead)
+def get_problem(
+    id: str,
+    db: Session = Depends(get_db),
+    current_user: db_models.User | None = Depends(get_optional_current_user),
+):
+    problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
+    if not problem or problem.id in SYSTEM_BOARD_IDS:
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    return _serialize_problem(
+        problem,
+        include_hidden=current_user is not None
+        and (current_user.role == "admin" or problem.creator_id == current_user.id),
+    )
 
 @router.post("/{id}/submit", response_model=schemas.SubmissionResponse, tags=["Grading"])
 async def submit_problem(
@@ -264,7 +290,7 @@ async def submit_problem(
 
     if grading_completed:
         for index, tc in enumerate(hidden_cases, start=1):
-            case_result = await run_case(tc, index, "sample", False)
+            case_result = await run_case(tc, index, "grading", False)
             if case_result.status == "Correct":
                 hidden_passed_count += 1
 
@@ -278,18 +304,36 @@ async def submit_problem(
         final_status = "Rejected"
 
     total_score = current_user.total_score if current_user is not None else 0
+    awarded_points = 0
     if final_status == "Accepted" and current_user is not None and not already_solved:
-        points = 100
-        current_user.total_score += points
+        awarded_points = problem.points
+        current_user.total_score += awarded_points
         total_score = current_user.total_score
 
         score_record = db_models.UserProblemScore(
             user_id=current_user.id,
             challenge_id=id,
-            points_awarded=points
+            points_awarded=awarded_points
         )
         db.add(score_record)
-        db.commit()
+    elif current_user is not None:
+        total_score = current_user.total_score
+
+    db.add(
+        db_models.Submission(
+            user_id=current_user.id if current_user is not None else None,
+            problem_id=id,
+            language=request.language,
+            code=request.code,
+            status=final_status,
+            sample_total_cases=len(sample_cases),
+            sample_passed_cases=sample_passed_count,
+            grading_completed=grading_completed,
+            grading_passed=grading_passed,
+            awarded_points=awarded_points,
+        )
+    )
+    db.commit()
 
     return schemas.SubmissionResponse(
         status=final_status,
