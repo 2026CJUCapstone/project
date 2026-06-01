@@ -150,11 +150,25 @@ export interface ExecuteRequest {
 
 export type CompileQueueStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 export type CompileQueueKind = 'compile' | 'run' | 'grading';
+export type CompileQueueVerdict =
+  | 'pending'
+  | 'running'
+  | 'compile_success'
+  | 'compile_error'
+  | 'accepted'
+  | 'wrong_answer'
+  | 'finished'
+  | 'runtime_error'
+  | 'time_limit_exceeded'
+  | 'memory_limit_exceeded'
+  | 'system_error'
+  | 'canceled';
 
 export interface CompileQueueJob {
   id: string;
   kind: CompileQueueKind;
   status: CompileQueueStatus;
+  verdict: CompileQueueVerdict;
   language: CompilerLanguage;
   username?: string | null;
   userId?: string | null;
@@ -169,18 +183,41 @@ export interface CompileQueueJob {
   runMs?: number | null;
   position?: number | null;
   error?: string | null;
+  verdictDetail?: string | null;
+}
+
+export interface CompileQueueGroup {
+  key: string;
+  label: string;
+  problemId?: string | null;
+  problemTitle?: string | null;
+  username?: string | null;
+  userId?: string | null;
+  total: number;
+  queued: number;
+  running: number;
+  completed: number;
+  failed: number;
+  canceled: number;
+  verdicts: Partial<Record<CompileQueueVerdict, number>>;
+  lastQueuedAt?: string | null;
 }
 
 export interface CompileQueueResponse {
   jobs: CompileQueueJob[];
   total: number;
+  filteredTotal: number;
   queued: number;
   running: number;
+  problemGroups: CompileQueueGroup[];
+  userGroups: CompileQueueGroup[];
 }
 
 export interface CompileQueueFilters {
   limit?: number;
+  offset?: number;
   status?: CompileQueueStatus | 'all';
+  verdict?: CompileQueueVerdict | 'all';
   kind?: CompileQueueKind | 'all';
   username?: string;
   userId?: string;
@@ -357,7 +394,9 @@ export async function checkHealth(): Promise<{ status: string; version?: string 
 export async function getCompileQueue(filters: CompileQueueFilters = {}): Promise<CompileQueueResponse> {
   const params = new URLSearchParams();
   params.set('limit', String(filters.limit ?? 100));
+  params.set('offset', String(filters.offset ?? 0));
   if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+  if (filters.verdict && filters.verdict !== 'all') params.set('verdict', filters.verdict);
   if (filters.kind && filters.kind !== 'all') params.set('kind', filters.kind);
   if (filters.username?.trim()) params.set('username', filters.username.trim());
   if (filters.userId?.trim()) params.set('userId', filters.userId.trim());

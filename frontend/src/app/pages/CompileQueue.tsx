@@ -1,19 +1,37 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, Clock3, Filter, Layers3, RefreshCw, RotateCcw, UserRound } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  Activity,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Cpu,
+  Filter,
+  Layers3,
+  RefreshCw,
+  RotateCcw,
+  Timer,
+  UserRound,
+  XCircle,
+} from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import {
   getCompileQueue,
   type CompileQueueFilters,
+  type CompileQueueGroup,
   type CompileQueueJob,
   type CompileQueueKind,
   type CompileQueueStatus,
+  type CompileQueueVerdict,
 } from '../services/compilerApi';
+
+const PAGE_SIZE = 50;
 
 const statusLabels: Record<CompileQueueStatus, string> = {
   queued: '대기',
   running: '실행 중',
-  completed: '완료',
-  failed: '실패',
+  completed: '처리됨',
+  failed: '시스템 실패',
   canceled: '취소',
 };
 
@@ -23,13 +41,58 @@ const kindLabels: Record<CompileQueueKind, string> = {
   grading: '채점',
 };
 
+const verdictLabels: Record<CompileQueueVerdict, string> = {
+  pending: '대기',
+  running: '실행 중',
+  compile_success: '컴파일 성공',
+  compile_error: '컴파일 실패',
+  accepted: '정답',
+  wrong_answer: '오답',
+  finished: '정상 종료',
+  runtime_error: '런타임 오류',
+  time_limit_exceeded: '시간 초과',
+  memory_limit_exceeded: '메모리 초과',
+  system_error: '시스템 오류',
+  canceled: '취소',
+};
+
 const statusClass: Record<CompileQueueStatus, string> = {
   queued: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
   running: 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300',
-  completed: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  completed: 'border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-300',
   failed: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
   canceled: 'border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-300',
 };
+
+const verdictClass: Record<CompileQueueVerdict, string> = {
+  pending: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  running: 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  compile_success: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  compile_error: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
+  accepted: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  wrong_answer: 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+  finished: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  runtime_error: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
+  time_limit_exceeded: 'border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300',
+  memory_limit_exceeded: 'border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300',
+  system_error: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
+  canceled: 'border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-300',
+};
+
+const verdictPriority: CompileQueueVerdict[] = [
+  'running',
+  'pending',
+  'time_limit_exceeded',
+  'memory_limit_exceeded',
+  'compile_error',
+  'runtime_error',
+  'wrong_answer',
+  'system_error',
+  'accepted',
+  'compile_success',
+  'finished',
+  'canceled',
+];
 
 function formatDate(value?: string | null): string {
   if (!value) return '-';
@@ -48,13 +111,45 @@ function formatDuration(value?: number | null): string {
   return `${Math.round(value)}ms`;
 }
 
+function formatBytes(value: number): string {
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)}MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)}KB`;
+  return `${value}B`;
+}
+
+function getProblemLabel(job: CompileQueueJob): string {
+  return job.problemTitle || job.problemId || '일반 컴파일';
+}
+
+function getUsernameLabel(job: CompileQueueJob): string {
+  return job.username || '익명';
+}
+
 function statusOptions() {
   return [
     { value: 'all', label: '전체 상태' },
     { value: 'queued', label: '대기' },
     { value: 'running', label: '실행 중' },
-    { value: 'completed', label: '완료' },
-    { value: 'failed', label: '실패' },
+    { value: 'completed', label: '처리됨' },
+    { value: 'failed', label: '시스템 실패' },
+    { value: 'canceled', label: '취소' },
+  ];
+}
+
+function verdictOptions() {
+  return [
+    { value: 'all', label: '전체 판정' },
+    { value: 'accepted', label: '정답' },
+    { value: 'wrong_answer', label: '오답' },
+    { value: 'compile_error', label: '컴파일 실패' },
+    { value: 'runtime_error', label: '런타임 오류' },
+    { value: 'time_limit_exceeded', label: '시간 초과' },
+    { value: 'memory_limit_exceeded', label: '메모리 초과' },
+    { value: 'compile_success', label: '컴파일 성공' },
+    { value: 'finished', label: '정상 종료' },
+    { value: 'pending', label: '대기' },
+    { value: 'running', label: '실행 중' },
+    { value: 'system_error', label: '시스템 오류' },
     { value: 'canceled', label: '취소' },
   ];
 }
@@ -68,27 +163,114 @@ function kindOptions() {
   ];
 }
 
-function getProblemLabel(job: CompileQueueJob): string {
-  return job.problemTitle || job.problemId || '일반 컴파일';
+function primaryVerdict(group: CompileQueueGroup): CompileQueueVerdict {
+  return verdictPriority.find((verdict) => (group.verdicts[verdict] || 0) > 0) || 'finished';
 }
 
-function getUsernameLabel(job: CompileQueueJob): string {
-  return job.username || '익명';
+function GroupTable({
+  title,
+  icon,
+  groups,
+  emptyText,
+  onPickProblem,
+  onPickUser,
+}: {
+  title: string;
+  icon: ReactNode;
+  groups: CompileQueueGroup[];
+  emptyText: string;
+  onPickProblem?: (problemId: string) => void;
+  onPickUser?: (username: string) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-md border border-gray-200 bg-white dark:border-[#333] dark:bg-[#1a1a1a]">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-[#333]">
+        <div className="flex min-w-0 items-center gap-2">
+          {icon}
+          <h2 className="truncate text-sm font-bold">{title}</h2>
+        </div>
+        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{groups.length.toLocaleString()}</span>
+      </div>
+      <div className="max-h-[320px] overflow-auto">
+        {groups.length === 0 ? (
+          <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">{emptyText}</div>
+        ) : (
+          <table className="w-full min-w-[760px] table-fixed text-left text-sm">
+            <thead className="sticky top-0 z-10 bg-gray-50 text-xs font-semibold text-gray-500 dark:bg-[#151515] dark:text-gray-400">
+              <tr>
+                <th className="w-[34%] px-4 py-2">이름</th>
+                <th className="w-[10%] px-3 py-2 text-right">전체</th>
+                <th className="w-[10%] px-3 py-2 text-right">대기</th>
+                <th className="w-[10%] px-3 py-2 text-right">실행</th>
+                <th className="w-[16%] px-3 py-2">대표 판정</th>
+                <th className="w-[20%] px-3 py-2">최근 요청</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-[#282828]">
+              {groups.map((group) => {
+                const verdict = primaryVerdict(group);
+                const canPickProblem = Boolean(group.problemId && onPickProblem);
+                const canPickUser = Boolean(group.username && group.username !== '익명' && onPickUser);
+                return (
+                  <tr key={group.key} className="hover:bg-gray-50 dark:hover:bg-[#202020]">
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        disabled={!canPickProblem && !canPickUser}
+                        onClick={() => {
+                          if (group.problemId && onPickProblem) onPickProblem(group.problemId);
+                          if (group.username && group.username !== '익명' && onPickUser) onPickUser(group.username);
+                        }}
+                        className="block max-w-full truncate text-left font-semibold text-gray-900 enabled:hover:text-blue-600 disabled:cursor-default dark:text-white dark:enabled:hover:text-blue-300"
+                      >
+                        {group.label}
+                      </button>
+                      {(group.problemId || group.userId) && (
+                        <p className="mt-0.5 truncate font-mono text-xs text-gray-500 dark:text-gray-500">
+                          {group.problemId || group.userId}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{group.total}</td>
+                    <td className="px-3 py-3 text-right font-mono text-amber-700 dark:text-amber-300">{group.queued}</td>
+                    <td className="px-3 py-3 text-right font-mono text-blue-700 dark:text-blue-300">{group.running}</td>
+                    <td className="px-3 py-3">
+                      <span className={`inline-flex rounded border px-2 py-0.5 text-xs font-semibold ${verdictClass[verdict]}`}>
+                        {verdictLabels[verdict]} {group.verdicts[verdict] || 0}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">
+                      {formatDate(group.lastQueuedAt)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export function CompileQueue() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState<CompileQueueJob[]>([]);
+  const [problemGroups, setProblemGroups] = useState<CompileQueueGroup[]>([]);
+  const [userGroups, setUserGroups] = useState<CompileQueueGroup[]>([]);
   const [queued, setQueued] = useState(0);
   const [running, setRunning] = useState(0);
   const [total, setTotal] = useState(0);
+  const [filteredTotal, setFilteredTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [usernameInput, setUsernameInput] = useState(searchParams.get('username') || '');
   const [problemIdInput, setProblemIdInput] = useState(searchParams.get('problemId') || '');
   const statusFilter = (searchParams.get('status') || 'all') as CompileQueueStatus | 'all';
+  const verdictFilter = (searchParams.get('verdict') || 'all') as CompileQueueVerdict | 'all';
   const kindFilter = (searchParams.get('kind') || 'all') as CompileQueueKind | 'all';
+  const currentPage = Math.max(1, Number(searchParams.get('page') || '1') || 1);
 
   useEffect(() => {
     setUsernameInput(searchParams.get('username') || '');
@@ -97,13 +279,15 @@ export function CompileQueue() {
 
   const filters = useMemo<CompileQueueFilters>(
     () => ({
-      limit: 150,
+      limit: PAGE_SIZE,
+      offset: (currentPage - 1) * PAGE_SIZE,
       status: statusFilter,
+      verdict: verdictFilter,
       kind: kindFilter,
       username: searchParams.get('username') || undefined,
       problemId: searchParams.get('problemId') || undefined,
     }),
-    [kindFilter, searchParams, statusFilter],
+    [currentPage, kindFilter, searchParams, statusFilter, verdictFilter],
   );
 
   const loadQueue = useCallback(async () => {
@@ -114,6 +298,9 @@ export function CompileQueue() {
       setQueued(response.queued);
       setRunning(response.running);
       setTotal(response.total);
+      setFilteredTotal(response.filteredTotal ?? response.total);
+      setProblemGroups(response.problemGroups ?? []);
+      setUserGroups(response.userGroups ?? []);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '컴파일 큐를 불러오지 못했습니다.');
     } finally {
@@ -130,37 +317,7 @@ export function CompileQueue() {
     return () => window.clearInterval(interval);
   }, [loadQueue]);
 
-  const groupedByProblem = useMemo(() => {
-    const counts = new Map<string, { label: string; problemId: string; count: number; running: number; queued: number }>();
-    for (const job of jobs) {
-      const key = job.problemId || '__main__';
-      const current = counts.get(key) || {
-        label: getProblemLabel(job),
-        problemId: job.problemId || '',
-        count: 0,
-        running: 0,
-        queued: 0,
-      };
-      current.count += 1;
-      if (job.status === 'running') current.running += 1;
-      if (job.status === 'queued') current.queued += 1;
-      counts.set(key, current);
-    }
-    return [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 8);
-  }, [jobs]);
-
-  const groupedByUser = useMemo(() => {
-    const counts = new Map<string, { username: string; count: number; running: number; queued: number }>();
-    for (const job of jobs) {
-      const username = getUsernameLabel(job);
-      const current = counts.get(username) || { username, count: 0, running: 0, queued: 0 };
-      current.count += 1;
-      if (job.status === 'running') current.running += 1;
-      if (job.status === 'queued') current.queued += 1;
-      counts.set(username, current);
-    }
-    return [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 8);
-  }, [jobs]);
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
 
   const updateFilter = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -169,6 +326,15 @@ export function CompileQueue() {
     } else {
       next.set(key, value);
     }
+    next.delete('page');
+    setSearchParams(next);
+  };
+
+  const updatePage = (page: number) => {
+    const nextPage = Math.min(Math.max(1, page), totalPages);
+    const next = new URLSearchParams(searchParams);
+    if (nextPage <= 1) next.delete('page');
+    else next.set('page', String(nextPage));
     setSearchParams(next);
   };
 
@@ -180,6 +346,7 @@ export function CompileQueue() {
     else next.delete('username');
     if (problemId) next.set('problemId', problemId);
     else next.delete('problemId');
+    next.delete('page');
     setSearchParams(next);
   };
 
@@ -191,17 +358,20 @@ export function CompileQueue() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-gray-50 text-gray-900 transition-colors duration-200 dark:bg-[#121212] dark:text-white">
-      <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-6 transition-colors duration-200 dark:border-[#333] dark:bg-[#1e1e1e]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5">
+      <div className="shrink-0 border-b border-gray-200 bg-white px-6 py-5 transition-colors duration-200 dark:border-[#333] dark:bg-[#1e1e1e]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="mb-2 flex items-center gap-3">
-                <Activity className="text-blue-600 dark:text-blue-400" size={30} />
+                <Activity className="text-blue-600 dark:text-blue-400" size={28} />
                 <h1 className="text-2xl font-bold">컴파일 큐</h1>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                현재 대기 중인 컴파일, 실행, 채점 작업과 최근 처리 기록입니다.
-              </p>
+              <div className="flex flex-wrap gap-2 text-xs text-gray-600 dark:text-gray-400">
+                <span>대기 {queued.toLocaleString()}</span>
+                <span>실행 {running.toLocaleString()}</span>
+                <span>표시 대상 {filteredTotal.toLocaleString()}</span>
+                <span>보관 {total.toLocaleString()}</span>
+              </div>
             </div>
 
             <button
@@ -214,22 +384,7 @@ export function CompileQueue() {
             </button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-[#333] dark:bg-[#151515]">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">대기</p>
-              <p className="mt-1 text-xl font-bold text-amber-600 dark:text-amber-300">{queued.toLocaleString()}</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-[#333] dark:bg-[#151515]">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">실행 중</p>
-              <p className="mt-1 text-xl font-bold text-blue-600 dark:text-blue-300">{running.toLocaleString()}</p>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-[#333] dark:bg-[#151515]">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">보관된 작업</p>
-              <p className="mt-1 text-xl font-bold">{total.toLocaleString()}</p>
-            </div>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-[160px_160px_minmax(180px,1fr)_minmax(180px,1fr)_auto_auto]">
+          <div className="grid gap-3 xl:grid-cols-[150px_150px_170px_minmax(170px,1fr)_minmax(170px,1fr)_auto_auto]">
             <select
               value={statusFilter}
               onChange={(event) => updateFilter('status', event.target.value)}
@@ -247,6 +402,17 @@ export function CompileQueue() {
               className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-[#333] dark:bg-[#141414] dark:text-white"
             >
               {kindOptions().map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={verdictFilter}
+              onChange={(event) => updateFilter('verdict', event.target.value)}
+              className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-[#333] dark:bg-[#141414] dark:text-white"
+            >
+              {verdictOptions().map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -283,128 +449,152 @@ export function CompileQueue() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 pb-10">
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 pb-10">
           {errorMessage && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300">
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300">
               {errorMessage}
             </div>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <section className="rounded-lg border border-gray-200 bg-white dark:border-[#333] dark:bg-[#1a1a1a]">
-              <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-[#333]">
-                <Layers3 size={16} className="text-blue-500" />
-                <h2 className="text-sm font-bold">문제별</h2>
-              </div>
-              <div className="divide-y divide-gray-200 dark:divide-[#282828]">
-                {groupedByProblem.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">표시할 작업이 없습니다.</div>
-                ) : (
-                  groupedByProblem.map((item) => (
-                    <button
-                      key={item.problemId || item.label}
-                      onClick={() => item.problemId && updateFilter('problemId', item.problemId)}
-                      className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-[#202020]"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{item.label}</p>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          대기 {item.queued} · 실행 {item.running}
-                        </p>
-                      </div>
-                      <span className="font-mono text-sm text-gray-600 dark:text-gray-300">{item.count}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </section>
-
-            <section className="rounded-lg border border-gray-200 bg-white dark:border-[#333] dark:bg-[#1a1a1a]">
-              <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-[#333]">
-                <UserRound size={16} className="text-emerald-500" />
-                <h2 className="text-sm font-bold">유저별</h2>
-              </div>
-              <div className="divide-y divide-gray-200 dark:divide-[#282828]">
-                {groupedByUser.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-gray-500 dark:text-gray-400">표시할 작업이 없습니다.</div>
-                ) : (
-                  groupedByUser.map((item) => (
-                    <button
-                      key={item.username}
-                      onClick={() => item.username !== '익명' && updateFilter('username', item.username)}
-                      className="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-[#202020]"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{item.username}</p>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          대기 {item.queued} · 실행 {item.running}
-                        </p>
-                      </div>
-                      <span className="font-mono text-sm text-gray-600 dark:text-gray-300">{item.count}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </section>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <GroupTable
+              title="문제별 집계"
+              icon={<Layers3 size={16} className="shrink-0 text-blue-500" />}
+              groups={problemGroups}
+              emptyText="표시할 문제가 없습니다."
+              onPickProblem={(problemId) => updateFilter('problemId', problemId)}
+            />
+            <GroupTable
+              title="유저별 집계"
+              icon={<UserRound size={16} className="shrink-0 text-emerald-500" />}
+              groups={userGroups}
+              emptyText="표시할 유저가 없습니다."
+              onPickUser={(username) => updateFilter('username', username)}
+            />
           </div>
 
-          <section className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-[#333] dark:bg-[#1a1a1a]">
-            <div className="grid grid-cols-[96px_96px_minmax(160px,1fr)_minmax(130px,0.7fr)_100px_100px_100px_90px] gap-3 border-b border-gray-200 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-[#333] dark:text-gray-400">
-              <div>상태</div>
-              <div>작업</div>
-              <div>문제</div>
-              <div>사용자</div>
-              <div>대기</div>
-              <div>실행</div>
-              <div>요청</div>
-              <div className="text-right">위치</div>
+          <section className="overflow-hidden rounded-md border border-gray-200 bg-white dark:border-[#333] dark:bg-[#1a1a1a]">
+            <div className="flex flex-col gap-3 border-b border-gray-200 px-4 py-3 dark:border-[#333] sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Clock3 size={16} className="text-gray-500 dark:text-gray-400" />
+                <h2 className="text-sm font-bold">작업 목록</h2>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                <button
+                  type="button"
+                  onClick={() => updatePage(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  className="rounded border border-gray-200 p-1 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#444]"
+                  title="이전 페이지"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="font-mono">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => updatePage(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                  className="rounded border border-gray-200 p-1 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#444]"
+                  title="다음 페이지"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
 
-            {isLoading && jobs.length === 0 ? (
-              <div className="flex min-h-[260px] items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
-                <RefreshCw size={18} className="animate-spin" />
-                불러오는 중...
-              </div>
-            ) : jobs.length === 0 ? (
-              <div className="flex min-h-[260px] items-center justify-center text-gray-500 dark:text-gray-400">
-                큐 작업이 없습니다.
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-200 dark:divide-[#282828]">
-                {jobs.map((job) => (
-                  <div
-                    key={job.id}
-                    className="grid grid-cols-[96px_96px_minmax(160px,1fr)_minmax(130px,0.7fr)_100px_100px_100px_90px] gap-3 px-4 py-3 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-[#202020]"
-                  >
-                    <div>
-                      <span className={`inline-flex rounded border px-2 py-0.5 text-xs font-semibold ${statusClass[job.status]}`}>
-                        {statusLabels[job.status]}
-                      </span>
-                    </div>
-                    <div className="text-gray-700 dark:text-gray-300">{kindLabels[job.kind]}</div>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-gray-900 dark:text-white">{getProblemLabel(job)}</p>
-                      <p className="mt-0.5 truncate font-mono text-xs text-gray-500 dark:text-gray-500">
-                        {job.problemId || 'main'} · {job.language}
-                      </p>
-                    </div>
-                    <div className="truncate text-gray-700 dark:text-gray-300">{getUsernameLabel(job)}</div>
-                    <div className="font-mono text-xs text-gray-600 dark:text-gray-400">{formatDuration(job.waitMs)}</div>
-                    <div className="font-mono text-xs text-gray-600 dark:text-gray-400">{formatDuration(job.runMs)}</div>
-                    <div className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
-                      <Clock3 size={12} />
-                      {formatDate(job.queuedAt)}
-                    </div>
-                    <div className="text-right font-mono text-xs text-gray-600 dark:text-gray-400">
-                      {job.position ? `#${job.position}` : '-'}
-                    </div>
-                    {job.error && (
-                      <div className="col-span-8 truncate text-xs text-red-600 dark:text-red-300">{job.error}</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="overflow-x-auto">
+              {isLoading && jobs.length === 0 ? (
+                <div className="flex min-h-[260px] items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
+                  <RefreshCw size={18} className="animate-spin" />
+                  불러오는 중...
+                </div>
+              ) : jobs.length === 0 ? (
+                <div className="flex min-h-[260px] items-center justify-center text-gray-500 dark:text-gray-400">
+                  큐 작업이 없습니다.
+                </div>
+              ) : (
+                <table className="w-full min-w-[1180px] table-fixed text-left text-sm">
+                  <thead className="bg-gray-50 text-xs font-semibold text-gray-500 dark:bg-[#151515] dark:text-gray-400">
+                    <tr>
+                      <th className="w-[110px] px-4 py-3">상태</th>
+                      <th className="w-[140px] px-3 py-3">판정</th>
+                      <th className="w-[90px] px-3 py-3">작업</th>
+                      <th className="w-[24%] px-3 py-3">문제</th>
+                      <th className="w-[16%] px-3 py-3">사용자</th>
+                      <th className="w-[90px] px-3 py-3 text-right">대기</th>
+                      <th className="w-[90px] px-3 py-3 text-right">실행</th>
+                      <th className="w-[90px] px-3 py-3 text-right">크기</th>
+                      <th className="w-[110px] px-3 py-3">요청</th>
+                      <th className="w-[80px] px-3 py-3 text-right">위치</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-[#282828]">
+                    {jobs.map((job) => {
+                      const isAccepted = job.verdict === 'accepted' || job.verdict === 'compile_success' || job.verdict === 'finished';
+                      const isTimed = job.verdict === 'time_limit_exceeded';
+                      const isMemory = job.verdict === 'memory_limit_exceeded';
+                      return (
+                        <Fragment key={job.id}>
+                          <tr className="hover:bg-gray-50 dark:hover:bg-[#202020]">
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex rounded border px-2 py-0.5 text-xs font-semibold ${statusClass[job.status]}`}>
+                                {statusLabels[job.status]}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">
+                              <span className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-semibold ${verdictClass[job.verdict]}`}>
+                                {isAccepted ? <CheckCircle2 size={12} /> : isTimed ? <Timer size={12} /> : isMemory ? <Cpu size={12} /> : <XCircle size={12} />}
+                                {verdictLabels[job.verdict]}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-gray-700 dark:text-gray-300">{kindLabels[job.kind]}</td>
+                            <td className="min-w-0 px-3 py-3">
+                              <button
+                                type="button"
+                                disabled={!job.problemId}
+                                onClick={() => job.problemId && updateFilter('problemId', job.problemId)}
+                                className="block max-w-full truncate text-left font-medium text-gray-900 enabled:hover:text-blue-600 disabled:cursor-default dark:text-white dark:enabled:hover:text-blue-300"
+                              >
+                                {getProblemLabel(job)}
+                              </button>
+                              <p className="mt-0.5 truncate font-mono text-xs text-gray-500 dark:text-gray-500">
+                                {job.problemId || 'main'} · {job.language}
+                              </p>
+                            </td>
+                            <td className="px-3 py-3">
+                              <button
+                                type="button"
+                                disabled={!job.username}
+                                onClick={() => job.username && updateFilter('username', job.username)}
+                                className="block max-w-full truncate text-left text-gray-700 enabled:hover:text-blue-600 disabled:cursor-default dark:text-gray-300 dark:enabled:hover:text-blue-300"
+                              >
+                                {getUsernameLabel(job)}
+                              </button>
+                            </td>
+                            <td className="px-3 py-3 text-right font-mono text-xs text-gray-600 dark:text-gray-400">{formatDuration(job.waitMs)}</td>
+                            <td className="px-3 py-3 text-right font-mono text-xs text-gray-600 dark:text-gray-400">{formatDuration(job.runMs)}</td>
+                            <td className="px-3 py-3 text-right font-mono text-xs text-gray-600 dark:text-gray-400">{formatBytes(job.sourceSizeBytes)}</td>
+                            <td className="px-3 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{formatDate(job.queuedAt)}</td>
+                            <td className="px-3 py-3 text-right font-mono text-xs text-gray-600 dark:text-gray-400">
+                              {job.position ? `#${job.position}` : '-'}
+                            </td>
+                          </tr>
+                          {(job.error || job.verdictDetail) && (
+                            <tr className="bg-red-500/5">
+                              <td colSpan={10} className="px-4 pb-3 text-xs text-red-600 dark:text-red-300">
+                                {job.error || job.verdictDetail}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </section>
         </div>
       </div>

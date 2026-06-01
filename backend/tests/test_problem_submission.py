@@ -79,6 +79,7 @@ async def test_submission_response_does_not_reveal_grading_case_counts(monkeypat
         assert response.status_code == 200
         body = response.json()
         assert body["status"] == "Accepted"
+        assert body["verdict"] == "accepted"
         assert body["gradingCompleted"] is True
         assert body["gradingPassed"] is True
         assert body["sampleTotalCases"] == 1
@@ -92,6 +93,7 @@ async def test_submission_response_does_not_reveal_grading_case_counts(monkeypat
                 "phase": "sample",
                 "isVisible": True,
                 "status": "Correct",
+                "verdict": "accepted",
                 "input": "sample",
                 "expected": "ok",
                 "actual": "ok",

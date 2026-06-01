@@ -249,6 +249,7 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
 
         assert response.status_code == 200
         assert response.json()["status"] == "Accepted"
+        assert response.json()["verdict"] == "accepted"
         assert response.json()["totalScore"] == 250
 
         db = SessionLocal()

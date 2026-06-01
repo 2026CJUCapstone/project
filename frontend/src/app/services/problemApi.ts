@@ -1,6 +1,7 @@
 // 문제 관리 API
 
 import { API_BASE_URL, getAuthHeaders, parseApiError } from './apiBase';
+import type { CompileQueueVerdict } from './compilerApi';
 
 function authHeaders(): Record<string, string> {
   return getAuthHeaders();
@@ -43,6 +44,7 @@ export interface SubmissionDetail {
   phase: 'sample';
   isVisible: boolean;
   status: 'Correct' | 'Wrong' | 'Error';
+  verdict: CompileQueueVerdict;
   input: string;
   expected: string;
   actual: string;
@@ -50,6 +52,7 @@ export interface SubmissionDetail {
 
 export interface ProblemSubmissionResult {
   status: 'SampleFailed' | 'Rejected' | 'Accepted';
+  verdict: CompileQueueVerdict;
   totalCases: number;
   passedCases: number;
   sampleTotalCases: number;

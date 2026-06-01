@@ -5,12 +5,26 @@ import uuid
 from collections import OrderedDict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Awaitable, Callable, Literal, TypeVar
+from typing import Awaitable, Callable, Literal, TypeAlias, TypeVar
 
 from app.core.config import settings
 
 QueueKind = Literal["compile", "run", "grading"]
 QueueStatus = Literal["queued", "running", "completed", "failed", "canceled"]
+QueueVerdict: TypeAlias = Literal[
+    "pending",
+    "running",
+    "compile_success",
+    "compile_error",
+    "accepted",
+    "wrong_answer",
+    "finished",
+    "runtime_error",
+    "time_limit_exceeded",
+    "memory_limit_exceeded",
+    "system_error",
+    "canceled",
+]
 T = TypeVar("T")
 
 
@@ -23,6 +37,7 @@ class CompileQueueJob:
     id: str
     kind: QueueKind
     status: QueueStatus
+    verdict: QueueVerdict
     language: str
     source_size_bytes: int
     queued_at: datetime
@@ -36,12 +51,14 @@ class CompileQueueJob:
     wait_ms: float | None = None
     run_ms: float | None = None
     error: str | None = None
+    verdict_detail: str | None = None
 
     def to_dict(self, position: int | None = None) -> dict:
         return {
             "id": self.id,
             "kind": self.kind,
             "status": self.status,
+            "verdict": self.verdict,
             "language": self.language,
             "username": self.username,
             "user_id": self.user_id,
@@ -56,6 +73,7 @@ class CompileQueueJob:
             "run_ms": self.run_ms,
             "position": position,
             "error": self.error,
+            "verdict_detail": self.verdict_detail,
         }
 
 
@@ -79,12 +97,14 @@ class CompileQueue:
         username: str | None = None,
         problem_id: str | None = None,
         problem_title: str | None = None,
+        result_classifier: Callable[[T], QueueVerdict | tuple[QueueVerdict, str | None]] | None = None,
         task: Callable[[], Awaitable[T]],
     ) -> T:
         job = CompileQueueJob(
             id=uuid.uuid4().hex,
             kind=kind,
             status="queued",
+            verdict="pending",
             language=language,
             source_size_bytes=len(source_code.encode("utf-8")),
             queued_at=utc_now(),
@@ -108,6 +128,7 @@ class CompileQueue:
                 self._pending.popleft()
                 self._active_count += 1
                 job.status = "running"
+                job.verdict = "running"
                 job.started_at = utc_now()
                 job.wait_ms = round((job.started_at - job.queued_at).total_seconds() * 1000, 2)
                 self._condition.notify_all()
@@ -119,21 +140,37 @@ class CompileQueue:
         started_monotonic = time.monotonic()
         try:
             result = await task()
+            verdict, verdict_detail = self._classify_result(result, result_classifier)
         except asyncio.CancelledError:
-            await self._finish(job, "canceled", started_monotonic)
+            await self._finish(job, "canceled", started_monotonic, verdict="canceled")
             raise
         except Exception as exc:
-            await self._finish(job, "failed", started_monotonic, str(exc))
+            await self._finish(
+                job,
+                "failed",
+                started_monotonic,
+                str(exc),
+                verdict="system_error",
+                verdict_detail=str(exc),
+            )
             raise
 
-        await self._finish(job, "completed", started_monotonic)
+        await self._finish(
+            job,
+            "completed",
+            started_monotonic,
+            verdict=verdict,
+            verdict_detail=verdict_detail,
+        )
         return result
 
     async def snapshot(
         self,
         *,
         limit: int = 100,
+        offset: int = 0,
         status: str | None = None,
+        verdict: str | None = None,
         kind: str | None = None,
         username: str | None = None,
         user_id: str | None = None,
@@ -141,7 +178,9 @@ class CompileQueue:
     ) -> dict:
         normalized_username = username.lower().strip() if username else None
         normalized_status = status.lower().strip() if status else None
+        normalized_verdict = verdict.lower().strip() if verdict else None
         normalized_kind = kind.lower().strip() if kind else None
+        normalized_offset = max(0, offset)
 
         async with self._condition:
             pending_positions = {job_id: index for index, job_id in enumerate(self._pending, start=1)}
@@ -153,6 +192,8 @@ class CompileQueue:
             for job in jobs:
                 if normalized_status and job.status != normalized_status:
                     continue
+                if normalized_verdict and job.verdict != normalized_verdict:
+                    continue
                 if normalized_kind and job.kind != normalized_kind:
                     continue
                 if normalized_username and (job.username or "").lower() != normalized_username:
@@ -161,15 +202,18 @@ class CompileQueue:
                     continue
                 if problem_id and job.problem_id != problem_id:
                     continue
-                filtered.append(job.to_dict(pending_positions.get(job.id)))
-                if len(filtered) >= limit:
-                    break
+                filtered.append(job)
+
+            page = filtered[normalized_offset : normalized_offset + limit]
 
             return {
-                "jobs": filtered,
+                "jobs": [job.to_dict(pending_positions.get(job.id)) for job in page],
                 "total": len(self._jobs),
+                "filtered_total": len(filtered),
                 "queued": queued_count,
                 "running": running_count,
+                "problem_groups": self._build_groups(filtered, "problem"),
+                "user_groups": self._build_groups(filtered, "user"),
             }
 
     async def _finish(
@@ -178,13 +222,19 @@ class CompileQueue:
         status: QueueStatus,
         started_monotonic: float,
         error: str | None = None,
+        verdict: QueueVerdict | None = None,
+        verdict_detail: str | None = None,
     ) -> None:
         async with self._condition:
             job.status = status
+            if verdict is not None:
+                job.verdict = verdict
             job.finished_at = utc_now()
             job.run_ms = round((time.monotonic() - started_monotonic) * 1000, 2)
             if error:
                 job.error = error[:300]
+            if verdict_detail:
+                job.verdict_detail = verdict_detail[:300]
             if self._active_count > 0:
                 self._active_count -= 1
             self._prune_locked()
@@ -194,6 +244,7 @@ class CompileQueue:
         with contextlib.suppress(ValueError):
             self._pending.remove(job.id)
         job.status = "canceled"
+        job.verdict = "canceled"
         job.finished_at = utc_now()
         job.wait_ms = round((job.finished_at - job.queued_at).total_seconds() * 1000, 2)
 
@@ -203,6 +254,111 @@ class CompileQueue:
             if job.status in {"queued", "running"}:
                 break
             self._jobs.pop(job_id, None)
+
+    def _classify_result(
+        self,
+        result: T,
+        result_classifier: Callable[[T], QueueVerdict | tuple[QueueVerdict, str | None]] | None,
+    ) -> tuple[QueueVerdict, str | None]:
+        if result_classifier is None:
+            return "finished", None
+
+        classified = result_classifier(result)
+        if isinstance(classified, tuple):
+            return classified
+        return classified, None
+
+    def _build_groups(self, jobs: list[CompileQueueJob], group_by: Literal["problem", "user"]) -> list[dict]:
+        groups: dict[str, dict] = {}
+        for job in jobs:
+            if group_by == "problem":
+                key = job.problem_id or "__main__"
+                default_label = job.problem_title or job.problem_id or "일반 컴파일"
+                identity = {
+                    "problem_id": job.problem_id,
+                    "problem_title": job.problem_title,
+                    "username": None,
+                    "user_id": None,
+                }
+            else:
+                key = job.user_id or job.username or "__anonymous__"
+                default_label = job.username or "익명"
+                identity = {
+                    "problem_id": None,
+                    "problem_title": None,
+                    "username": job.username,
+                    "user_id": job.user_id,
+                }
+
+            group = groups.setdefault(
+                key,
+                {
+                    "key": key,
+                    "label": default_label,
+                    **identity,
+                    "total": 0,
+                    "queued": 0,
+                    "running": 0,
+                    "completed": 0,
+                    "failed": 0,
+                    "canceled": 0,
+                    "verdicts": {},
+                    "last_queued_at": job.queued_at,
+                },
+            )
+            group["total"] += 1
+            group[job.status] += 1
+            group["verdicts"][job.verdict] = group["verdicts"].get(job.verdict, 0) + 1
+            if job.queued_at > group["last_queued_at"]:
+                group["last_queued_at"] = job.queued_at
+
+        return sorted(
+            groups.values(),
+            key=lambda group: (
+                -(group["queued"] + group["running"]),
+                -group["total"],
+                group["label"],
+            ),
+        )
+
+
+def _stderr_text(result: dict) -> str:
+    return str(result.get("stderr") or "").lower()
+
+
+def _exit_code(result: dict) -> int:
+    try:
+        return int(result.get("exit_code", 0))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _classify_nonzero_execution(result: dict) -> QueueVerdict:
+    exit_code = _exit_code(result)
+    stderr = _stderr_text(result)
+
+    if exit_code == 124 or "timeout" in stderr or "시간이 초과" in stderr:
+        return "time_limit_exceeded"
+    if exit_code in {137, 143} or "out of memory" in stderr or "oom" in stderr or "memory" in stderr:
+        return "memory_limit_exceeded"
+    if "compiler pipeline" in stderr or "compilation" in stderr or "compile" in stderr:
+        return "compile_error"
+    return "runtime_error"
+
+
+def classify_compile_result(result: dict) -> QueueVerdict:
+    return "compile_success" if result.get("success") else "compile_error"
+
+
+def classify_run_result(result: dict) -> QueueVerdict:
+    return "finished" if _exit_code(result) == 0 else _classify_nonzero_execution(result)
+
+
+def classify_grading_result(result: dict, expected_output: str) -> QueueVerdict:
+    if _exit_code(result) != 0:
+        return _classify_nonzero_execution(result)
+    actual_output = str(result.get("stdout") or "").strip()
+    return "accepted" if actual_output == expected_output.strip() else "wrong_answer"
 
 
 compile_queue = CompileQueue(

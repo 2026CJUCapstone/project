@@ -137,12 +137,18 @@ async def test_compile_queue_records_public_problem_and_user_filters(monkeypatch
 
         assert compiled.status_code == 200
         assert queue.status_code == 200
-        jobs = queue.json()["jobs"]
+        body = queue.json()
+        jobs = body["jobs"]
         assert len(jobs) == 1
+        assert body["filteredTotal"] == 1
         assert jobs[0]["problemId"] == problem_id
         assert jobs[0]["username"] == username
         assert jobs[0]["status"] == "completed"
+        assert jobs[0]["verdict"] == "compile_success"
         assert jobs[0]["sourceSizeBytes"] > 0
+        assert body["problemGroups"][0]["problemId"] == problem_id
+        assert body["problemGroups"][0]["verdicts"]["compile_success"] == 1
+        assert body["userGroups"][0]["username"] == username
     finally:
         db = SessionLocal()
         try:
@@ -150,6 +156,57 @@ async def test_compile_queue_records_public_problem_and_user_filters(monkeypatch
             db.commit()
         finally:
             db.close()
+
+
+@pytest.mark.asyncio
+async def test_compile_queue_paginates_and_filters_verdicts(monkeypatch: pytest.MonkeyPatch):
+    suffix = uuid.uuid4().hex[:10]
+    problem_id = f"verdict-{suffix}"
+
+    async def fake_compile(source_code: str, language: str, optimize: bool = False, target: str = "all"):
+        return {
+            "success": False,
+            "errors": [{"line": 1, "column": 1, "message": "syntax", "severity": "error"}],
+            "warnings": [],
+            "execution_time": 2.0,
+            "metadata": {"node_count": 1, "optimization_level": 0},
+        }
+
+    monkeypatch.setattr(compiler_service.compiler_instance, "compile", fake_compile)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/compiler/compile",
+            json={
+                "code": "bad one",
+                "language": "bpp",
+                "problemId": problem_id,
+                "options": {"optimize": False, "target": "all"},
+            },
+        )
+        second = await client.post(
+            "/api/v1/compiler/compile",
+            json={
+                "code": "bad two",
+                "language": "bpp",
+                "problemId": problem_id,
+                "options": {"optimize": False, "target": "all"},
+            },
+        )
+        queue = await client.get(
+            "/api/v1/compiler/queue",
+            params={"problemId": problem_id, "verdict": "compile_error", "limit": 1, "offset": 1},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert queue.status_code == 200
+    body = queue.json()
+    assert body["filteredTotal"] == 2
+    assert len(body["jobs"]) == 1
+    assert body["jobs"][0]["verdict"] == "compile_error"
+    assert body["problemGroups"][0]["total"] == 2
+    assert body["problemGroups"][0]["verdicts"]["compile_error"] == 2
 
 
 def test_cors_origins_parses_csv_env(monkeypatch: pytest.MonkeyPatch):

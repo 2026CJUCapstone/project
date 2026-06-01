@@ -7,7 +7,7 @@ from app.models import database as db_models
 from app.models import schemas
 from app.models.schemas import CodeRequest, CodeResponse, CompileRequest, CompileResponse
 from app.services import compiler as compiler_service
-from app.services.compile_queue import compile_queue
+from app.services.compile_queue import classify_compile_result, classify_run_result, compile_queue
 
 router = APIRouter()
 
@@ -29,6 +29,7 @@ async def compile_code(
             username=current_user.username if current_user else None,
             problem_id=request.problem_id,
             problem_title=problem.title if problem else None,
+            result_classifier=classify_compile_result,
             task=lambda: compiler_service.compiler_instance.compile(
                 source_code=request.code,
                 language=request.language,
@@ -59,6 +60,7 @@ async def run_code(
             username=current_user.username if current_user else None,
             problem_id=request.problem_id,
             problem_title=problem.title if problem else None,
+            result_classifier=classify_run_result,
             task=lambda: compiler_service.compiler_instance.run(
                 source_code=request.source_code,
                 language=request.language,
@@ -76,7 +78,9 @@ async def run_code(
 @router.get("/queue", response_model=schemas.CompileQueueResponse)
 async def get_compile_queue(
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     status: str | None = Query(None),
+    verdict: str | None = Query(None),
     kind: str | None = Query(None),
     username: str | None = Query(None),
     user_id: str | None = Query(None, alias="userId"),
@@ -84,7 +88,9 @@ async def get_compile_queue(
 ):
     return await compile_queue.snapshot(
         limit=limit,
+        offset=offset,
         status=status,
+        verdict=verdict,
         kind=kind,
         username=username,
         user_id=user_id,

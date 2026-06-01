@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 from datetime import datetime
@@ -7,6 +7,20 @@ import re
 
 CompilerLanguage = Literal["bpp", "python", "c", "cpp", "java", "javascript"]
 CompilerTarget = Literal["ast", "ssa", "ir", "asm", "all"]
+CompileQueueVerdict = Literal[
+    "pending",
+    "running",
+    "compile_success",
+    "compile_error",
+    "accepted",
+    "wrong_answer",
+    "finished",
+    "runtime_error",
+    "time_limit_exceeded",
+    "memory_limit_exceeded",
+    "system_error",
+    "canceled",
+]
 
 
 class CodeRequest(BaseModel):
@@ -104,6 +118,7 @@ class CompileQueueJobRead(CamelModel):
     id: str
     kind: Literal["compile", "run", "grading"]
     status: Literal["queued", "running", "completed", "failed", "canceled"]
+    verdict: CompileQueueVerdict
     language: CompilerLanguage
     username: Optional[str] = None
     user_id: Optional[str] = None
@@ -118,13 +133,34 @@ class CompileQueueJobRead(CamelModel):
     run_ms: Optional[float] = None
     position: Optional[int] = None
     error: Optional[str] = None
+    verdict_detail: Optional[str] = None
+
+
+class CompileQueueGroupRead(CamelModel):
+    key: str
+    label: str
+    problem_id: Optional[str] = None
+    problem_title: Optional[str] = None
+    username: Optional[str] = None
+    user_id: Optional[str] = None
+    total: int
+    queued: int
+    running: int
+    completed: int
+    failed: int
+    canceled: int
+    verdicts: Dict[str, int] = Field(default_factory=dict)
+    last_queued_at: Optional[datetime] = None
 
 
 class CompileQueueResponse(CamelModel):
     jobs: List[CompileQueueJobRead]
     total: int
+    filtered_total: int
     queued: int
     running: int
+    problem_groups: List[CompileQueueGroupRead] = Field(default_factory=list)
+    user_groups: List[CompileQueueGroupRead] = Field(default_factory=list)
 
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -291,12 +327,14 @@ class TestCaseResult(CamelModel):
     phase: Literal["sample", "grading"]
     is_visible: bool = True
     status: Literal["Correct", "Wrong", "Error"]
+    verdict: CompileQueueVerdict
     input: str
     expected: str
     actual: str
 
 class SubmissionResponse(CamelModel):
     status: str
+    verdict: CompileQueueVerdict
     total_cases: int
     passed_cases: int
     sample_total_cases: int

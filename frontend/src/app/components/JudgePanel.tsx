@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CheckCircle, XCircle, Clock, Send } from "lucide-react";
 import { submitProblem, type ProblemSubmissionResult, type TestCase } from "../services/problemApi";
+import type { CompileQueueVerdict } from "../services/compilerApi";
 
 interface Props {
   code: string;
@@ -9,6 +10,21 @@ interface Props {
   testCases: TestCase[];
   onClose: () => void;
 }
+
+const verdictLabels: Record<CompileQueueVerdict, string> = {
+  pending: '대기',
+  running: '실행 중',
+  compile_success: '컴파일 성공',
+  compile_error: '컴파일 실패',
+  accepted: '정답',
+  wrong_answer: '오답',
+  finished: '정상 종료',
+  runtime_error: '런타임 오류',
+  time_limit_exceeded: '시간 초과',
+  memory_limit_exceeded: '메모리 초과',
+  system_error: '시스템 오류',
+  canceled: '취소',
+};
 
 export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClose }: Props) {
   const [result, setResult] = useState<ProblemSubmissionResult | null>(null);
@@ -90,18 +106,18 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
           <div className="flex flex-col gap-3">
             {/* 요약 */}
             <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-              result.status === 'Accepted'
+              result.verdict === 'accepted'
                 ? "bg-green-500/10 border-green-500/30"
                 : "bg-red-500/10 border-red-500/30"
             }`}>
-              {result.status === 'Accepted' ? (
+              {result.verdict === 'accepted' ? (
                 <CheckCircle size={20} className="text-green-400" />
               ) : (
                 <XCircle size={20} className="text-red-400" />
               )}
               <div>
-                <p className={`text-sm font-bold ${result.status === 'Accepted' ? "text-green-400" : "text-red-400"}`}>
-                  {result.status === 'Accepted' ? '정답입니다!' : '채점 완료'}
+                <p className={`text-sm font-bold ${result.verdict === 'accepted' ? "text-green-400" : "text-red-400"}`}>
+                  {verdictLabels[result.verdict]}
                 </p>
                 <p className="text-xs text-gray-400">
                   예제 채점 {result.samplePassedCases}/{result.sampleTotalCases} 통과 · 채점 {gradingStatus}
@@ -152,7 +168,9 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
                   <span className="text-xs font-semibold text-gray-300">
                     예제 #{idx + 1}
                   </span>
-                  <span className="text-[10px] text-blue-300 ml-auto uppercase tracking-wider">예제</span>
+                  <span className={`ml-auto text-[10px] uppercase tracking-wider ${passed ? 'text-green-300' : 'text-red-300'}`}>
+                    {verdictLabels[r.verdict]}
+                  </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>

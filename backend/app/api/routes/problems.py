@@ -8,7 +8,7 @@ from app.models import schemas
 from app.api.routes.auth import get_current_user, get_optional_current_user, require_admin
 from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.services.compiler import compiler_instance
-from app.services.compile_queue import compile_queue
+from app.services.compile_queue import classify_grading_result, compile_queue
 
 router = APIRouter()
 
@@ -285,8 +285,10 @@ async def submit_problem(
     details: list[schemas.TestCaseResult] = []
     sample_passed_count = 0
     hidden_passed_count = 0
+    first_failed_verdict: schemas.CompileQueueVerdict | None = None
 
     async def run_case(tc: dict, case_number: int, phase: str, visible: bool) -> schemas.TestCaseResult:
+        expected_output = tc.get("expected_output", "").strip()
         result = await compile_queue.run(
             kind="grading",
             language=request.language,
@@ -295,6 +297,7 @@ async def submit_problem(
             username=current_user.username if current_user else None,
             problem_id=problem.id,
             problem_title=problem.title,
+            result_classifier=lambda case_result: classify_grading_result(case_result, expected_output),
             task=lambda: compiler_instance.run(
                 source_code=request.code,
                 language=request.language,
@@ -303,14 +306,14 @@ async def submit_problem(
         )
 
         actual_output = result.get("stdout", "").strip()
-        expected_output = tc.get("expected_output", "").strip()
-        is_correct = result.get("exit_code", 1) == 0 and actual_output == expected_output
-        status = "Correct" if is_correct else ("Wrong" if result.get("exit_code", 1) == 0 else "Error")
+        verdict = classify_grading_result(result, expected_output)
+        status = "Correct" if verdict == "accepted" else ("Wrong" if verdict == "wrong_answer" else "Error")
         return schemas.TestCaseResult(
             case_number=case_number,
             phase=phase,
             is_visible=visible,
             status=status,
+            verdict=verdict,
             input=tc.get("input", "") if visible else "",
             expected=expected_output if visible else "",
             actual=(actual_output if status != "Error" else result.get("stderr", "Error")) if visible else "",
@@ -321,6 +324,8 @@ async def submit_problem(
         details.append(case_result)
         if case_result.status == "Correct":
             sample_passed_count += 1
+        elif first_failed_verdict is None:
+            first_failed_verdict = case_result.verdict
 
     grading_completed = sample_passed_count == len(sample_cases)
 
@@ -329,6 +334,8 @@ async def submit_problem(
             case_result = await run_case(tc, index, "grading", False)
             if case_result.status == "Correct":
                 hidden_passed_count += 1
+            elif first_failed_verdict is None:
+                first_failed_verdict = case_result.verdict
 
     grading_passed = grading_completed and hidden_passed_count == len(hidden_cases)
 
@@ -338,6 +345,7 @@ async def submit_problem(
         final_status = "Accepted"
     else:
         final_status = "Rejected"
+    final_verdict = "accepted" if final_status == "Accepted" else (first_failed_verdict or "wrong_answer")
 
     total_score = current_user.total_score if current_user is not None else 0
     awarded_points = 0
@@ -375,6 +383,7 @@ async def submit_problem(
 
     return schemas.SubmissionResponse(
         status=final_status,
+        verdict=final_verdict,
         total_cases=len(sample_cases),
         passed_cases=sample_passed_count,
         sample_total_cases=len(sample_cases),
