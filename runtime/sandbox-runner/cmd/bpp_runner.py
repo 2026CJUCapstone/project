@@ -65,10 +65,20 @@ def build_bpp_command(
     command.append("-O1" if opt_level == "O1" else "-O0")
     if mode == "dump-ir":
         command.append("-dump-ir")
+    elif mode == "dump-ir-json":
+        command.extend(["-dump-ir-json", "--source-map-user-only"])
     elif mode == "dump-ssa":
         command.append("-dump-ssa")
+    elif mode == "dump-ssa-json":
+        command.extend(["-dump-ssa-json", "--source-map-user-only"])
+    elif mode == "dump-machine-ir-json":
+        command.extend(["-dump-machine-ir-json", "--source-map-user-only"])
     elif mode == "asm":
         command.append("-asm")
+    elif mode == "asm-json":
+        command.extend(["--emit-source-map", "--emit-json"])
+    elif mode == "json":
+        command.extend(["--emit-json", "--views", "ast,ir,ssa,asm", "--source-map-user-only", "--ast-no-std"])
     command.extend(extra_args)
     command.append(source_path)
     return command
@@ -227,7 +237,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run B++ compiler in project runtime")
     parser.add_argument("--request", help="Path to a B++ runtime request JSON file")
     parser.add_argument("--source", help="Path to a .bpp source file")
-    parser.add_argument("--mode", default="run", choices=["run", "dump-ir", "dump-ssa", "asm"])
+    parser.add_argument(
+        "--mode",
+        default="run",
+        choices=["run", "dump-ir", "dump-ir-json", "dump-ssa", "dump-ssa-json", "dump-machine-ir-json", "asm", "asm-json", "json"],
+    )
     parser.add_argument("--opt-level", default="O0", choices=["O0", "O1"])
     parser.add_argument("--stdin-file", help="Optional stdin file")
     parser.add_argument("--working-directory", default="")

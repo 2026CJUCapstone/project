@@ -74,6 +74,7 @@ class CompileDiagnostic(BaseModel):
 class CompileMetadata(BaseModel):
     node_count: int | None = None
     optimization_level: int | None = None
+    source_range_semantics: dict | None = None
 
 
 class CompileResponse(BaseModel):
@@ -212,7 +213,7 @@ class ProblemBase(CamelModel):
         "platinum5", "platinum4", "platinum3", "platinum2", "platinum1",
         "diamond5", "diamond4", "diamond3", "diamond2", "diamond1",
     ]
-    tags: List[Literal["io", "control", "func"]]
+    tags: List[str] = Field(default_factory=list, max_length=12)
     description: str
     points: int = Field(default=100, ge=0, le=10000)
     test_cases: List[TestCase] = Field(
@@ -223,6 +224,20 @@ class ProblemBase(CamelModel):
         default_factory=list,
         validation_alias=AliasChoices("hidden_test_cases", "hiddenTestCases"),
     )
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: List[str]) -> List[str]:
+        normalized: list[str] = []
+        for tag in value:
+            text = tag.strip().lower()
+            if not text:
+                continue
+            if len(text) > 32 or not re.match(r"^[a-z0-9_-]+$", text):
+                raise ValueError("태그는 영문, 숫자, -, _ 조합으로 32자 이하만 사용할 수 있습니다.")
+            if text not in normalized:
+                normalized.append(text)
+        return normalized
 
 
 class ProblemCreate(ProblemBase):
@@ -240,6 +255,12 @@ class ProblemRead(CamelModel):
     test_cases: List[TestCase]
     hidden_test_cases: List[TestCase] = Field(default_factory=list)
     created_at: datetime
+    solved: bool = False
+    attempted: bool = False
+    last_submission_status: Optional[str] = None
+    last_submission_verdict: Optional[CompileQueueVerdict] = None
+    last_submitted_at: Optional[datetime] = None
+    best_awarded_points: int = 0
 
 class ProblemDetail(ProblemBase):
     id: str
@@ -343,6 +364,7 @@ class SubmissionResponse(CamelModel):
     grading_passed: bool
     total_score: int
     details: List[TestCaseResult]
+    message: str
 
 class CommentBase(CamelModel):
     content: str = Field(min_length=1, max_length=1000)
@@ -362,6 +384,10 @@ class CommunityPostCreate(CamelModel):
     content: str = Field(min_length=1, max_length=1000)
 
 
+class CommunityPostUpdate(CamelModel):
+    content: str = Field(min_length=1, max_length=1000)
+
+
 class CommunityPostRead(CamelModel):
     id: str
     problem_id: str
@@ -370,7 +396,9 @@ class CommunityPostRead(CamelModel):
     avatar_url: Optional[str] = None
     content: str
     created_at: datetime
+    updated_at: Optional[datetime] = None
     can_delete: bool = False
+    can_edit: bool = False
 
 
 class CommunityPostCountsRequest(CamelModel):
@@ -393,11 +421,27 @@ class CodeProjectRead(CodeProjectUpsert):
 class SubmissionRead(CamelModel):
     id: str
     problem_id: str
+    problem_title: Optional[str] = None
+    user_id: Optional[str] = None
+    username: Optional[str] = None
     language: CompilerLanguage
     status: str
+    verdict: CompileQueueVerdict
     sample_total_cases: int
     sample_passed_cases: int
     grading_completed: bool
     grading_passed: bool
     awarded_points: int
     created_at: datetime
+
+
+class SubmissionListResponse(CamelModel):
+    submissions: List[SubmissionRead]
+    total: int
+    filtered_total: int
+
+
+class AdminUsersResponse(CamelModel):
+    users: List[AdminUserRead]
+    total: int
+    filtered_total: int

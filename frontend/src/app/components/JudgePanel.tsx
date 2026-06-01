@@ -37,6 +37,7 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
   const gradingStatus = result?.gradingCompleted
     ? result.gradingPassed ? '통과' : '실패'
     : '미진행';
+  const isAccepted = result?.verdict === 'accepted';
 
   const handleSubmit = async () => {
     setIsJudging(true);
@@ -106,21 +107,21 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
           <div className="flex flex-col gap-3">
             {/* 요약 */}
             <div className={`flex items-center gap-3 p-3 rounded-lg border ${
-              result.verdict === 'accepted'
+              isAccepted
                 ? "bg-green-500/10 border-green-500/30"
                 : "bg-red-500/10 border-red-500/30"
             }`}>
-              {result.verdict === 'accepted' ? (
+              {isAccepted ? (
                 <CheckCircle size={20} className="text-green-400" />
               ) : (
                 <XCircle size={20} className="text-red-400" />
               )}
               <div>
-                <p className={`text-sm font-bold ${result.verdict === 'accepted' ? "text-green-400" : "text-red-400"}`}>
+                <p className={`text-sm font-bold ${isAccepted ? "text-green-400" : "text-red-400"}`}>
                   {verdictLabels[result.verdict]}
                 </p>
                 <p className="text-xs text-gray-400">
-                  예제 채점 {result.samplePassedCases}/{result.sampleTotalCases} 통과 · 채점 {gradingStatus}
+                  {result.message || `예제 채점 ${result.samplePassedCases}/${result.sampleTotalCases} 통과 · 채점 ${gradingStatus}`}
                 </p>
               </div>
             </div>

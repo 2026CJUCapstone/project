@@ -1,20 +1,16 @@
 import asyncio
 import contextlib
 import difflib
-import hashlib
 import json
-import random
 import re
 import shutil
-import string
 import tempfile
 import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 import docker
 from docker.errors import APIError, DockerException
@@ -25,15 +21,10 @@ from app.services.compiler_graphs import (
     build_bpp_asm,
     build_bpp_asm_from_json,
     build_bpp_ast_graph,
+    build_bpp_pipeline_from_json,
     build_bpp_ir,
     build_bpp_ssa_graph,
 )
-
-# ----------------- 임시 메모리 데이터베이스 -----------------
-job_store: Dict[str, dict] = {}
-hash_store: Dict[str, str] = {}
-snippet_store: Dict[str, dict] = {}
-access_log_store: List[dict] = []
 
 ALLOWED_PASSES = {"Lexer", "Parser", "ASTBuilder", "Mem2Reg", "LoopUnroll", "DCE", "ConstProp"}
 SUPPORTED_LANGUAGES = {"bpp", "python", "c", "cpp", "java", "javascript"}
@@ -117,35 +108,6 @@ class DockerCompilerRunner:
     ) -> dict:
         started_at = time.monotonic()
         requested_targets = self._resolve_requested_targets(target) if language == "bpp" else set()
-        dump_tasks: dict[str, asyncio.Task[dict]] = {}
-        if language == "bpp":
-            if "ssa" in requested_targets:
-                dump_tasks["ssa"] = asyncio.create_task(
-                    self._execute(
-                        mode="dump-ssa",
-                        source_code=source_code,
-                        language=language,
-                        optimize=optimize,
-                    )
-                )
-            if "ir" in requested_targets:
-                dump_tasks["ir"] = asyncio.create_task(
-                    self._execute(
-                        mode="dump-ir",
-                        source_code=source_code,
-                        language=language,
-                        optimize=optimize,
-                    )
-                )
-            if "asm" in requested_targets:
-                dump_tasks["asm"] = asyncio.create_task(
-                    self._execute(
-                        mode="asm",
-                        source_code=source_code,
-                        language=language,
-                        optimize=optimize,
-                    )
-                )
 
         result = await self._execute(
             mode="compile",
@@ -153,10 +115,6 @@ class DockerCompilerRunner:
             language=language,
             optimize=optimize,
         )
-        dump_results_by_target: dict[str, dict] = {}
-        if dump_tasks:
-            dump_results = await asyncio.gather(*dump_tasks.values())
-            dump_results_by_target = dict(zip(dump_tasks.keys(), dump_results))
 
         diagnostics = self._parse_diagnostics(result["stderr"], language, result["exit_code"] == 0)
         errors = [item.to_dict() for item in diagnostics if item.severity == "error"]
@@ -175,13 +133,77 @@ class DockerCompilerRunner:
         if result["exit_code"] != 0 or language != "bpp":
             return response
 
-        if "ast" in requested_targets:
+        source_filename = self._resolve_filename(language, source_code)
+        resolved_targets: set[str] = set()
+
+        if requested_targets:
+            json_result = await self._execute(
+                mode="json",
+                source_code=source_code,
+                language=language,
+                optimize=optimize,
+            )
+            if json_result["exit_code"] == 0:
+                pipeline = build_bpp_pipeline_from_json(
+                    json_result["stdout"],
+                    source_code,
+                    source_filename,
+                    requested_targets,
+                )
+                if pipeline:
+                    for target_name in ("ast", "ssa", "ir", "asm"):
+                        if (
+                            target_name in requested_targets
+                            and target_name in pipeline
+                            and self._pipeline_target_has_data(target_name, pipeline[target_name])
+                        ):
+                            response[target_name] = pipeline[target_name]
+                            resolved_targets.add(target_name)
+                            if target_name == "ast":
+                                response["metadata"]["node_count"] = len(pipeline[target_name].get("nodes", []))
+                    if isinstance(pipeline.get("sourceRangeSemantics"), dict):
+                        response["metadata"]["source_range_semantics"] = pipeline["sourceRangeSemantics"]
+
+        missing_targets = requested_targets - resolved_targets
+
+        if "ast" in missing_targets:
             ast_graph = build_bpp_ast_graph(source_code)
             response["ast"] = ast_graph
             response["metadata"]["node_count"] = len(ast_graph["nodes"])
+            resolved_targets.add("ast")
 
-        if dump_results_by_target:
-            for target_name, dump_result in dump_results_by_target.items():
+        dump_tasks: dict[str, asyncio.Task[dict]] = {}
+        if "ssa" in missing_targets:
+            dump_tasks["ssa"] = asyncio.create_task(
+                self._execute(
+                    mode="dump-ssa",
+                    source_code=source_code,
+                    language=language,
+                    optimize=optimize,
+                )
+            )
+        if "ir" in missing_targets:
+            dump_tasks["ir"] = asyncio.create_task(
+                self._execute(
+                    mode="dump-ir",
+                    source_code=source_code,
+                    language=language,
+                    optimize=optimize,
+                )
+            )
+        if "asm" in missing_targets:
+            dump_tasks["asm"] = asyncio.create_task(
+                self._execute(
+                    mode="asm",
+                    source_code=source_code,
+                    language=language,
+                    optimize=optimize,
+                )
+            )
+
+        if dump_tasks:
+            dump_results = await asyncio.gather(*dump_tasks.values())
+            for target_name, dump_result in dict(zip(dump_tasks.keys(), dump_results)).items():
                 if dump_result["exit_code"] != 0:
                     continue
                 if target_name == "ssa":
@@ -191,7 +213,7 @@ class DockerCompilerRunner:
                 elif target_name == "asm":
                     response["asm"] = build_bpp_asm_from_json(
                         dump_result["stdout"],
-                        self._resolve_filename(language, source_code),
+                        source_filename,
                     ) or build_bpp_asm(
                         dump_result["stdout"],
                         source_code,
@@ -212,7 +234,7 @@ class DockerCompilerRunner:
     async def _execute(
         self,
         *,
-        mode: Literal["compile", "run", "dump-ir", "dump-ssa", "asm"],
+        mode: Literal["compile", "run", "dump-ir", "dump-ssa", "asm", "json"],
         source_code: str,
         language: str,
         stdin: str = "",
@@ -304,6 +326,19 @@ class DockerCompilerRunner:
         if target == "all":
             return {"ast", "ssa", "ir", "asm"}
         return {target}
+
+    def _pipeline_target_has_data(self, target: str, value: object) -> bool:
+        if not isinstance(value, dict):
+            return False
+        if target == "ast":
+            return bool(value.get("nodes"))
+        if target == "ssa":
+            return bool(value.get("blocks"))
+        if target == "ir":
+            return bool(value.get("instructions"))
+        if target == "asm":
+            return bool(value.get("lines"))
+        return False
 
     def _get_client(self) -> docker.DockerClient:
         try:
@@ -498,87 +533,7 @@ class DockerCompilerRunner:
         return Diagnostic(line=line_no, column=1, message=lines[-1], severity=severity)
 
 
-# ----------------- 가짜 구현체 (개발/테스트용) -----------------
-class MockBppCompiler:
-    async def compile(
-        self,
-        source_code: str,
-        language: str = "bpp",
-        optimize: bool = False,
-        target: str = "all",
-    ) -> dict:
-        await asyncio.sleep(0)
-        output = "Hello World" if "Hello World" in source_code else "실행 완료"
-        return {
-            "is_success": True,
-            "ast": {"type": "Program", "body": "Mock AST Data"},
-            "cfg": {"nodes": ["A", "B"], "edges": ["A->B"]},
-            "stdout": output,
-            "execution_time": 1.0,
-        }
-
-
 compiler_instance = DockerCompilerRunner()
-
-
-async def mock_execute_pipeline(source_code: str, passes: List[str]) -> dict:
-    await asyncio.sleep(2)
-    pass_results = [{"pass_name": p, "log": f"{p} 적용 완료"} for p in passes]
-    return {
-        "is_success": True,
-        "pipeline_used": passes,
-        "pass_results": pass_results,
-        "final_asm": "MOV EAX, 1",
-    }
-
-
-# ----------------- 백그라운드 워커 함수들 (Async) -----------------
-async def process_compile_job(job_id: str, source_code: str, options: List[str], language: str = "bpp"):
-    if job_store[job_id]["status"] == "CANCELED":
-        return
-    job_store[job_id]["status"] = "RUNNING"
-    try:
-        result = await compiler_instance.compile(source_code, language)
-        if job_store[job_id].get("status") == "CANCELED":
-            return
-        job_store[job_id]["status"] = "COMPLETED"
-        job_store[job_id]["result"] = result
-    except Exception as e:
-        if job_store[job_id].get("status") != "CANCELED":
-            job_store[job_id]["status"] = "FAILED"
-            job_store[job_id]["error"] = str(e)
-
-
-async def process_lab_job(job_id: str, source_code: str, passes: List[str]):
-    if job_store[job_id]["status"] == "CANCELED":
-        return
-    job_store[job_id]["status"] = "RUNNING"
-    try:
-        result = await mock_execute_pipeline(source_code, passes)
-        if job_store[job_id].get("status") == "CANCELED":
-            return
-        job_store[job_id]["status"] = "COMPLETED"
-        job_store[job_id]["result"] = result
-    except Exception as e:
-        if job_store[job_id].get("status") != "CANCELED":
-            job_store[job_id]["status"] = "FAILED"
-            job_store[job_id]["error"] = str(e)
-
-
-# ----------------- 유틸리티 함수 -----------------
-def generate_random_slug(length: int = 6) -> str:
-    chars = string.ascii_letters + string.digits
-    return ''.join(random.choices(chars, k=length))
-
-
-def get_unique_slug(desired_slug: Optional[str] = None) -> str:
-    base_slug = desired_slug if desired_slug else generate_random_slug()
-    if base_slug not in snippet_store:
-        return base_slug
-    suffix_counter = 1
-    while f"{base_slug}-{suffix_counter}" in snippet_store:
-        suffix_counter += 1
-    return f"{base_slug}-{suffix_counter}"
 
 
 def generate_text_diff(text1: str, text2: str) -> str:

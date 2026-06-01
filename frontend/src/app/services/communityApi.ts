@@ -8,7 +8,9 @@ export interface CommunityPost {
   avatarUrl?: string | null;
   content: string;
   createdAt: string; // ISO-8601
+  updatedAt?: string | null;
   canDelete?: boolean;
+  canEdit?: boolean;
 }
 
 export interface CommunityPostCreateRequest {
@@ -51,10 +53,12 @@ function normalizePost(raw: unknown): CommunityPost {
     userId: String(get('userId', 'user_id') ?? '') || undefined,
     author: String(get('author', 'author') ?? '익명'),
     avatarUrl: (get('avatarUrl', 'avatar_url') as string | null | undefined) ?? null,
-    content: String(get('content', 'content') ?? ''),
-    createdAt: String(get('createdAt', 'created_at') ?? new Date().toISOString()),
-    canDelete: Boolean(get('canDelete', 'can_delete') ?? false),
-  };
+	    content: String(get('content', 'content') ?? ''),
+	    createdAt: String(get('createdAt', 'created_at') ?? new Date().toISOString()),
+	    updatedAt: (get('updatedAt', 'updated_at') as string | null | undefined) ?? null,
+	    canDelete: Boolean(get('canDelete', 'can_delete') ?? false),
+	    canEdit: Boolean(get('canEdit', 'can_edit') ?? false),
+	  };
 }
 
 // ── 공개 API ────────────────────────────────────────────────────────
@@ -62,8 +66,16 @@ export function isCommunityRemoteConfigured(): boolean {
   return true;
 }
 
-export async function fetchCommunityPosts(problemId: string): Promise<CommunityPost[]> {
-  const url = `${COMMUNITY_API_BASE_URL}${POSTS_PATH}?problemId=${encodeURIComponent(problemId)}`;
+export async function fetchCommunityPosts(
+  problemId: string,
+  options: { limit?: number; offset?: number } = {},
+): Promise<CommunityPost[]> {
+  const params = new URLSearchParams({
+    problemId,
+    limit: String(options.limit ?? 30),
+    offset: String(options.offset ?? 0),
+  });
+  const url = `${COMMUNITY_API_BASE_URL}${POSTS_PATH}?${params.toString()}`;
   const res = await fetch(url, { headers: { Accept: 'application/json', ...getAuthHeader() } });
   if (!res.ok) {
     const errorData = (await res.json().catch(() => ({}))) as { detail?: string };
@@ -114,6 +126,26 @@ export async function deleteCommunityPost(postId: string): Promise<void> {
     const errorData = (await res.json().catch(() => ({}))) as { detail?: string };
     throw new Error(errorData.detail || '삭제에 실패했습니다.');
   }
+}
+
+export async function updateCommunityPost(postId: string, content: string): Promise<CommunityPost> {
+  const res = await fetch(
+    `${COMMUNITY_API_BASE_URL}${POSTS_PATH}/${encodeURIComponent(postId)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({ content }),
+    },
+  );
+  if (!res.ok) {
+    const errorData = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(errorData.detail || '게시글 수정에 실패했습니다.');
+  }
+  return normalizePost(await res.json());
 }
 
 // 문제별 게시글 수 집계 (목록 화면용). 원격이 있으면 단일 호출 시도 후 실패시 로컬 집계.

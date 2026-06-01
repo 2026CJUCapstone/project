@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Home, ListChecks, Users, LogOut, Plus, Pencil, Trash2, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, ListChecks, Users, LogOut, Plus, Pencil, Search, Trash2, ShieldCheck } from "lucide-react";
 import { ProblemFormModal } from "../components/ProblemFormModal";
 import { getProblems, createProblem, deleteProblem, updateProblem } from "../services/problemApi";
 import type { Problem, ProblemCreateRequest } from "../services/problemApi";
 import { getCurrentUser, login, type AuthUser } from "../services/authApi";
 import { getAdminUsers, updateAdminUser, type AdminUser } from "../services/adminApi";
 import { DIFFICULTY_LABELS } from "../constants/difficulty";
+import { getProblemTagLabel } from "../constants/problemTags";
 
 const difficultyLabel: Record<string, string> = {
   ...DIFFICULTY_LABELS,
 };
+const USER_PAGE_SIZE = 50;
 
 export function Admin() {
   const [id, setId] = useState("");
@@ -25,6 +27,11 @@ export function Admin() {
   const [editingProblem, setEditingProblem] = useState<Problem | null>(null);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [usersFilteredTotal, setUsersFilteredTotal] = useState(0);
+  const [userSearchDraft, setUserSearchDraft] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [userPage, setUserPage] = useState(1);
 
   const loadProblems = useCallback(async () => {
     try {
@@ -38,13 +45,19 @@ export function Admin() {
 
   const loadUsers = useCallback(async () => {
     try {
-      const data = await getAdminUsers();
-      setUsers(data);
+      const data = await getAdminUsers({
+        limit: USER_PAGE_SIZE,
+        offset: (userPage - 1) * USER_PAGE_SIZE,
+        search: userSearch,
+      });
+      setUsers(data.users);
+      setUsersTotal(data.total);
+      setUsersFilteredTotal(data.filteredTotal);
       setPageError("");
     } catch (loadError) {
       setPageError(loadError instanceof Error ? loadError.message : "사용자 목록을 불러오지 못했습니다.");
     }
-  }, []);
+  }, [userPage, userSearch]);
 
   useEffect(() => {
     let mounted = true;
@@ -144,6 +157,12 @@ export function Admin() {
       setPageError(roleError instanceof Error ? roleError.message : "권한 변경에 실패했습니다.");
     }
   };
+  const totalUserPages = Math.max(1, Math.ceil(usersFilteredTotal / USER_PAGE_SIZE));
+
+  const applyUserSearch = () => {
+    setUserSearch(userSearchDraft.trim());
+    setUserPage(1);
+  };
 
   if (checkingSession) {
     return (
@@ -240,7 +259,7 @@ export function Admin() {
                 <div className="bg-[#1e1e1e] border border-[#333] rounded-lg p-6 cursor-pointer hover:border-blue-500 transition-colors" onClick={() => setTab("users")}>
                   <Users size={26} className="mb-2 text-emerald-400" />
                   <h3 className="text-white font-bold mb-1">사용자 관리</h3>
-                  <p className="text-gray-500 text-sm">사용자 {users.length}명</p>
+	                  <p className="text-gray-500 text-sm">사용자 {usersTotal.toLocaleString()}명</p>
                 </div>
               </div>
             </div>
@@ -285,11 +304,11 @@ export function Admin() {
                         <td className="py-3 px-3 text-gray-300">{p.points ?? 100}</td>
                         <td className="py-3 px-3">
                           <div className="flex gap-1 flex-wrap">
-                            {(p.tags ?? []).map(tag => (
-                              <span key={tag} className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-300">
-                                {tag === 'io' ? '입출력' : tag === 'control' ? '제어문' : '함수'}
-                              </span>
-                            ))}
+	                            {(p.tags ?? []).map(tag => (
+	                              <span key={tag} className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-300">
+	                                {getProblemTagLabel(tag)}
+	                              </span>
+	                            ))}
                           </div>
                         </td>
                         <td className="py-3 px-3">
@@ -341,8 +360,7 @@ export function Admin() {
                           data={(() => {
                             const counts: Record<string, number> = {};
                             problems.forEach(p => (p.tags ?? []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
-                            const labels: Record<string, string> = { io: '입출력', control: '제어문', func: '함수' };
-                            return Object.entries(counts).map(([k, v]) => ({ name: labels[k] || k, value: v }));
+	                            return Object.entries(counts).map(([k, v]) => ({ name: getProblemTagLabel(k), value: v }));
                           })()}
                           cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                         >
@@ -386,8 +404,45 @@ export function Admin() {
 
           {tab === "users" && (
             <div>
-              <h2 className="text-lg font-semibold text-white mb-4">사용자 목록</h2>
-              <table className="w-full border-collapse">
+	              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+	                <div>
+	                  <h2 className="text-lg font-semibold text-white">사용자 목록</h2>
+	                  <p className="mt-1 text-xs text-gray-500">표시 {usersFilteredTotal.toLocaleString()}명 / 전체 {usersTotal.toLocaleString()}명</p>
+	                </div>
+	                <div className="flex flex-wrap items-center gap-2">
+	                  <div className="relative">
+	                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+	                    <input
+	                      value={userSearchDraft}
+	                      onChange={(event) => setUserSearchDraft(event.target.value)}
+	                      onKeyDown={(event) => {
+	                        if (event.key === 'Enter') applyUserSearch();
+	                      }}
+	                      placeholder="아이디/닉네임/이메일"
+	                      className="w-56 rounded border border-[#333] bg-[#141414] py-2 pl-9 pr-3 text-sm text-gray-100 outline-none focus:border-blue-500"
+	                    />
+	                  </div>
+	                  <button
+	                    type="button"
+	                    onClick={applyUserSearch}
+	                    className="rounded bg-blue-500 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-600"
+	                  >
+	                    검색
+	                  </button>
+	                  <button
+	                    type="button"
+	                    onClick={() => {
+	                      setUserSearchDraft("");
+	                      setUserSearch("");
+	                      setUserPage(1);
+	                    }}
+	                    className="rounded border border-[#333] px-3 py-2 text-sm text-gray-300 hover:bg-[#1e1e1e]"
+	                  >
+	                    초기화
+	                  </button>
+	                </div>
+	              </div>
+	              <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b border-[#333] text-left text-sm text-gray-400">
                     <th className="py-2 px-3">번호</th>
@@ -408,7 +463,7 @@ export function Admin() {
                   ) : (
                     users.map((user, idx) => (
                       <tr key={user.id} className="text-sm border-b border-[#222] hover:bg-[#1a1a1a]">
-                        <td className="py-3 px-3 text-gray-400">{idx + 1}</td>
+	                        <td className="py-3 px-3 text-gray-400">{(userPage - 1) * USER_PAGE_SIZE + idx + 1}</td>
                         <td className="py-3 px-3 text-gray-200">{user.username}</td>
                         <td className="py-3 px-3 text-gray-400">{user.nickname || '-'}</td>
                         <td className="py-3 px-3 text-gray-300">{user.totalScore}</td>
@@ -435,8 +490,29 @@ export function Admin() {
                     ))
                   )}
                 </tbody>
-              </table>
-            </div>
+	              </table>
+	              <div className="mt-4 flex items-center justify-end gap-2 text-sm text-gray-400">
+	                <button
+	                  type="button"
+	                  onClick={() => setUserPage((page) => Math.max(1, page - 1))}
+	                  disabled={userPage <= 1}
+	                  className="rounded border border-[#333] p-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+	                  title="이전 페이지"
+	                >
+	                  <ChevronLeft size={15} />
+	                </button>
+	                <span className="font-mono">{userPage} / {totalUserPages}</span>
+	                <button
+	                  type="button"
+	                  onClick={() => setUserPage((page) => Math.min(totalUserPages, page + 1))}
+	                  disabled={userPage >= totalUserPages}
+	                  className="rounded border border-[#333] p-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+	                  title="다음 페이지"
+	                >
+	                  <ChevronRight size={15} />
+	                </button>
+	              </div>
+	            </div>
           )}
         </div>
         </main>

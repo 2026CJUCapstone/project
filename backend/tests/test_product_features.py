@@ -271,3 +271,150 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
         finally:
             db.close()
         _delete_users(owner.username, solver.username)
+
+
+@pytest.mark.asyncio
+async def test_problem_detail_does_not_require_submission_payload():
+    suffix = uuid.uuid4().hex[:10]
+    owner = _create_user(f"detail_owner_{suffix}", role="admin")
+    problem_id: str | None = None
+
+    db = SessionLocal()
+    try:
+        problem = Problem(
+            creator_id=owner.id,
+            title=f"detail {suffix}",
+            difficulty="iron5",
+            tags=["io", "math"],
+            description="detail",
+            points=100,
+            test_cases={"sample": [{"input": "", "expected_output": "ok"}], "hidden": []},
+        )
+        db.add(problem)
+        db.commit()
+        db.refresh(problem)
+        problem_id = problem.id
+    finally:
+        db.close()
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get(f"/api/v1/problems/{problem_id}")
+
+        assert response.status_code == 200
+        assert response.json()["id"] == problem_id
+    finally:
+        db = SessionLocal()
+        try:
+            if problem_id:
+                db.query(Problem).filter(Problem.id == problem_id).delete()
+            db.commit()
+        finally:
+            db.close()
+        _delete_users(owner.username)
+
+
+@pytest.mark.asyncio
+async def test_submission_rejects_oversized_code_before_running():
+    suffix = uuid.uuid4().hex[:10]
+    owner = _create_user(f"big_submit_owner_{suffix}", role="admin")
+    problem_id: str | None = None
+
+    db = SessionLocal()
+    try:
+        problem = Problem(
+            creator_id=owner.id,
+            title=f"big submit {suffix}",
+            difficulty="iron5",
+            tags=["io"],
+            description="big",
+            points=100,
+            test_cases={"sample": [{"input": "", "expected_output": "ok"}], "hidden": []},
+        )
+        db.add(problem)
+        db.commit()
+        db.refresh(problem)
+        problem_id = problem.id
+    finally:
+        db.close()
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                f"/api/v1/problems/{problem_id}/submit",
+                json={"code": "x" * (settings.SUBMISSION_CODE_MAX_BYTES + 1), "language": "bpp"},
+            )
+
+        assert response.status_code == 413
+    finally:
+        db = SessionLocal()
+        try:
+            if problem_id:
+                db.query(Problem).filter(Problem.id == problem_id).delete()
+            db.commit()
+        finally:
+            db.close()
+        _delete_users(owner.username)
+
+
+@pytest.mark.asyncio
+async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.MonkeyPatch):
+    suffix = uuid.uuid4().hex[:10]
+    owner = _create_user(f"history_owner_{suffix}", role="admin")
+    solver = _create_user(f"history_solver_{suffix}")
+    problem_id: str | None = None
+
+    async def fake_run(source_code: str, language: str, stdin: str = "", optimize: bool = False):
+        return {"stdout": "ok\n", "stderr": "", "exit_code": 0, "execution_time": 1.0}
+
+    monkeypatch.setattr(compiler_service.compiler_instance, "run", fake_run)
+
+    db = SessionLocal()
+    try:
+        problem = Problem(
+            creator_id=owner.id,
+            title=f"history {suffix}",
+            difficulty="iron5",
+            tags=["io"],
+            description="history",
+            points=100,
+            test_cases={"sample": [{"input": "", "expected_output": "ok"}], "hidden": []},
+        )
+        db.add(problem)
+        db.commit()
+        db.refresh(problem)
+        problem_id = problem.id
+    finally:
+        db.close()
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            submitted = await client.post(
+                f"/api/v1/problems/{problem_id}/submit",
+                headers=_auth_headers(solver.username),
+                json={"code": "func main() -> u64 { return 0; }", "language": "bpp"},
+            )
+            history = await client.get(
+                f"/api/v1/problems/submissions?problemId={problem_id}&verdict=accepted"
+            )
+
+        assert submitted.status_code == 200
+        assert history.status_code == 200
+        body = history.json()
+        assert body["filteredTotal"] >= 1
+        assert body["submissions"][0]["problemId"] == problem_id
+        assert body["submissions"][0]["problemTitle"] == f"history {suffix}"
+        assert body["submissions"][0]["username"] == solver.username
+        assert body["submissions"][0]["verdict"] == "accepted"
+        assert "code" not in body["submissions"][0]
+    finally:
+        db = SessionLocal()
+        try:
+            if problem_id:
+                db.query(Submission).filter(Submission.problem_id == problem_id).delete()
+                db.query(UserProblemScore).filter(UserProblemScore.challenge_id == problem_id).delete()
+                db.query(Problem).filter(Problem.id == problem_id).delete()
+            db.commit()
+        finally:
+            db.close()
+        _delete_users(owner.username, solver.username)

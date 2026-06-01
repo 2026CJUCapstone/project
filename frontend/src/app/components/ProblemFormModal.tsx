@@ -2,12 +2,9 @@ import { useState } from "react";
 import { DIFFICULTY_LEVELS } from "../services/problemApi";
 import type { ProblemCreateRequest, TestCase, ProblemTag } from "../services/problemApi";
 import { DIFFICULTY_LABELS } from "../constants/difficulty";
+import { PROBLEM_TAG_OPTIONS } from "../constants/problemTags";
 
-const TAG_OPTIONS: { value: ProblemTag; label: string }[] = [
-  { value: 'io', label: '입출력' },
-  { value: 'control', label: '제어문' },
-  { value: 'func', label: '함수' },
-];
+const TAG_OPTIONS: { value: ProblemTag; label: string }[] = Array.from(PROBLEM_TAG_OPTIONS);
 
 interface Props {
   onClose: () => void;
@@ -23,6 +20,8 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
   const [description, setDescription] = useState(initialData?.description ?? "");
   const [testCases, setTestCases] = useState<TestCase[]>(initialData?.testCases?.length ? initialData.testCases : [{ input: "", expectedOutput: "" }]);
   const [hiddenTestCases, setHiddenTestCases] = useState<TestCase[]>(initialData?.hiddenTestCases?.length ? initialData.hiddenTestCases : [{ input: "", expectedOutput: "" }]);
+  const [customTag, setCustomTag] = useState("");
+  const [validationError, setValidationError] = useState("");
 
   const addTestCase = () => setTestCases([...testCases, { input: "", expectedOutput: "" }]);
   const addHiddenTestCase = () => setHiddenTestCases([...hiddenTestCases, { input: "", expectedOutput: "" }]);
@@ -47,8 +46,44 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim()) return;
-    onSubmit({ title, difficulty, tags, points, description, testCases, hiddenTestCases });
+    const normalizedSamples = testCases.map((tc) => ({
+      input: tc.input,
+      expectedOutput: tc.expectedOutput,
+    }));
+    const normalizedHidden = hiddenTestCases
+      .filter((tc) => tc.input.length > 0 || tc.expectedOutput.length > 0)
+      .map((tc) => ({ input: tc.input, expectedOutput: tc.expectedOutput }));
+
+    if (!title.trim() || !description.trim()) {
+      setValidationError("제목과 문제 설명을 입력하세요.");
+      return;
+    }
+    if (normalizedSamples.length === 0) {
+      setValidationError("예제 채점을 최소 1개 이상 등록하세요.");
+      return;
+    }
+    setValidationError("");
+    onSubmit({
+      title: title.trim(),
+      difficulty,
+      tags,
+      points,
+      description: description.trim(),
+      testCases: normalizedSamples,
+      hiddenTestCases: normalizedHidden,
+    });
+  };
+
+  const addCustomTag = () => {
+    const nextTag = customTag.trim().toLowerCase();
+    if (!nextTag || tags.includes(nextTag)) return;
+    if (!/^[a-z0-9_-]{1,32}$/.test(nextTag)) {
+      setValidationError("커스텀 태그는 영문, 숫자, -, _ 조합으로 32자 이하만 사용할 수 있습니다.");
+      return;
+    }
+    setTags((prev) => [...prev, nextTag]);
+    setCustomTag("");
+    setValidationError("");
   };
 
   return (
@@ -59,7 +94,13 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
       >
         <h2 className="text-lg font-bold text-gray-800">{initialData ? '문제 수정' : '문제 추가'}</h2>
 
-        <div className="flex flex-col gap-1">
+        {validationError && (
+          <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {validationError}
+          </div>
+        )}
+
+	        <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">제목</label>
           <input
             type="text"
@@ -88,7 +129,7 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
 
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">분류 (태그)</label>
-          <div className="flex gap-2 flex-wrap">
+	          <div className="flex gap-2 flex-wrap">
             {TAG_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -109,8 +150,29 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
                 {opt.label}
               </button>
             ))}
-          </div>
-        </div>
+	          </div>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={customTag}
+                onChange={(event) => setCustomTag(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    addCustomTag();
+                  }
+                }}
+                className="min-w-0 flex-1 border border-gray-300 rounded px-3 py-2 text-sm text-black outline-none focus:border-blue-500"
+                placeholder="custom-tag"
+              />
+              <button
+                type="button"
+                onClick={addCustomTag}
+                className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                태그 추가
+              </button>
+            </div>
+	        </div>
 
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-gray-700">점수</label>
@@ -139,23 +201,23 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700">예제 채점</label>
           {testCases.map((tc, idx) => (
-            <div key={idx} className="flex gap-2 items-start">
-              <div className="flex-1 flex flex-col gap-1">
-                <input
-                  type="text"
-                  placeholder={`입력 ${idx + 1}`}
-                  value={tc.input}
-                  onChange={(e) => updateTestCase(idx, "input", e.target.value)}
-                  className="border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder={`기대 출력 ${idx + 1}`}
-                  value={tc.expectedOutput}
-                  onChange={(e) => updateTestCase(idx, "expectedOutput", e.target.value)}
-                  className="border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-blue-500"
-                />
-              </div>
+	            <div key={idx} className="flex gap-2 items-start">
+	              <div className="flex-1 grid grid-cols-1 gap-2 md:grid-cols-2">
+	                <textarea
+                    rows={3}
+	                  placeholder={`입력 ${idx + 1}`}
+	                  value={tc.input}
+	                  onChange={(e) => updateTestCase(idx, "input", e.target.value)}
+	                  className="resize-y border border-gray-300 rounded px-2 py-1.5 font-mono text-sm text-black outline-none focus:border-blue-500"
+	                />
+	                <textarea
+                    rows={3}
+	                  placeholder={`기대 출력 ${idx + 1}`}
+	                  value={tc.expectedOutput}
+	                  onChange={(e) => updateTestCase(idx, "expectedOutput", e.target.value)}
+	                  className="resize-y border border-gray-300 rounded px-2 py-1.5 font-mono text-sm text-black outline-none focus:border-blue-500"
+	                />
+	              </div>
               {testCases.length > 1 && (
                 <button
                   type="button"
@@ -179,23 +241,23 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700">채점</label>
           {hiddenTestCases.map((tc, idx) => (
-            <div key={idx} className="flex gap-2 items-start">
-              <div className="flex-1 flex flex-col gap-1">
-                <input
-                  type="text"
-                  placeholder={`채점 입력 ${idx + 1}`}
-                  value={tc.input}
-                  onChange={(e) => updateHiddenTestCase(idx, "input", e.target.value)}
-                  className="border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-blue-500"
-                />
-                <input
-                  type="text"
-                  placeholder={`채점 기대 출력 ${idx + 1}`}
-                  value={tc.expectedOutput}
-                  onChange={(e) => updateHiddenTestCase(idx, "expectedOutput", e.target.value)}
-                  className="border border-gray-300 rounded px-2 py-1.5 text-sm text-black outline-none focus:border-blue-500"
-                />
-              </div>
+	            <div key={idx} className="flex gap-2 items-start">
+	              <div className="flex-1 grid grid-cols-1 gap-2 md:grid-cols-2">
+	                <textarea
+                    rows={3}
+	                  placeholder={`채점 입력 ${idx + 1}`}
+	                  value={tc.input}
+	                  onChange={(e) => updateHiddenTestCase(idx, "input", e.target.value)}
+	                  className="resize-y border border-gray-300 rounded px-2 py-1.5 font-mono text-sm text-black outline-none focus:border-blue-500"
+	                />
+	                <textarea
+                    rows={3}
+	                  placeholder={`채점 기대 출력 ${idx + 1}`}
+	                  value={tc.expectedOutput}
+	                  onChange={(e) => updateHiddenTestCase(idx, "expectedOutput", e.target.value)}
+	                  className="resize-y border border-gray-300 rounded px-2 py-1.5 font-mono text-sm text-black outline-none focus:border-blue-500"
+	                />
+	              </div>
               {hiddenTestCases.length > 1 && (
                 <button
                   type="button"

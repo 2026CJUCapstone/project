@@ -44,15 +44,25 @@ export interface ASTNode {
     endLine: number;
     endColumn: number;
   };
+  sourceRanges?: SourceRange[];
+  generated?: boolean;
+  generatedReason?: string;
   metadata?: Record<string, any>;
 }
 
 export interface SourceRange {
   file?: string | null;
+  rangeId?: string | null;
+  astNodeId?: string | null;
+  originNodeId?: string | null;
   startLine: number;
   startColumn: number;
   endLine: number;
   endColumn: number;
+  startOffset?: number | null;
+  endOffset?: number | null;
+  generated?: boolean;
+  generatedReason?: string | null;
 }
 
 export interface ASTGraph {
@@ -69,8 +79,14 @@ export interface SSABlock {
   id: string;
   label: string;
   instructions: string[];
+  instructionSourceRanges?: SourceRange[][];
+  instructionIds?: string[];
+  sourceRanges?: SourceRange[];
   predecessors: string[];
   successors: string[];
+  generated?: boolean;
+  generatedReason?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface SSAGraph {
@@ -90,6 +106,10 @@ export interface IRInstruction {
   result?: string;
   comment?: string;
   sourceRanges?: SourceRange[];
+  generated?: boolean;
+  generatedReason?: string;
+  ssaInstructionIds?: string[];
+  segments?: unknown[];
 }
 
 export interface ASMLine {
@@ -100,6 +120,10 @@ export interface ASMLine {
   comment?: string;
   text?: string;
   sourceRanges?: SourceRange[];
+  generated?: boolean;
+  generatedReason?: string;
+  ssaInstructionIds?: string[];
+  segments?: unknown[];
 }
 
 export interface CompileError {
@@ -137,6 +161,7 @@ export interface CompileResponse {
   metadata?: {
     nodeCount?: number;
     optimizationLevel?: number;
+    sourceRangeSemantics?: Record<string, unknown>;
   };
 }
 
@@ -234,22 +259,6 @@ export interface ExecuteResponse {
   cpuTime?: number; // ms
 }
 
-export interface AnalyzeSelectionRequest {
-  code: string;
-  selection: {
-    startLine: number;
-    endLine: number;
-    startColumn?: number;
-    endColumn?: number;
-  };
-}
-
-export interface AnalyzeSelectionResponse {
-  success: boolean;
-  relatedNodes: string[]; // AST 노드 ID들
-  affectedBlocks?: string[]; // SSA 블록 ID들
-}
-
 async function requestJson<T>(path: string, init: RequestInit, options: RequestOptions = {}): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? API_TIMEOUT);
@@ -293,7 +302,7 @@ interface BackendCompileResponse {
   errors?: CompileError[];
   warnings?: CompileError[];
   execution_time: number;
-  metadata?: { node_count?: number; optimization_level?: number };
+  metadata?: { node_count?: number; optimization_level?: number; source_range_semantics?: Record<string, unknown> };
 }
 
 function mapCompileResponse(r: BackendCompileResponse): CompileResponse {
@@ -307,7 +316,11 @@ function mapCompileResponse(r: BackendCompileResponse): CompileResponse {
     warnings: r.warnings,
     executionTime: r.execution_time,
     metadata: r.metadata
-      ? { nodeCount: r.metadata.node_count, optimizationLevel: r.metadata.optimization_level }
+      ? {
+          nodeCount: r.metadata.node_count,
+          optimizationLevel: r.metadata.optimization_level,
+          sourceRangeSemantics: r.metadata.source_range_semantics,
+        }
       : undefined,
   };
 }
@@ -364,13 +377,6 @@ export async function executeCode(request: ExecuteRequest, options: RequestOptio
     exitCode: response.exit_code,
     executionTime: response.execution_time,
   };
-}
-
-/**
- * 선택된 코드 영역 분석
- */
-export async function analyzeSelection(_request: AnalyzeSelectionRequest): Promise<AnalyzeSelectionResponse> {
-  throw new Error('선택 영역 분석 API는 아직 백엔드에 구현되지 않았습니다.');
 }
 
 /**

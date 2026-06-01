@@ -2,6 +2,9 @@
 
 import { API_BASE_URL, getAuthHeaders, parseApiError } from './apiBase';
 import type { CompileQueueVerdict } from './compilerApi';
+import type { ProblemTag } from '../constants/problemTags';
+
+export type { ProblemTag } from '../constants/problemTags';
 
 function authHeaders(): Record<string, string> {
   return getAuthHeaders();
@@ -23,8 +26,6 @@ export const DIFFICULTY_LEVELS = [
 
 export type ProblemDifficulty = (typeof DIFFICULTY_LEVELS)[number];
 
-export type ProblemTag = 'io' | 'control' | 'func';
-
 export interface Problem {
   id: string;
   title: string;
@@ -35,9 +36,25 @@ export interface Problem {
   testCases: TestCase[];
   hiddenTestCases: TestCase[];
   createdAt: string;
+  solved: boolean;
+  attempted: boolean;
+  lastSubmissionStatus?: string | null;
+  lastSubmissionVerdict?: CompileQueueVerdict | null;
+  lastSubmittedAt?: string | null;
+  bestAwardedPoints: number;
 }
 
-export type ProblemCreateRequest = Omit<Problem, 'id' | 'createdAt'>;
+export type ProblemCreateRequest = Omit<
+  Problem,
+  | 'id'
+  | 'createdAt'
+  | 'solved'
+  | 'attempted'
+  | 'lastSubmissionStatus'
+  | 'lastSubmissionVerdict'
+  | 'lastSubmittedAt'
+  | 'bestAwardedPoints'
+>;
 
 export interface SubmissionDetail {
   caseNumber: number;
@@ -61,6 +78,41 @@ export interface ProblemSubmissionResult {
   gradingPassed: boolean;
   totalScore: number;
   details: SubmissionDetail[];
+  message: string;
+}
+
+export interface SubmissionRecord {
+  id: string;
+  problemId: string;
+  problemTitle?: string | null;
+  userId?: string | null;
+  username?: string | null;
+  language: string;
+  status: string;
+  verdict: CompileQueueVerdict;
+  sampleTotalCases: number;
+  samplePassedCases: number;
+  gradingCompleted: boolean;
+  gradingPassed: boolean;
+  awardedPoints: number;
+  createdAt: string;
+}
+
+export interface SubmissionListResponse {
+  submissions: SubmissionRecord[];
+  total: number;
+  filteredTotal: number;
+}
+
+export interface SubmissionFilters {
+  limit?: number;
+  offset?: number;
+  problemId?: string;
+  username?: string;
+  userId?: string;
+  status?: string;
+  verdict?: CompileQueueVerdict | 'all';
+  mine?: boolean;
 }
 
 export interface LeaderboardEntry {
@@ -143,6 +195,24 @@ export async function submitProblem(id: string, code: string, language: string):
     throw new Error(errorData.detail || '문제 제출에 실패했습니다.');
   }
 
+  return res.json();
+}
+
+export async function getSubmissions(filters: SubmissionFilters = {}): Promise<SubmissionListResponse> {
+  const params = new URLSearchParams();
+  params.set('limit', String(filters.limit ?? 50));
+  params.set('offset', String(filters.offset ?? 0));
+  if (filters.problemId?.trim()) params.set('problemId', filters.problemId.trim());
+  if (filters.username?.trim()) params.set('username', filters.username.trim());
+  if (filters.userId?.trim()) params.set('userId', filters.userId.trim());
+  if (filters.status?.trim()) params.set('status', filters.status.trim());
+  if (filters.verdict && filters.verdict !== 'all') params.set('verdict', filters.verdict);
+  if (filters.mine) params.set('mine', 'true');
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/problems/submissions?${params.toString()}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw await parseApiError(res, '제출 이력을 불러오지 못했습니다.');
   return res.json();
 }
 

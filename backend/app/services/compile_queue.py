@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, Literal, TypeAlias, TypeVar
 
+from sqlalchemy import func
+
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.models import database as db_models
 
 QueueKind = Literal["compile", "run", "grading"]
 QueueStatus = Literal["queued", "running", "completed", "failed", "canceled"]
@@ -118,6 +122,7 @@ class CompileQueue:
         async with self._condition:
             self._jobs[job.id] = job
             self._pending.append(job.id)
+            self._persist_job(job)
             self._prune_locked()
             self._condition.notify_all()
 
@@ -131,6 +136,7 @@ class CompileQueue:
                 job.verdict = "running"
                 job.started_at = utc_now()
                 job.wait_ms = round((job.started_at - job.queued_at).total_seconds() * 1000, 2)
+                self._persist_job(job)
                 self._condition.notify_all()
             except asyncio.CancelledError:
                 self._cancel_queued_locked(job)
@@ -184,36 +190,50 @@ class CompileQueue:
 
         async with self._condition:
             pending_positions = {job_id: index for index, job_id in enumerate(self._pending, start=1)}
-            jobs = list(reversed(self._jobs.values()))
-            queued_count = sum(1 for job in self._jobs.values() if job.status == "queued")
-            running_count = sum(1 for job in self._jobs.values() if job.status == "running")
+            active_ids = set(self._jobs.keys())
 
-            filtered = []
-            for job in jobs:
-                if normalized_status and job.status != normalized_status:
-                    continue
-                if normalized_verdict and job.verdict != normalized_verdict:
-                    continue
-                if normalized_kind and job.kind != normalized_kind:
-                    continue
-                if normalized_username and (job.username or "").lower() != normalized_username:
-                    continue
-                if user_id and job.user_id != user_id:
-                    continue
-                if problem_id and job.problem_id != problem_id:
-                    continue
-                filtered.append(job)
+        self._recover_stale_active_records(active_ids)
 
-            page = filtered[normalized_offset : normalized_offset + limit]
+        with SessionLocal() as db:
+            base_query = db.query(db_models.CompileQueueRecord)
+            filtered_query = base_query
+            if normalized_status:
+                filtered_query = filtered_query.filter(db_models.CompileQueueRecord.status == normalized_status)
+            if normalized_verdict:
+                filtered_query = filtered_query.filter(db_models.CompileQueueRecord.verdict == normalized_verdict)
+            if normalized_kind:
+                filtered_query = filtered_query.filter(db_models.CompileQueueRecord.kind == normalized_kind)
+            if normalized_username:
+                filtered_query = filtered_query.filter(func.lower(db_models.CompileQueueRecord.username) == normalized_username)
+            if user_id:
+                filtered_query = filtered_query.filter(db_models.CompileQueueRecord.user_id == user_id)
+            if problem_id:
+                filtered_query = filtered_query.filter(db_models.CompileQueueRecord.problem_id == problem_id)
+
+            total = base_query.count()
+            filtered_total = filtered_query.count()
+            queued_count = base_query.filter(db_models.CompileQueueRecord.status == "queued").count()
+            running_count = base_query.filter(db_models.CompileQueueRecord.status == "running").count()
+            page = (
+                filtered_query.order_by(db_models.CompileQueueRecord.queued_at.desc())
+                .offset(normalized_offset)
+                .limit(limit)
+                .all()
+            )
+            group_records = (
+                filtered_query.order_by(db_models.CompileQueueRecord.queued_at.desc())
+                .limit(self._history_limit)
+                .all()
+            )
 
             return {
-                "jobs": [job.to_dict(pending_positions.get(job.id)) for job in page],
-                "total": len(self._jobs),
-                "filtered_total": len(filtered),
+                "jobs": [self._record_to_dict(record, pending_positions.get(record.id)) for record in page],
+                "total": total,
+                "filtered_total": filtered_total,
                 "queued": queued_count,
                 "running": running_count,
-                "problem_groups": self._build_groups(filtered, "problem"),
-                "user_groups": self._build_groups(filtered, "user"),
+                "problem_groups": self._build_groups(group_records, "problem"),
+                "user_groups": self._build_groups(group_records, "user"),
             }
 
     async def _finish(
@@ -237,6 +257,7 @@ class CompileQueue:
                 job.verdict_detail = verdict_detail[:300]
             if self._active_count > 0:
                 self._active_count -= 1
+            self._persist_job(job)
             self._prune_locked()
             self._condition.notify_all()
 
@@ -247,6 +268,7 @@ class CompileQueue:
         job.verdict = "canceled"
         job.finished_at = utc_now()
         job.wait_ms = round((job.finished_at - job.queued_at).total_seconds() * 1000, 2)
+        self._persist_job(job)
 
     def _prune_locked(self) -> None:
         while len(self._jobs) > self._history_limit:
@@ -254,6 +276,7 @@ class CompileQueue:
             if job.status in {"queued", "running"}:
                 break
             self._jobs.pop(job_id, None)
+        self._prune_records()
 
     def _classify_result(
         self,
@@ -268,7 +291,7 @@ class CompileQueue:
             return classified
         return classified, None
 
-    def _build_groups(self, jobs: list[CompileQueueJob], group_by: Literal["problem", "user"]) -> list[dict]:
+    def _build_groups(self, jobs: list[CompileQueueJob] | list[db_models.CompileQueueRecord], group_by: Literal["problem", "user"]) -> list[dict]:
         groups: dict[str, dict] = {}
         for job in jobs:
             if group_by == "problem":
@@ -320,6 +343,99 @@ class CompileQueue:
                 group["label"],
             ),
         )
+
+    def _persist_job(self, job: CompileQueueJob) -> None:
+        try:
+            with SessionLocal() as db:
+                record = db.get(db_models.CompileQueueRecord, job.id)
+                if record is None:
+                    record = db_models.CompileQueueRecord(id=job.id)
+                    db.add(record)
+                record.kind = job.kind
+                record.status = job.status
+                record.verdict = job.verdict
+                record.language = job.language
+                record.username = job.username
+                record.user_id = job.user_id
+                record.problem_id = job.problem_id
+                record.problem_title = job.problem_title
+                record.target = job.target
+                record.source_size_bytes = job.source_size_bytes
+                record.queued_at = job.queued_at
+                record.started_at = job.started_at
+                record.finished_at = job.finished_at
+                record.wait_ms = job.wait_ms
+                record.run_ms = job.run_ms
+                record.error = job.error
+                record.verdict_detail = job.verdict_detail
+                db.commit()
+        except Exception:
+            return
+
+    def _prune_records(self) -> None:
+        try:
+            with SessionLocal() as db:
+                stale_ids = [
+                    job_id
+                    for (job_id,) in (
+                        db.query(db_models.CompileQueueRecord.id)
+                        .filter(~db_models.CompileQueueRecord.status.in_(["queued", "running"]))
+                        .order_by(db_models.CompileQueueRecord.queued_at.desc())
+                        .offset(self._history_limit)
+                        .all()
+                    )
+                ]
+                if stale_ids:
+                    db.query(db_models.CompileQueueRecord).filter(
+                        db_models.CompileQueueRecord.id.in_(stale_ids)
+                    ).delete(synchronize_session=False)
+                    db.commit()
+        except Exception:
+            return
+
+    def _recover_stale_active_records(self, active_ids: set[str]) -> None:
+        try:
+            with SessionLocal() as db:
+                query = db.query(db_models.CompileQueueRecord).filter(
+                    db_models.CompileQueueRecord.status.in_(["queued", "running"])
+                )
+                if active_ids:
+                    query = query.filter(~db_models.CompileQueueRecord.id.in_(active_ids))
+                stale_records = query.all()
+                if not stale_records:
+                    return
+                now = utc_now()
+                for record in stale_records:
+                    record.status = "failed"
+                    record.verdict = "system_error"
+                    record.finished_at = record.finished_at or now
+                    record.verdict_detail = "서버 재시작으로 중단된 작업입니다."
+                db.commit()
+        except Exception:
+            return
+
+    def _record_to_dict(self, record: db_models.CompileQueueRecord, position: int | None = None) -> dict:
+        return {
+            "id": record.id,
+            "kind": record.kind,
+            "status": record.status,
+            "verdict": record.verdict,
+            "language": record.language,
+            "username": record.username,
+            "user_id": record.user_id,
+            "problem_id": record.problem_id,
+            "problem_title": record.problem_title,
+            "target": record.target,
+            "source_size_bytes": record.source_size_bytes,
+            "queued_at": record.queued_at,
+            "started_at": record.started_at,
+            "finished_at": record.finished_at,
+            "wait_ms": record.wait_ms,
+            "run_ms": record.run_ms,
+            "position": position,
+            "error": record.error,
+            "verdict_detail": record.verdict_detail,
+        }
 
 
 def _stderr_text(result: dict) -> str:

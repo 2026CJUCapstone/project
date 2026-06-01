@@ -5,6 +5,12 @@ import { useLocation } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
 import { getCodeProject, saveCodeProject } from "../services/projectApi";
 
+const utf8Encoder = new TextEncoder();
+
+function utf8ByteOffset(text: string, utf16Offset: number): number {
+  return utf8Encoder.encode(text.slice(0, Math.max(0, utf16Offset))).length;
+}
+
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
   const location = useLocation();
@@ -374,6 +380,20 @@ func main() -> u64 {
                         endLine: selection.endLineNumber,
                         startColumn: selection.startColumn,
                         endColumn: selection.endColumn,
+                        startOffset: utf8ByteOffset(
+                          model.getValue(),
+                          model.getOffsetAt({
+                            lineNumber: selection.startLineNumber,
+                            column: selection.startColumn,
+                          }),
+                        ),
+                        endOffset: utf8ByteOffset(
+                          model.getValue(),
+                          model.getOffsetAt({
+                            lineNumber: selection.endLineNumber,
+                            column: selection.endColumn,
+                          }),
+                        ),
                       }
                     : null,
                 );

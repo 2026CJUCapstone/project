@@ -33,13 +33,17 @@ def _to_community_post(
         avatar_url=user.avatar_url if user else None,
         content=comment.content,
         created_at=comment.created_at,
+        updated_at=comment.updated_at,
         can_delete=current_user is not None and (comment.user_id == current_user.id or _is_admin(current_user)),
+        can_edit=current_user is not None and (comment.user_id == current_user.id or _is_admin(current_user)),
     )
 
 
 @router.get("/posts", response_model=List[schemas.CommunityPostRead])
 def list_posts(
     problem_id: str = Query(..., alias="problemId"),
+    limit: int = Query(30, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
@@ -47,6 +51,8 @@ def list_posts(
         db.query(db_models.Comment)
         .filter(db_models.Comment.problem_id == problem_id)
         .order_by(db_models.Comment.created_at.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 
@@ -100,6 +106,27 @@ def delete_post(
 
     db.delete(comment)
     db.commit()
+
+
+@router.patch("/posts/{post_id}", response_model=schemas.CommunityPostRead)
+def update_post(
+    post_id: str,
+    payload: schemas.CommunityPostUpdate,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(get_current_user),
+):
+    comment = db.query(db_models.Comment).filter(db_models.Comment.id == post_id).first()
+    if comment is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if comment.user_id != current_user.id and not _is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Only author or admin can edit this post")
+
+    comment.content = payload.content
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    user = db.query(db_models.User).filter(db_models.User.id == comment.user_id).first()
+    return _to_community_post(comment, user, current_user)
 
 
 @router.post("/posts/counts")

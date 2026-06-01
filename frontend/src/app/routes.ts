@@ -6,7 +6,9 @@ import { Challenges } from "./pages/Challenges";
 import { ChallengeDetail } from "./pages/ChallengeDetail";
 import { Community } from "./pages/Community";
 import { CompileQueue } from "./pages/CompileQueue";
+import { Submissions } from "./pages/Submissions";
 import { Admin } from "./pages/Admin";
+import { PasswordReset } from "./pages/PasswordReset";
 
 const routerBasePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -20,11 +22,13 @@ export const routeDefinitions = [
       { path: "challenges", Component: Challenges },
       { path: "challenges/:challengeId", Component: ChallengeDetail },
       { path: "queue", Component: CompileQueue },
+      { path: "submissions", Component: Submissions },
       { path: "community", Component: Community },
     ],
-  },
-  { path: "/admin", Component: Admin },
-];
+	  },
+	  { path: "/admin", Component: Admin },
+	  { path: "/reset-password", Component: PasswordReset },
+	];
 
 export const router = createBrowserRouter(routeDefinitions, {
   basename: routerBasePath === "" ? "/" : routerBasePath,

@@ -14,6 +14,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 SCHEMA_MIGRATION_ID = "20260601_product_hardening"
 PASSWORD_RESET_MIGRATION_ID = "20260601_password_reset"
+QUEUE_AND_SUBMISSIONS_MIGRATION_ID = "20260602_queue_and_submissions"
 
 
 def _ensure_migration_table() -> None:
@@ -65,6 +66,8 @@ def migrate_schema() -> None:
     _add_column_if_missing("users", "role", "role VARCHAR DEFAULT 'user' NOT NULL")
     _add_column_if_missing("users", "email", "email VARCHAR")
     _add_column_if_missing("problems", "points", "points INTEGER DEFAULT 100 NOT NULL")
+    _add_column_if_missing("submissions", "verdict", "verdict VARCHAR DEFAULT 'system_error' NOT NULL")
+    _add_column_if_missing("comments", "updated_at", "updated_at TIMESTAMP")
     _create_unique_index_if_missing("users", "ix_users_email_unique", ["email"])
     with engine.begin() as connection:
         applied = connection.execute(
@@ -84,6 +87,25 @@ def migrate_schema() -> None:
             connection.execute(
                 text("INSERT INTO schema_migrations (version) VALUES (:version)"),
                 {"version": PASSWORD_RESET_MIGRATION_ID},
+            )
+        applied = connection.execute(
+            text("SELECT 1 FROM schema_migrations WHERE version = :version"),
+            {"version": QUEUE_AND_SUBMISSIONS_MIGRATION_ID},
+        ).first()
+        if applied is None:
+            connection.execute(
+                text("UPDATE submissions SET verdict = CASE "
+                     "WHEN status = 'Accepted' THEN 'accepted' "
+                     "WHEN status = 'SampleFailed' THEN 'wrong_answer' "
+                     "WHEN status = 'Rejected' THEN 'wrong_answer' "
+                     "ELSE verdict END WHERE verdict = 'system_error'"),
+            )
+            connection.execute(
+                text("UPDATE comments SET updated_at = created_at WHERE updated_at IS NULL"),
+            )
+            connection.execute(
+                text("INSERT INTO schema_migrations (version) VALUES (:version)"),
+                {"version": QUEUE_AND_SUBMISSIONS_MIGRATION_ID},
             )
 
 

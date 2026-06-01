@@ -66,4 +66,52 @@ describe('getHighlightedCodeLineIndexes', () => {
 
     expect([...highlighted]).toEqual([0, 1]);
   });
+
+  it('uses byte offsets when source maps provide them', () => {
+    const selection: SelectionContext = {
+      hasSelection: true,
+      range: {
+        startLine: 10,
+        startColumn: 1,
+        endLine: 10,
+        endColumn: 40,
+        startOffset: 120,
+        endOffset: 128,
+      },
+    };
+
+    const highlighted = getHighlightedCodeLineIndexes(
+      [
+        {
+          sourceRanges: [
+            {
+              file: 'main.bpp',
+              startLine: 10,
+              startColumn: 1,
+              endLine: 10,
+              endColumn: 40,
+              startOffset: 80,
+              endOffset: 90,
+            },
+          ],
+        },
+        {
+          sourceRanges: [
+            {
+              file: 'main.bpp',
+              startLine: 10,
+              startColumn: 1,
+              endLine: 10,
+              endColumn: 40,
+              startOffset: 120,
+              endOffset: 128,
+            },
+          ],
+        },
+      ],
+      selection,
+    );
+
+    expect([...highlighted]).toEqual([1]);
+  });
 });

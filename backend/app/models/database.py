@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from app.core.database import Base
 import uuid
 from datetime import datetime, timezone
@@ -63,12 +63,35 @@ class Submission(Base):
     language = Column(String, nullable=False)
     code = Column(Text, nullable=False)
     status = Column(String, nullable=False)
+    verdict = Column(String, nullable=False, default="system_error", index=True)
     sample_total_cases = Column(Integer, nullable=False, default=0)
     sample_passed_cases = Column(Integer, nullable=False, default=0)
     grading_completed = Column(Boolean, nullable=False, default=False)
     grading_passed = Column(Boolean, nullable=False, default=False)
     awarded_points = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=utc_now)
+
+
+class CompileQueueRecord(Base):
+    __tablename__ = "compile_queue_jobs"
+    id = Column(String, primary_key=True)
+    kind = Column(String, nullable=False, index=True)
+    status = Column(String, nullable=False, index=True)
+    verdict = Column(String, nullable=False, index=True)
+    language = Column(String, nullable=False)
+    username = Column(String, nullable=True, index=True)
+    user_id = Column(String, nullable=True, index=True)
+    problem_id = Column(String, nullable=True, index=True)
+    problem_title = Column(String, nullable=True)
+    target = Column(String, nullable=True)
+    source_size_bytes = Column(Integer, nullable=False, default=0)
+    queued_at = Column(DateTime, nullable=False, default=utc_now, index=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    wait_ms = Column(Float, nullable=True)
+    run_ms = Column(Float, nullable=True)
+    error = Column(Text, nullable=True)
+    verdict_detail = Column(Text, nullable=True)
 
 
 class CodeProject(Base):
@@ -92,3 +115,4 @@ class Comment(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

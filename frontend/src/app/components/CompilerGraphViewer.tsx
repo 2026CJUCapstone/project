@@ -166,6 +166,8 @@ type SourceRangeLike = {
   startColumn?: number;
   endLine?: number;
   endColumn?: number;
+  startOffset?: number | null;
+  endOffset?: number | null;
 };
 
 type NormalizedSourceRange = {
@@ -173,6 +175,8 @@ type NormalizedSourceRange = {
   startColumn: number;
   endLine: number;
   endColumn: number;
+  startOffset?: number;
+  endOffset?: number;
 };
 
 type RenderedCodeLine = {
@@ -225,6 +229,12 @@ function normalizeSourceRange(range: SourceRangeLike | SourceSelectionRange | un
   const startColumn = sourceRange.startColumn ?? sourceRange.column ?? 1;
   const endLine = sourceRange.endLine ?? startLine;
   const endColumn = sourceRange.endColumn ?? startColumn;
+  const startOffset = typeof sourceRange.startOffset === 'number' && Number.isFinite(sourceRange.startOffset)
+    ? sourceRange.startOffset
+    : undefined;
+  const endOffset = typeof sourceRange.endOffset === 'number' && Number.isFinite(sourceRange.endOffset)
+    ? sourceRange.endOffset
+    : undefined;
 
   if (
     typeof startLine !== 'number' ||
@@ -239,16 +249,29 @@ function normalizeSourceRange(range: SourceRangeLike | SourceSelectionRange | un
     return null;
   }
 
-  return {
+  const normalized: NormalizedSourceRange = {
     startLine: Math.max(1, startLine),
     startColumn: Math.max(1, startColumn),
     endLine: Math.max(1, endLine),
     endColumn: Math.max(1, endColumn),
   };
+  if (startOffset !== undefined && endOffset !== undefined) {
+    normalized.startOffset = Math.max(0, Math.min(startOffset, endOffset));
+    normalized.endOffset = Math.max(0, Math.max(startOffset, endOffset));
+  }
+  return normalized;
 }
 
 function isBeforeOrEqual(lineA: number, columnA: number, lineB: number, columnB: number): boolean {
   return lineA < lineB || (lineA === lineB && columnA <= columnB);
+}
+
+function isBefore(lineA: number, columnA: number, lineB: number, columnB: number): boolean {
+  return lineA < lineB || (lineA === lineB && columnA < columnB);
+}
+
+function hasOffsets(range: NormalizedSourceRange): range is NormalizedSourceRange & { startOffset: number; endOffset: number } {
+  return typeof range.startOffset === 'number' && typeof range.endOffset === 'number';
 }
 
 function rangesOverlap(a: SourceRangeLike | SourceSelectionRange | undefined, b: SourceRangeLike | SourceSelectionRange | undefined): boolean {
@@ -256,20 +279,31 @@ function rangesOverlap(a: SourceRangeLike | SourceSelectionRange | undefined, b:
   const right = normalizeSourceRange(b);
   if (!left || !right) return false;
 
+  if (hasOffsets(left) && hasOffsets(right)) {
+    return left.startOffset < right.endOffset && right.startOffset < left.endOffset;
+  }
+
   return (
-    isBeforeOrEqual(left.startLine, left.startColumn, right.endLine, right.endColumn) &&
-    isBeforeOrEqual(right.startLine, right.startColumn, left.endLine, left.endColumn)
+    isBefore(left.startLine, left.startColumn, right.endLine, right.endColumn) &&
+    isBefore(right.startLine, right.startColumn, left.endLine, left.endColumn)
   );
 }
 
-function sourceLocationOverlaps(
-  location: SourceRangeLike | undefined,
+function sourceRangesOverlap(
+  sourceRanges: SourceRangeLike[] | undefined,
+  fallbackLocation: SourceRangeLike | undefined,
   range: SourceSelectionRange | null,
 ): boolean {
-  return rangesOverlap(location, range ?? undefined);
+  if (sourceRanges?.some((sourceRange) => rangesOverlap(sourceRange, range ?? undefined))) {
+    return true;
+  }
+  return rangesOverlap(fallbackLocation, range ?? undefined);
 }
 
 function rangesEqual(a: NormalizedSourceRange, b: NormalizedSourceRange): boolean {
+  if (hasOffsets(a) && hasOffsets(b)) {
+    return a.startOffset === b.startOffset && a.endOffset === b.endOffset;
+  }
   return (
     a.startLine === b.startLine &&
     a.startColumn === b.startColumn &&
@@ -279,6 +313,9 @@ function rangesEqual(a: NormalizedSourceRange, b: NormalizedSourceRange): boolea
 }
 
 function rangeContains(outer: NormalizedSourceRange, inner: NormalizedSourceRange): boolean {
+  if (hasOffsets(outer) && hasOffsets(inner)) {
+    return outer.startOffset <= inner.startOffset && inner.endOffset <= outer.endOffset;
+  }
   return (
     isBeforeOrEqual(outer.startLine, outer.startColumn, inner.startLine, inner.startColumn) &&
     isBeforeOrEqual(inner.endLine, inner.endColumn, outer.endLine, outer.endColumn)
@@ -321,7 +358,7 @@ function convertASTGraph(astGraph: ASTGraph, selection: SelectionContext): { nod
     data: {
       label: node.type,
       sub: node.label !== node.type ? node.label : undefined,
-      highlight: sourceLocationOverlaps(node.sourceLocation, selection.range),
+      highlight: sourceRangesOverlap(node.sourceRanges, node.sourceLocation, selection.range),
       isRoot: index === 0,
       w: 170,
       h: 62,
@@ -333,10 +370,16 @@ function convertASTGraph(astGraph: ASTGraph, selection: SelectionContext): { nod
   return { nodes: layoutNodes(nodes, edges, 170, 62, { nodesep: 64, ranksep: 88 }), edges };
 }
 
-function convertSSAGraph(ssaGraph: SSAGraph, _selection: SelectionContext): { nodes: Node[]; edges: Edge[] } {
+function convertSSAGraph(ssaGraph: SSAGraph, selection: SelectionContext): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = ssaGraph.blocks.map((block) => {
-    const highlightedLines = block.instructions.map(() => false);
-    const highlight = false;
+    const highlightedLines = block.instructions.map((_, index) =>
+      selection.hasSelection
+        ? (block.instructionSourceRanges?.[index] ?? []).some((sourceRange) => rangesOverlap(sourceRange, selection.range ?? undefined))
+        : false,
+    );
+    const highlight =
+      highlightedLines.some(Boolean) ||
+      (selection.hasSelection && (block.sourceRanges ?? []).some((sourceRange) => rangesOverlap(sourceRange, selection.range ?? undefined)));
 
     return {
       id: block.id,

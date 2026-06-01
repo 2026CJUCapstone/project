@@ -1,6 +1,5 @@
-from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import require_admin
@@ -11,18 +10,34 @@ from app.models import schemas
 router = APIRouter()
 
 
-@router.get("/users", response_model=List[schemas.AdminUserRead])
+@router.get("/users", response_model=schemas.AdminUsersResponse)
 def list_users(
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    search: str | None = Query(None, max_length=80),
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(require_admin),
 ):
-    return (
-        db.query(db_models.User)
-        .order_by(db_models.User.total_score.desc(), db_models.User.username.asc())
+    query = db.query(db_models.User)
+    if search and search.strip():
+        keyword = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                db_models.User.username.ilike(keyword),
+                db_models.User.nickname.ilike(keyword),
+                db_models.User.email.ilike(keyword),
+            )
+        )
+
+    total = db.query(db_models.User).count()
+    filtered_total = query.count()
+    users = (
+        query.order_by(db_models.User.total_score.desc(), db_models.User.username.asc())
+        .offset(offset)
         .limit(limit)
         .all()
     )
+    return {"users": users, "total": total, "filtered_total": filtered_total}
 
 
 @router.patch("/users/{user_id}", response_model=schemas.AdminUserRead)

@@ -18,6 +18,8 @@ export type SourceSelectionRange = {
   endLine: number;
   startColumn: number;
   endColumn: number;
+  startOffset?: number;
+  endOffset?: number;
 };
 
 interface CompilerState {

@@ -9,7 +9,7 @@ STDIN_FILE="${4:-}"
 OPTIMIZE="${COMPILER_OPTIMIZE:-0}"
 
 if [[ -z "$MODE" || -z "$LANGUAGE" || -z "$SOURCE_FILE" ]]; then
-  echo "usage: run.sh <compile|run|dump-ir|dump-ssa|asm> <language> <source_file> [stdin_file]" >&2
+  echo "usage: run.sh <compile|run|dump-ir|dump-ir-json|dump-ssa|dump-ssa-json|dump-machine-ir-json|asm|json> <language> <source_file> [stdin_file]" >&2
   exit 2
 fi
 
@@ -124,6 +124,16 @@ dump_bpp_ir() {
   bpp "${bpp_flags[@]}" -dump-ir "$SOURCE_FILE"
 }
 
+dump_bpp_ir_json() {
+  local bpp_flags=()
+  if [[ "$OPTIMIZE" == "1" ]]; then
+    bpp_flags+=(-O1)
+  else
+    bpp_flags+=(-O0)
+  fi
+  bpp "${bpp_flags[@]}" -dump-ir-json --source-map-user-only "$SOURCE_FILE"
+}
+
 dump_bpp_ssa() {
   local bpp_flags=()
   if [[ "$OPTIMIZE" == "1" ]]; then
@@ -134,6 +144,26 @@ dump_bpp_ssa() {
   bpp "${bpp_flags[@]}" -dump-ssa "$SOURCE_FILE"
 }
 
+dump_bpp_ssa_json() {
+  local bpp_flags=()
+  if [[ "$OPTIMIZE" == "1" ]]; then
+    bpp_flags+=(-O1)
+  else
+    bpp_flags+=(-O0)
+  fi
+  bpp "${bpp_flags[@]}" -dump-ssa-json --source-map-user-only "$SOURCE_FILE"
+}
+
+dump_bpp_machine_ir_json() {
+  local bpp_flags=()
+  if [[ "$OPTIMIZE" == "1" ]]; then
+    bpp_flags+=(-O1)
+  else
+    bpp_flags+=(-O0)
+  fi
+  bpp "${bpp_flags[@]}" -dump-machine-ir-json --source-map-user-only "$SOURCE_FILE"
+}
+
 emit_bpp_asm() {
   local bpp_flags=()
   if [[ "$OPTIMIZE" == "1" ]]; then
@@ -142,6 +172,16 @@ emit_bpp_asm() {
     bpp_flags+=(-O0)
   fi
   bpp "${bpp_flags[@]}" --emit-source-map --emit-json "$SOURCE_FILE"
+}
+
+emit_bpp_json() {
+  local bpp_flags=()
+  if [[ "$OPTIMIZE" == "1" ]]; then
+    bpp_flags+=(-O1)
+  else
+    bpp_flags+=(-O0)
+  fi
+  bpp "${bpp_flags[@]}" --emit-json --views ast,ir,ssa,asm --source-map-user-only --ast-no-std "$SOURCE_FILE"
 }
 
 run_bpp() {
@@ -165,11 +205,23 @@ case "$LANGUAGE" in
       dump-ir)
         dump_bpp_ir
         ;;
+      dump-ir-json)
+        dump_bpp_ir_json
+        ;;
       dump-ssa)
         dump_bpp_ssa
         ;;
+      dump-ssa-json)
+        dump_bpp_ssa_json
+        ;;
+      dump-machine-ir-json)
+        dump_bpp_machine_ir_json
+        ;;
       asm)
         emit_bpp_asm
+        ;;
+      json)
+        emit_bpp_json
         ;;
       *)
         echo "Unsupported mode for B++: $MODE" >&2

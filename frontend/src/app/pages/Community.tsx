@@ -4,9 +4,10 @@ import {
   MessageSquare,
   Loader2,
   ChevronLeft,
-  Send,
-  Trash2,
-  AlertTriangle,
+	  Send,
+	  Trash2,
+	  Pencil,
+	  AlertTriangle,
   LogIn,
   Megaphone,
   BookOpen,
@@ -26,17 +27,19 @@ import {
 } from '../services/leaderboardProfile';
 import { AuthModal } from '../components/AuthModal';
 import {
-  createCommunityPost,
-  deleteCommunityPost,
-  fetchCommunityPostCounts,
-  fetchCommunityPosts,
-  type CommunityPost,
-} from '../services/communityApi';
+	  createCommunityPost,
+	  deleteCommunityPost,
+	  fetchCommunityPostCounts,
+	  fetchCommunityPosts,
+	  updateCommunityPost,
+	  type CommunityPost,
+	} from '../services/communityApi';
 
 type TabKey = 'notice' | 'problems' | 'free';
 
 const NOTICE_BOARD_ID = '__notice__';
 const FREE_BOARD_ID = '__free__';
+const POST_PAGE_SIZE = 20;
 
 const TAB_META: Record<TabKey, { label: string; icon: typeof Megaphone; description: string }> = {
   notice: {
@@ -119,6 +122,10 @@ function PostBoard({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialDraft ?? '');
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingDraft, setEditingDraft] = useState('');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
     if (initialDraft !== undefined) {
@@ -132,8 +139,11 @@ function PostBoard({
     setError(null);
     (async () => {
       try {
-        const data = await fetchCommunityPosts(boardId);
-        if (mounted) setPosts(data);
+        const data = await fetchCommunityPosts(boardId, { limit: POST_PAGE_SIZE, offset: 0 });
+        if (mounted) {
+          setPosts(data);
+          setHasMore(data.length === POST_PAGE_SIZE);
+        }
       } catch (e) {
         if (mounted) setError(e instanceof Error ? e.message : '게시글을 불러오지 못했습니다.');
       } finally {
@@ -166,6 +176,7 @@ function PostBoard({
         content,
       });
       setPosts((prev) => [created, ...prev]);
+      setHasMore((prev) => prev || posts.length + 1 >= POST_PAGE_SIZE);
       setDraft('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '게시글 작성에 실패했습니다.');
@@ -182,6 +193,33 @@ function PostBoard({
     } catch (err) {
       setPosts(prev);
       setError(err instanceof Error ? err.message : '삭제에 실패했습니다.');
+    }
+  };
+
+  const handleUpdate = async (id: string) => {
+    const content = editingDraft.trim();
+    if (!content) return;
+    try {
+      const updated = await updateCommunityPost(id, content);
+      setPosts((prev) => prev.map((post) => (post.id === id ? updated : post)));
+      setEditingId(null);
+      setEditingDraft('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '수정에 실패했습니다.');
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await fetchCommunityPosts(boardId, { limit: POST_PAGE_SIZE, offset: posts.length });
+      setPosts((prev) => [...prev, ...data]);
+      setHasMore(data.length === POST_PAGE_SIZE);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '게시글을 더 불러오지 못했습니다.');
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -293,24 +331,80 @@ function PostBoard({
                     </div>
                   </div>
                 </div>
-                {post.canDelete && (
-                  <button
-                    onClick={() => {
-                      void handleDelete(post.id);
-                    }}
-                    className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
-                    title="삭제"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-              <MarkdownBody compact>{post.content}</MarkdownBody>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+	                <div className="flex items-center gap-1">
+	                  {post.canEdit && (
+	                    <button
+	                      onClick={() => {
+	                        setEditingId(post.id);
+	                        setEditingDraft(post.content);
+	                      }}
+	                      className="p-1.5 text-gray-400 hover:text-blue-500 rounded transition-colors"
+	                      title="수정"
+	                    >
+	                      <Pencil size={14} />
+	                    </button>
+	                  )}
+	                  {post.canDelete && (
+	                    <button
+	                      onClick={() => {
+	                        void handleDelete(post.id);
+	                      }}
+	                      className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors"
+	                      title="삭제"
+	                    >
+	                      <Trash2 size={14} />
+	                    </button>
+	                  )}
+	                </div>
+	              </div>
+	              {editingId === post.id ? (
+	                <div className="space-y-2">
+	                  <textarea
+	                    value={editingDraft}
+	                    onChange={(event) => setEditingDraft(event.target.value)}
+	                    rows={4}
+	                    className="w-full rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-[#333] dark:bg-[#111] dark:text-gray-100"
+	                  />
+	                  <div className="flex justify-end gap-2">
+	                    <button
+	                      type="button"
+	                      onClick={() => {
+	                        setEditingId(null);
+	                        setEditingDraft('');
+	                      }}
+	                      className="rounded border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 dark:border-[#333] dark:text-gray-300 dark:hover:bg-[#222]"
+	                    >
+	                      취소
+	                    </button>
+	                    <button
+	                      type="button"
+	                      onClick={() => void handleUpdate(post.id)}
+	                      className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+	                    >
+	                      저장
+	                    </button>
+	                  </div>
+	                </div>
+	              ) : (
+	                <MarkdownBody compact>{post.content}</MarkdownBody>
+	              )}
+	            </li>
+	          ))}
+	        </ul>
+	      )}
+	      {hasMore && !loading && posts.length > 0 && (
+	        <div className="mt-4 flex justify-center">
+	          <button
+	            type="button"
+	            onClick={() => void handleLoadMore()}
+	            disabled={loadingMore}
+	            className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-[#333] dark:bg-[#161616] dark:text-gray-200 dark:hover:bg-[#222]"
+	          >
+	            {loadingMore ? '불러오는 중...' : '더 보기'}
+	          </button>
+	        </div>
+	      )}
+	    </div>
   );
 }
 

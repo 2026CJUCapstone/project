@@ -18,6 +18,7 @@ vi.mock("./services/problemApi", () => ({
   createProblem: vi.fn(),
   deleteProblem: vi.fn(),
   updateProblem: vi.fn(),
+  getSubmissions: vi.fn(() => Promise.resolve({ submissions: [], total: 0, filteredTotal: 0 })),
   getLeaderboard: vi.fn(),
   submitLeaderboardScore: vi.fn(),
 }));
@@ -68,9 +69,15 @@ describe("app routes", () => {
       points: 100,
       description: "## 문제\n\n두 수를 더하세요.",
       testCases: [{ input: "1 2", expectedOutput: "3" }],
-      hiddenTestCases: [],
-      createdAt: new Date().toISOString(),
-    });
+	      hiddenTestCases: [],
+	      createdAt: new Date().toISOString(),
+	      solved: false,
+	      attempted: false,
+	      lastSubmissionStatus: null,
+	      lastSubmissionVerdict: null,
+	      lastSubmittedAt: null,
+	      bestAwardedPoints: 0,
+	    });
 
     const router = createMemoryRouter(routeDefinitions, {
       initialEntries: ["/challenges/p-1"],

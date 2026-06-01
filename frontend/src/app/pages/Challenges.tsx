@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
-import { PlayCircle, Code2, Tag, Loader2, Search, RotateCcw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, CircleDashed, PlayCircle, Code2, Tag, Loader2, Search, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { DIFFICULTY_LEVELS, getProblems } from '../services/problemApi';
 import type { ProblemTag, ProblemDifficulty } from '../services/problemApi';
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from '../constants/difficulty';
+import { PROBLEM_TAG_OPTIONS, getProblemTagClass, getProblemTagLabel } from '../constants/problemTags';
 
 type Difficulty = ProblemDifficulty;
 type ChallengeTag = ProblemTag;
@@ -16,19 +17,10 @@ interface Challenge {
   tags: ChallengeTag[];
   description: string;
   testCases?: { input: string; expectedOutput: string }[];
+  solved: boolean;
+  attempted: boolean;
+  lastSubmissionVerdict?: string | null;
 }
-
-const tagLabels: Record<ChallengeTag, string> = {
-  io: '입출력',
-  control: '제어문',
-  func: '함수'
-};
-
-const tagColors = {
-  io: 'text-blue-300 bg-blue-500/10 border-blue-500/20',
-  control: 'text-purple-300 bg-purple-500/10 border-purple-500/20',
-  func: 'text-pink-300 bg-pink-500/10 border-pink-500/20'
-};
 
 const difficultyTrackStops: Difficulty[] = [
   'iron5',
@@ -53,13 +45,27 @@ function getProblemSummary(description: string): string {
 
 function ChallengeRow({ challenge, index }: { challenge: Challenge; index: number }) {
   const navigate = useNavigate();
+  const statusLabel = challenge.solved ? '해결' : challenge.attempted ? '시도' : '-';
+  const StatusIcon = challenge.solved ? CheckCircle2 : CircleDashed;
 
   return (
-    <div className="grid grid-cols-[56px_120px_1fr_220px_140px] gap-3 items-center px-4 py-3 border-b border-gray-200 dark:border-[#242424] hover:bg-gray-50/80 dark:hover:bg-[#191919] transition-colors">
+    <div className="grid grid-cols-[56px_120px_90px_1fr_220px_140px] gap-3 items-center px-4 py-3 border-b border-gray-200 dark:border-[#242424] hover:bg-gray-50/80 dark:hover:bg-[#191919] transition-colors">
       <div className="text-sm text-gray-500">{index + 1}</div>
       <div>
         <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-semibold border ${getDifficultyBadgeClass(challenge.difficulty)}`}>
           {DIFFICULTY_LABELS[challenge.difficulty] ?? challenge.difficulty}
+        </span>
+      </div>
+      <div>
+        <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${
+          challenge.solved
+            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+            : challenge.attempted
+              ? 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300'
+              : 'border-gray-300 bg-gray-50 text-gray-500 dark:border-[#333] dark:bg-[#1a1a1a] dark:text-gray-400'
+        }`}>
+          <StatusIcon size={12} />
+          {statusLabel}
         </span>
       </div>
       <button
@@ -74,9 +80,9 @@ function ChallengeRow({ challenge, index }: { challenge: Challenge; index: numbe
       </button>
       <div className="flex flex-wrap gap-1.5">
         {challenge.tags.map((tag) => (
-          <span key={tag} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border ${tagColors[tag]}`}>
+          <span key={tag} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border ${getProblemTagClass(tag)}`}>
             <Tag size={10} />
-            {tagLabels[tag]}
+            {getProblemTagLabel(tag)}
           </span>
         ))}
       </div>
@@ -101,6 +107,7 @@ export function Challenges() {
   const [maxDifficulty, setMaxDifficulty] = useState<Difficulty>('diamond1');
   const [selectedTags, setSelectedTags] = useState<Set<ChallengeTag>>(new Set());
   const [sortBy, setSortBy] = useState<SortOption>('difficultyAsc');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     getProblems()
@@ -112,11 +119,16 @@ export function Challenges() {
           tags: p.tags ?? [],
           description: p.description,
           testCases: p.testCases,
+          solved: p.solved,
+          attempted: p.attempted,
+          lastSubmissionVerdict: p.lastSubmissionVerdict,
         }));
         setChallenges(mapped);
+        setLoadError(null);
       })
-      .catch(() => {
+      .catch((error) => {
         setChallenges([]);
+        setLoadError(error instanceof Error ? error.message : '문제를 불러오지 못했습니다.');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -283,20 +295,20 @@ export function Challenges() {
             <div>
               <div className="text-xs font-semibold text-gray-500 mb-2">태그</div>
               <div className="flex flex-wrap gap-2">
-                {(Object.keys(tagLabels) as ChallengeTag[]).map((tag) => {
+                {PROBLEM_TAG_OPTIONS.map(({ value: tag, label }) => {
                   const active = selectedTags.has(tag);
                   return (
                     <button
                       key={tag}
                       type="button"
-                      onClick={() => toggleTag(tag)}
-                      className={`px-2.5 py-1 rounded-md border text-xs transition-colors ${
-                        active
-                          ? tagColors[tag]
-                          : 'border-gray-300 dark:border-[#333] text-gray-600 dark:text-gray-300 hover:border-blue-400'
-                      }`}
+	                      onClick={() => toggleTag(tag)}
+	                      className={`px-2.5 py-1 rounded-md border text-xs transition-colors ${
+	                        active
+	                          ? getProblemTagClass(tag)
+	                          : 'border-gray-300 dark:border-[#333] text-gray-600 dark:text-gray-300 hover:border-blue-400'
+	                      }`}
                     >
-                      {tagLabels[tag]}
+                      {label}
                     </button>
                   );
                 })}
@@ -325,6 +337,13 @@ export function Challenges() {
               <p className="text-sm text-gray-500">{filteredChallenges.length}문제</p>
             </div>
 
+            {loadError && !loading && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300">
+                <AlertCircle size={16} />
+                {loadError}
+              </div>
+            )}
+
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20">
                 <Loader2 size={32} className="animate-spin text-blue-500 mb-3" />
@@ -333,9 +352,10 @@ export function Challenges() {
             ) : filteredChallenges.length > 0 ? (
               <div className="rounded-xl border border-gray-200 dark:border-[#333] bg-white dark:bg-[#161616] overflow-x-auto">
                 <div className="min-w-[860px]">
-                  <div className="grid grid-cols-[56px_120px_1fr_220px_140px] gap-3 px-4 py-3 border-b border-gray-200 dark:border-[#242424] text-xs font-semibold text-gray-500">
+                  <div className="grid grid-cols-[56px_120px_90px_1fr_220px_140px] gap-3 px-4 py-3 border-b border-gray-200 dark:border-[#242424] text-xs font-semibold text-gray-500">
                     <div>#</div>
                     <div>난이도</div>
+                    <div>상태</div>
                     <div>제목</div>
                     <div>태그</div>
                     <div className="text-right">실행</div>

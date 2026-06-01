@@ -9,6 +9,7 @@ import "katex/dist/katex.min.css";
 import { JudgePanel } from "./JudgePanel";
 import type { TestCase } from "../services/problemApi";
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from "../constants/difficulty";
+import { getProblemTagClass, getProblemTagLabel } from "../constants/problemTags";
 interface Challenge {
   id: string;
   title: string;
@@ -78,11 +79,11 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
               <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getDifficultyBadgeClass(challenge.difficulty)}`}>
                 {DIFFICULTY_LABELS[challenge.difficulty as keyof typeof DIFFICULTY_LABELS] ?? challenge.difficulty}
               </span>
-              {challenge.tags?.map((tag) => (
-                <span key={tag} className="px-2 py-0.5 rounded text-xs font-medium border text-blue-300 bg-blue-500/10 border-blue-500/20">
-                  {tag}
-                </span>
-              ))}
+	              {challenge.tags?.map((tag) => (
+	                <span key={tag} className={`px-2 py-0.5 rounded text-xs font-medium border ${getProblemTagClass(tag)}`}>
+	                  {getProblemTagLabel(tag)}
+	                </span>
+	              ))}
             </div>
             <h2 className="text-lg font-bold text-white">{challenge.title}</h2>
           </div>
