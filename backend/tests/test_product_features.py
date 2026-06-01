@@ -52,6 +52,33 @@ def _delete_users(*usernames: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_default_admin_password_is_not_accepted():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"username": settings.ADMIN_USERNAME, "password": "admin1234"},
+        )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_blocks_repeated_attempts():
+    username = f"ratelimit_{uuid.uuid4().hex[:10]}"
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        responses = [
+            await client.post(
+                "/api/v1/auth/login",
+                json={"username": username, "password": "wrong-password"},
+            )
+            for _ in range(settings.AUTH_RATE_LIMIT_MAX_ATTEMPTS + 1)
+        ]
+
+    assert responses[-1].status_code == 429
+
+
+@pytest.mark.asyncio
 async def test_project_storage_is_per_user_and_scope():
     suffix = uuid.uuid4().hex[:10]
     username = f"project_user_{suffix}"
@@ -70,6 +97,25 @@ async def test_project_storage_is_per_user_and_scope():
         assert saved.json()["scope"] == "problem:abc"
         assert loaded.status_code == 200
         assert loaded.json()["code"] == "func main() -> u64 { return 0; }"
+    finally:
+        _delete_users(username)
+
+
+@pytest.mark.asyncio
+async def test_project_storage_rejects_oversized_code():
+    suffix = uuid.uuid4().hex[:10]
+    username = f"project_big_{suffix}"
+    _create_user(username)
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.put(
+                "/api/v1/projects/main",
+                headers=_auth_headers(username),
+                json={"code": "x" * (settings.CODE_PROJECT_MAX_BYTES + 1), "language": "bpp", "title": "big"},
+            )
+
+        assert response.status_code == 413
     finally:
         _delete_users(username)
 

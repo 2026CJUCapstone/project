@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limit import check_rate_limit
 from app.models import database as db_models
 from app.models import schemas
 from app.services import auth
@@ -11,8 +14,19 @@ router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
+
+def _client_key(request: Request, purpose: str, identity: str = "") -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"{purpose}:{host}:{identity.lower().strip()}"
+
+
 @router.post("/register")
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
+def register(user: schemas.UserCreate, request: Request, db: Session = Depends(get_db)):
+    check_rate_limit(
+        _client_key(request, "register", user.username),
+        settings.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
+        settings.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
     if db.query(db_models.User).filter(db_models.User.username == user.username).first():
         raise HTTPException(status_code=400, detail="이미 사용 중인 아이디입니다.")
     if user.nickname and db.query(db_models.User).filter(db_models.User.nickname == user.nickname).first():
@@ -30,7 +44,12 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return {"message": "User created successfully"}
 
 @router.post("/login", response_model=schemas.Token)
-def login(user_data: schemas.UserLogin, db: Session = Depends(get_db)):
+def login(user_data: schemas.UserLogin, request: Request, db: Session = Depends(get_db)):
+    check_rate_limit(
+        _client_key(request, "login", user_data.username),
+        settings.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
+        settings.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
     # username 또는 nickname으로 로그인 허용
     user = (
         db.query(db_models.User).filter(db_models.User.username == user_data.username).first()
@@ -45,7 +64,7 @@ def login(user_data: schemas.UserLogin, db: Session = Depends(get_db)):
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
-        payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        payload = jwt.decode(token, auth.get_secret_key(), algorithms=[auth.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise HTTPException(status_code=401, detail="Invalid token")
@@ -106,7 +125,7 @@ def get_optional_current_user(token: str | None = Depends(optional_oauth2_scheme
         return None
 
     try:
-        payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
+        payload = jwt.decode(token, auth.get_secret_key(), algorithms=[auth.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             return None

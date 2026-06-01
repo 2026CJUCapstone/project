@@ -15,6 +15,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     lastSavedTime,
     saveCode,
     loadCode,
+    loadCodeSavedAt,
     setCode,
     setCodeStorageScope,
     compileAndStartTerminal,
@@ -24,6 +25,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   } = useCompilerStore();
   const [copied, setCopied] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const [syncStatus, setSyncStatus] = useState<'server' | 'local' | 'error'>('local');
   const editorRef = useRef<any>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHydratingEditorRef = useRef(false);
@@ -175,7 +177,9 @@ func main() -> u64 {
       setLanguage('bpp');
     }
 
-    const nextCode = loadCode(codeStorageScope) ?? defaultCode;
+    const localCode = loadCode(codeStorageScope);
+    const localSavedAt = loadCodeSavedAt(codeStorageScope);
+    const nextCode = localCode ?? defaultCode;
 
     isHydratingEditorRef.current = true;
     if (editorRef.current.getValue() !== nextCode) {
@@ -195,6 +199,24 @@ func main() -> u64 {
         try {
           const remote = await getCodeProject(codeStorageScope);
           if (cancelled || !remote || !editorRef.current) return;
+          const remoteSavedAt = Date.parse(remote.updatedAt);
+          const shouldUseRemote =
+            localCode === null ||
+            (localSavedAt !== null && Number.isFinite(remoteSavedAt) && remoteSavedAt > localSavedAt);
+
+          if (!shouldUseRemote) {
+            if (localCode !== remote.code) {
+              void saveCodeProject(codeStorageScope, {
+                code: localCode,
+                language,
+                title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
+              })
+                .then((saved) => setSyncStatus(saved ? 'server' : 'local'))
+                .catch(() => setSyncStatus('error'));
+            }
+            return;
+          }
+
           isHydratingEditorRef.current = true;
           if (editorRef.current.getValue() !== remote.code) {
             editorRef.current.setValue(remote.code);
@@ -203,6 +225,7 @@ func main() -> u64 {
           if (onCodeChange) onCodeChange(remote.code);
           setCode(remote.code);
           setSaveStatus('saved');
+          setSyncStatus('server');
           isHydratingEditorRef.current = false;
         } catch (error) {
           console.warn('서버 코드 불러오기 실패:', error);
@@ -212,7 +235,7 @@ func main() -> u64 {
     return () => {
       cancelled = true;
     };
-  }, [challengeId, codeStorageScope, defaultCode, editorReady, loadCode, onCodeChange, setCode, setCodeStorageScope, setLanguage, setSelectedSourceRange, setSelectedText]);
+  }, [challengeId, codeStorageScope, defaultCode, editorReady, language, loadCode, loadCodeSavedAt, onCodeChange, setCode, setCodeStorageScope, setLanguage, setSelectedSourceRange, setSelectedText]);
 
   // 자동저장 - debounce 방식으로 코드 변경 후 2초 뒤 저장
   useEffect(() => {
@@ -233,8 +256,10 @@ func main() -> u64 {
             language,
             title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
           })
+            .then((saved) => setSyncStatus(saved ? 'server' : 'local'))
             .catch((error) => {
               console.warn('서버 코드 저장 실패:', error);
+              setSyncStatus('error');
             })
             .finally(() => setSaveStatus('saved'));
         }
@@ -275,9 +300,12 @@ func main() -> u64 {
             code,
             language,
             title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
-          }).catch((error) => {
-            console.warn('서버 코드 저장 실패:', error);
-          });
+          })
+            .then((saved) => setSyncStatus(saved ? 'server' : 'local'))
+            .catch((error) => {
+              console.warn('서버 코드 저장 실패:', error);
+              setSyncStatus('error');
+            });
           setSaveStatus('saved');
         }
       }
@@ -392,7 +420,13 @@ func main() -> u64 {
             ) : saveStatus === 'saved' ? (
               <>
                 <Check size={14} className="text-green-500" />
-                <span className="text-xs font-mono text-green-600 dark:text-green-400">모든 변경사항 저장됨</span>
+                <span className="text-xs font-mono text-green-600 dark:text-green-400">
+                  {syncStatus === 'server'
+                    ? '모든 변경사항 서버 저장됨'
+                    : syncStatus === 'error'
+                      ? '로컬 저장됨 · 서버 저장 실패'
+                      : '로컬 저장됨'}
+                </span>
               </>
             ) : (
               <>

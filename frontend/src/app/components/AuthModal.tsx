@@ -131,9 +131,8 @@ export function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) {
           )}
           
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 flex justify-between">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               비밀번호
-              {isLogin && <button type="button" className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">비밀번호 찾기</button>}
             </label>
             <input 
               type="password" 

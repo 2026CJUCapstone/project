@@ -10,6 +10,8 @@ dist/
 build/
 bpp_project.db
 backend/bpp_project.db
+compiler.db
+backend/compiler.db
 
 # Node / React
 frontend/node_modules/

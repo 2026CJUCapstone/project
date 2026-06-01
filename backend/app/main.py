@@ -4,8 +4,9 @@ from app.core.config import settings
 from app.api.routes import admin, community, compiler, problems, projects, terminal, auth
 from app.core.bootstrap import bootstrap_application_data
 from app.core.database import SessionLocal, init_db
-from app.models import database as db_models
+from app.services import auth as auth_service
 
+auth_service.validate_runtime_security()
 init_db()
 with SessionLocal() as bootstrap_db:
     bootstrap_application_data(bootstrap_db)

@@ -80,5 +80,6 @@ describe("compilerStore", () => {
     expect(store.loadCode("main")).toBe("main code");
     expect(store.loadCode("problem:p-1")).toBe("problem one");
     expect(store.loadCode("problem:p-2")).toBe("problem two");
+    expect(store.loadCodeSavedAt("main")).toEqual(expect.any(Number));
   });
 });

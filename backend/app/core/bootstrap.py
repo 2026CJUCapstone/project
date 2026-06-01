@@ -1,3 +1,5 @@
+import secrets
+
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -16,6 +18,7 @@ def _nickname_is_available(db: Session, nickname: str, user_id: str | None = Non
 
 def ensure_admin_user(db: Session) -> db_models.User:
     admin = db.query(db_models.User).filter(db_models.User.username == settings.ADMIN_USERNAME).first()
+    admin_password = settings.ADMIN_PASSWORD
 
     if admin is None:
         admin = db_models.User(
@@ -23,7 +26,7 @@ def ensure_admin_user(db: Session) -> db_models.User:
             nickname=settings.ADMIN_NICKNAME
             if _nickname_is_available(db, settings.ADMIN_NICKNAME)
             else None,
-            hashed_password=auth.get_password_hash(settings.ADMIN_PASSWORD or "admin1234"),
+            hashed_password=auth.get_password_hash(admin_password or secrets.token_urlsafe(32)),
             role="admin",
         )
         db.add(admin)
@@ -31,8 +34,10 @@ def ensure_admin_user(db: Session) -> db_models.User:
         return admin
 
     admin.role = "admin"
-    if not admin.hashed_password and settings.ADMIN_PASSWORD:
-        admin.hashed_password = auth.get_password_hash(settings.ADMIN_PASSWORD)
+    if admin_password:
+        admin.hashed_password = auth.get_password_hash(admin_password)
+    elif not admin.hashed_password or auth.verify_password("admin1234", admin.hashed_password):
+        admin.hashed_password = auth.get_password_hash(secrets.token_urlsafe(32))
     if not admin.nickname and _nickname_is_available(db, settings.ADMIN_NICKNAME, admin.id):
         admin.nickname = settings.ADMIN_NICKNAME
     db.add(admin)

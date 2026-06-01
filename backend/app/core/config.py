@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "B++ Compiler API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    ENVIRONMENT: str = "development"
 
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8000
@@ -22,12 +23,19 @@ class Settings(BaseSettings):
     SANDBOX_PIDS_LIMIT: int = 64
     SANDBOX_NOFILE_LIMIT: int = 1024
     TERMINAL_SESSION_TIMEOUT: int = 120
-    SECRET_KEY: str = "fallback-secret-key-for-dev"
+    SECRET_KEY: str | None = None
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str | None = "admin1234"
+    ADMIN_PASSWORD: str | None = None
     ADMIN_NICKNAME: str = "관리자"
+    AUTH_RATE_LIMIT_MAX_ATTEMPTS: int = 8
+    AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
+    CODE_PROJECT_MAX_BYTES: int = 200_000
+    CODE_PROJECT_MAX_PER_USER: int = 100
+    CODE_PROJECT_SCOPE_MAX_LENGTH: int = 128
+    SUBMISSION_CODE_MAX_BYTES: int = 200_000
+    SUBMISSION_RETENTION_PER_USER: int = 200
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", enable_decoding=False)
 

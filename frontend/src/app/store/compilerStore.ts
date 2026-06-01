@@ -66,10 +66,12 @@ interface CompilerState {
   setCodeStorageScope: (scope: string) => void;
   saveCode: (code: string, scope?: string | null) => void;
   loadCode: (scope?: string | null) => string | null;
+  loadCodeSavedAt: (scope?: string | null) => number | null;
 }
 
 const LEGACY_STORAGE_KEY = 'b-compiler-editor-code';
 const STORAGE_KEY_PREFIX = 'b-compiler-editor-code';
+const STORAGE_META_KEY_PREFIX = 'b-compiler-editor-code-meta';
 const MAIN_STORAGE_SCOPE = 'main';
 let activeRunController: AbortController | null = null;
 let activeTerminalSocket: WebSocket | null = null;
@@ -124,6 +126,10 @@ function normalizeStorageScope(scope?: string | null): string {
 
 function codeStorageKey(scope?: string | null): string {
   return `${STORAGE_KEY_PREFIX}:${normalizeStorageScope(scope)}`;
+}
+
+function codeStorageMetaKey(scope?: string | null): string {
+  return `${STORAGE_META_KEY_PREFIX}:${normalizeStorageScope(scope)}`;
 }
 
 export const useCompilerStore = create<CompilerState>((set, get) => ({
@@ -455,8 +461,10 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   saveCode: (code, scope) => {
     try {
       const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
+      const savedAt = Date.now();
       localStorage.setItem(codeStorageKey(targetScope), code);
-      set({ lastSavedTime: Date.now() });
+      localStorage.setItem(codeStorageMetaKey(targetScope), JSON.stringify({ updatedAt: savedAt }));
+      set({ lastSavedTime: savedAt });
     } catch (error) {
       console.error('코드 저장 실패:', error);
     }
@@ -475,6 +483,18 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
       return null;
     } catch (error) {
       console.error('코드 불러오기 실패:', error);
+      return null;
+    }
+  },
+
+  loadCodeSavedAt: (scope) => {
+    try {
+      const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
+      const raw = localStorage.getItem(codeStorageMetaKey(targetScope));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { updatedAt?: unknown };
+      return typeof parsed.updatedAt === 'number' ? parsed.updatedAt : null;
+    } catch {
       return null;
     }
   },

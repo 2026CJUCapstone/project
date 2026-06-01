@@ -99,12 +99,17 @@ export function Header() {
   const handleManualSave = async () => {
     saveCode(code, codeStorageScope);
     try {
-      await saveCodeProject(codeStorageScope, {
+      const savedRemote = await saveCodeProject(codeStorageScope, {
         code,
         language,
         title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
       });
-      addOutput({ type: 'success', text: '> 코드가 서버와 로컬에 저장되었습니다.' });
+      addOutput({
+        type: 'success',
+        text: savedRemote
+          ? '> 코드가 서버와 로컬에 저장되었습니다.'
+          : '> 코드가 로컬에 저장되었습니다. 서버 저장은 로그인 후 사용할 수 있습니다.',
+      });
     } catch (error) {
       addOutput({
         type: 'warning',

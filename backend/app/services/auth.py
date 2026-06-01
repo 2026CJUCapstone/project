@@ -1,14 +1,30 @@
 import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import jwt
 from app.core.config import settings
 
-SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 PASSWORD_HASH_PREFIX = "sha256_bcrypt$"
+_DEV_SECRET_KEY = secrets.token_urlsafe(48)
+
+
+def get_secret_key() -> str:
+    if settings.SECRET_KEY:
+        return settings.SECRET_KEY
+    return _DEV_SECRET_KEY
+
+
+def validate_runtime_security() -> None:
+    if settings.ENVIRONMENT != "production":
+        return
+    if not settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
+        raise RuntimeError("SECRET_KEY must be set to at least 32 characters in production.")
+    if not settings.ADMIN_PASSWORD or len(settings.ADMIN_PASSWORD) < 16:
+        raise RuntimeError("ADMIN_PASSWORD must be set to at least 16 characters in production.")
 
 
 def _password_digest(password: str) -> bytes:
@@ -37,4 +53,4 @@ def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, get_secret_key(), algorithm=ALGORITHM)

@@ -6,6 +6,35 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PROJECT_ROOT="$ROOT_DIR"
 
 mkdir -p "$PROJECT_ROOT/.sandbox-work" "$PROJECT_ROOT/.deploy"
+exec 9>"$PROJECT_ROOT/.deploy/deploy.lock"
+if ! flock -n 9; then
+  printf '[webcompiler-deploy] %s\n' "another deployment is already running"
+  exit 1
+fi
+
+RUNTIME_SECRETS_FILE="$PROJECT_ROOT/.deploy/runtime-secrets.env"
+
+ensure_runtime_secret() {
+  local key="$1"
+  local bytes="$2"
+  if [[ -f "$RUNTIME_SECRETS_FILE" ]] && grep -q "^${key}=" "$RUNTIME_SECRETS_FILE"; then
+    return
+  fi
+  umask 077
+  printf '%s=%s\n' "$key" "$(python3 -c "import secrets; print(secrets.token_urlsafe(${bytes}))")" >> "$RUNTIME_SECRETS_FILE"
+}
+
+ensure_runtime_secret WEBCOMPILER_SECRET_KEY 48
+ensure_runtime_secret WEBCOMPILER_ADMIN_PASSWORD 32
+chmod 600 "$RUNTIME_SECRETS_FILE"
+
+set -a
+source "$RUNTIME_SECRETS_FILE"
+set +a
+export SECRET_KEY="${SECRET_KEY:-$WEBCOMPILER_SECRET_KEY}"
+export ADMIN_PASSWORD="${ADMIN_PASSWORD:-$WEBCOMPILER_ADMIN_PASSWORD}"
+export ENVIRONMENT="${ENVIRONMENT:-production}"
+
 export WEBCOMPILER_DATA_DIR="${WEBCOMPILER_DATA_DIR:-$PROJECT_ROOT/.data/webcompiler}"
 mkdir -p "$WEBCOMPILER_DATA_DIR"
 
@@ -435,6 +464,11 @@ wait_for_url "http://127.0.0.1:${EDGE_BACKEND_PORT}/health" "edge backend"
 wait_for_url "http://127.0.0.1:${EDGE_FRONTEND_PORT}/health" "edge frontend"
 
 printf '%s\n' "$target_color" > "$STATE_FILE"
+actual_active_color="$(tr -d '[:space:]' < "$STATE_FILE")"
+if [[ "$actual_active_color" != "$target_color" ]]; then
+  log "active color file mismatch: expected $target_color, got $actual_active_color"
+  exit 1
+fi
 log "active color is now $target_color"
 
 if [[ "${WEBCOMPILER_ENABLE_SANDBOX_UPDATER:-1}" == "1" ]]; then

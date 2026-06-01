@@ -13,7 +13,11 @@ from collections import defaultdict
 
 BASE = os.getenv("WEBCOMPILER_BASE_URL", "http://localhost:8000").rstrip("/")
 ADMIN_USERNAME = os.getenv("WEBCOMPILER_ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("WEBCOMPILER_ADMIN_PASSWORD", "admin1234")
+ADMIN_PASSWORD = os.getenv("WEBCOMPILER_ADMIN_PASSWORD")
+
+if not ADMIN_PASSWORD:
+    print("WEBCOMPILER_ADMIN_PASSWORD is required.", file=sys.stderr)
+    sys.exit(1)
 
 
 def request(method: str, path: str, body: dict | None = None, token: str | None = None):

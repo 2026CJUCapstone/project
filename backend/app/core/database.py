@@ -12,6 +12,17 @@ engine_kwargs = {"connect_args": {"check_same_thread": False}} if SQLALCHEMY_DAT
 engine = create_engine(SQLALCHEMY_DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+SCHEMA_MIGRATION_ID = "20260601_product_hardening"
+
+
+def _ensure_migration_table() -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS schema_migrations "
+                "(version VARCHAR PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+            )
+        )
 
 
 def _add_column_if_missing(table_name: str, column_name: str, ddl: str) -> None:
@@ -28,8 +39,19 @@ def _add_column_if_missing(table_name: str, column_name: str, ddl: str) -> None:
 
 
 def migrate_schema() -> None:
+    _ensure_migration_table()
     _add_column_if_missing("users", "role", "role VARCHAR DEFAULT 'user' NOT NULL")
     _add_column_if_missing("problems", "points", "points INTEGER DEFAULT 100 NOT NULL")
+    with engine.begin() as connection:
+        applied = connection.execute(
+            text("SELECT 1 FROM schema_migrations WHERE version = :version"),
+            {"version": SCHEMA_MIGRATION_ID},
+        ).first()
+        if applied is None:
+            connection.execute(
+                text("INSERT INTO schema_migrations (version) VALUES (:version)"),
+                {"version": SCHEMA_MIGRATION_ID},
+            )
 
 
 def init_db() -> None:

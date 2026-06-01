@@ -41,7 +41,7 @@ export async function saveCodeProject(
     body: JSON.stringify(payload),
   });
   if (response.status === 401 || response.status === 403) {
-    return null;
+    throw await parseApiError(response, '로그인 세션이 만료되었습니다.');
   }
   if (!response.ok) {
     throw await parseApiError(response, '코드 저장에 실패했습니다.');

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
+from app.core.config import settings
 from app.models import database as db_models
 from app.models import schemas
 from app.api.routes.auth import get_current_user, get_optional_current_user, require_admin
@@ -9,6 +10,28 @@ from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.services.compiler import compiler_instance
 
 router = APIRouter()
+
+
+def _validate_submission_code_size(code: str) -> None:
+    if len(code.encode("utf-8")) > settings.SUBMISSION_CODE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="제출 코드가 너무 큽니다.")
+
+
+def _prune_old_submissions(db: Session, user_id: str) -> None:
+    stale_ids = [
+        submission_id
+        for (submission_id,) in (
+            db.query(db_models.Submission.id)
+            .filter(db_models.Submission.user_id == user_id)
+            .order_by(db_models.Submission.created_at.desc())
+            .offset(settings.SUBMISSION_RETENTION_PER_USER)
+            .all()
+        )
+    ]
+    if stale_ids:
+        db.query(db_models.Submission).filter(db_models.Submission.id.in_(stale_ids)).delete(
+            synchronize_session=False
+        )
 
 
 def _normalize_problem_test_cases(raw_test_cases: object) -> tuple[list[dict], list[dict]]:
@@ -227,6 +250,7 @@ def get_problem(
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
+    _validate_submission_code_size(request.code)
     problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
     if not problem or problem.id in SYSTEM_BOARD_IDS:
         raise HTTPException(status_code=404, detail="Problem not found")
@@ -333,6 +357,8 @@ async def submit_problem(
             awarded_points=awarded_points,
         )
     )
+    if current_user is not None:
+        _prune_old_submissions(db, current_user.id)
     db.commit()
 
     return schemas.SubmissionResponse(
