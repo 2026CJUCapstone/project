@@ -94,3 +94,48 @@ async def test_leaderboard_score_submission_accumulates_and_ranks_users():
             db.commit()
         finally:
             db.close()
+
+
+@pytest.mark.asyncio
+async def test_leaderboard_excludes_admin_users():
+    suffix = uuid.uuid4().hex[:10]
+    admin_user = f"leader_admin_{suffix}"
+    normal_user = f"leader_user_{suffix}"
+
+    db = SessionLocal()
+    try:
+        db.add(
+            User(
+                username=admin_user,
+                hashed_password=auth.get_password_hash("password123"),
+                total_score=9999,
+                role="admin",
+            )
+        )
+        db.add(
+            User(
+                username=normal_user,
+                hashed_password=auth.get_password_hash("password123"),
+                total_score=10,
+                role="user",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/v1/problems/leaderboard?limit=100")
+
+        assert response.status_code == 200
+        rows = {row["username"]: row for row in response.json()}
+        assert admin_user not in rows
+        assert rows[normal_user]["rank"] >= 1
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(User).filter(User.username.in_([admin_user, normal_user])).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()

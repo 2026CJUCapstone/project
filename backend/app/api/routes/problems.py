@@ -85,10 +85,11 @@ def _leaderboard_entry(user: db_models.User, rank: int) -> dict:
 def _leaderboard_rank(db: Session, user_id: str) -> int:
     ordered_users = (
         db.query(db_models.User)
+        .filter(db_models.User.role != "admin")
         .order_by(db_models.User.total_score.desc(), db_models.User.username.asc())
         .all()
     )
-    return next((index for index, current in enumerate(ordered_users, start=1) if current.id == user_id), 1)
+    return next((index for index, current in enumerate(ordered_users, start=1) if current.id == user_id), 0)
 
 @router.post("/", response_model=schemas.ProblemRead)
 def create_problem(
@@ -180,6 +181,7 @@ def get_leaderboard(
 ):
     users = (
         db.query(db_models.User)
+        .filter(db_models.User.role != "admin")
         .order_by(db_models.User.total_score.desc(), db_models.User.username.asc())
         .limit(limit)
         .all()
