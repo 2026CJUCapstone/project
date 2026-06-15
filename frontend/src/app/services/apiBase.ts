@@ -13,7 +13,8 @@ export const API_BASE_URL = normalizeApiBaseUrl(
 export function getAuthHeaders(): Record<string, string> {
   if (typeof window === 'undefined') return {};
   const token = window.localStorage.getItem('authToken');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  if (!token || token === 'undefined' || token === 'null') return {};
+  return { Authorization: `Bearer ${token}` };
 }
 
 export async function parseApiError(response: Response, fallback: string): Promise<Error> {

@@ -6,8 +6,10 @@ export interface LoginResponse {
 }
 
 interface BackendTokenResponse {
-  access_token: string;
-  token_type: string;
+  accessToken?: string;
+  tokenType?: string;
+  access_token?: string;
+  token_type?: string;
 }
 
 export interface AuthUser {
@@ -55,9 +57,14 @@ export async function register(
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
   const result = await request<BackendTokenResponse>('/api/v1/auth/login', { username, password });
+  const accessToken = result.accessToken ?? result.access_token;
+  const tokenType = result.tokenType ?? result.token_type ?? 'bearer';
+  if (!accessToken) {
+    throw new Error('로그인 응답에 인증 토큰이 없습니다.');
+  }
   return {
-    accessToken: result.access_token,
-    tokenType: result.token_type,
+    accessToken,
+    tokenType,
   };
 }
 
