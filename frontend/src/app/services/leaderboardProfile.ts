@@ -12,6 +12,9 @@ export interface LeaderboardProfile {
   rating?: number;
   tier?: string;
   solvedCount?: number;
+  difficultyScore?: number;
+  solvedBonus?: number;
+  topDifficulties?: string[];
   tagProficiencies?: TagProficiency[];
 }
 
@@ -42,6 +45,9 @@ function safeParseProfile(value: string | null): LeaderboardProfile | null {
           typeof item.proficiency === 'number',
       )
       : undefined;
+    const topDifficulties = Array.isArray(parsed.topDifficulties)
+      ? parsed.topDifficulties.filter((item): item is string => typeof item === 'string')
+      : undefined;
     return {
       name: parsed.name,
       avatar: parsed.avatar,
@@ -54,6 +60,9 @@ function safeParseProfile(value: string | null): LeaderboardProfile | null {
       rating: typeof parsed.rating === 'number' ? parsed.rating : undefined,
       tier: typeof parsed.tier === 'string' ? parsed.tier : undefined,
       solvedCount: typeof parsed.solvedCount === 'number' ? parsed.solvedCount : undefined,
+      difficultyScore: typeof parsed.difficultyScore === 'number' ? parsed.difficultyScore : undefined,
+      solvedBonus: typeof parsed.solvedBonus === 'number' ? parsed.solvedBonus : undefined,
+      topDifficulties,
       tagProficiencies,
     };
   } catch {
@@ -81,6 +90,9 @@ export function profileFromAuthUser(user: {
   rating?: number;
   tier?: string;
   solvedCount?: number;
+  difficultyScore?: number;
+  solvedBonus?: number;
+  topDifficulties?: string[];
   tagProficiencies?: TagProficiency[];
 }): LeaderboardProfile {
   const name = user.nickname?.trim() || user.username;
@@ -96,6 +108,9 @@ export function profileFromAuthUser(user: {
     rating: user.rating,
     tier: user.tier,
     solvedCount: user.solvedCount,
+    difficultyScore: user.difficultyScore,
+    solvedBonus: user.solvedBonus,
+    topDifficulties: user.topDifficulties,
     tagProficiencies: user.tagProficiencies,
   };
 }

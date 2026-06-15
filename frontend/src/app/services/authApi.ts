@@ -30,6 +30,9 @@ export interface AuthUser {
   rating?: number;
   tier?: string;
   solvedCount?: number;
+  difficultyScore?: number;
+  solvedBonus?: number;
+  topDifficulties?: string[];
   tagProficiencies?: TagProficiency[];
   avatarUrl?: string | null;
   role: 'user' | 'admin' | string;

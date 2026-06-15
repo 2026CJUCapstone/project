@@ -287,6 +287,9 @@ async def test_me_returns_current_rating_stats():
         assert body["rating"] == difficulty_value("gold1") + difficulty_value("silver1") + solved_count_bonus(2)
         assert body["solvedCount"] == 2
         assert body["tier"] in {"Unrated", "Iron V"}
+        assert body["difficultyScore"] == difficulty_value("gold1") + difficulty_value("silver1")
+        assert body["solvedBonus"] == solved_count_bonus(2)
+        assert body["topDifficulties"] == ["gold1", "silver1"]
         tags = {item["tag"]: item for item in body["tagProficiencies"]}
         assert tags["math"]["solvedCount"] == 2
         assert tags["math"]["difficultyScore"] == difficulty_value("gold1") + difficulty_value("silver1")

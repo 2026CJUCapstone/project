@@ -65,6 +65,7 @@ class RatingStats:
     solved_count: int
     difficulty_score: int
     solved_bonus: int
+    top_difficulties: tuple[str, ...]
 
     def to_cache_dict(self) -> dict:
         return {
@@ -73,6 +74,7 @@ class RatingStats:
             "solved_count": self.solved_count,
             "difficulty_score": self.difficulty_score,
             "solved_bonus": self.solved_bonus,
+            "top_difficulties": list(self.top_difficulties),
         }
 
     @classmethod
@@ -83,6 +85,7 @@ class RatingStats:
             solved_count=int(value.get("solved_count", 0)),
             difficulty_score=int(value.get("difficulty_score", 0)),
             solved_bonus=int(value.get("solved_bonus", 0)),
+            top_difficulties=tuple(str(item) for item in value.get("top_difficulties", [])),
         )
 
 
@@ -139,9 +142,13 @@ def tier_for_rating(rating: int) -> str:
 
 
 def calculate_rating_stats(difficulties: Iterable[str]) -> RatingStats:
-    values = [difficulty_value(difficulty) for difficulty in difficulties]
-    values = [value for value in values if value > 0]
-    values.sort(reverse=True)
+    ranked = [
+        (difficulty_value(difficulty), difficulty)
+        for difficulty in difficulties
+        if difficulty_value(difficulty) > 0
+    ]
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    values = [value for value, _difficulty in ranked]
     solved_count = len(values)
     difficulty_score = sum(values[:100])
     solved_bonus = solved_count_bonus(solved_count)
@@ -152,6 +159,7 @@ def calculate_rating_stats(difficulties: Iterable[str]) -> RatingStats:
         solved_count=solved_count,
         difficulty_score=difficulty_score,
         solved_bonus=solved_bonus,
+        top_difficulties=tuple(difficulty for _value, difficulty in ranked[:100]),
     )
 
 

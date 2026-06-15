@@ -305,6 +305,9 @@ class UserRead(CamelModel):
     rating: int = 0
     tier: str = "Unrated"
     solved_count: int = 0
+    difficulty_score: int = 0
+    solved_bonus: int = 0
+    top_difficulties: List[str] = Field(default_factory=list)
     tag_proficiencies: List[TagProficiencyRead] = Field(default_factory=list)
     avatar_url: Optional[str] = None
     role: str = "user"
