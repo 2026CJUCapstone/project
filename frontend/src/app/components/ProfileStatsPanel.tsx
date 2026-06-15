@@ -203,7 +203,7 @@ export function ProfileStatsPanel({ user }: { user: LeaderboardProfile }) {
         </div>
       </div>
 
-      <div className="grid gap-5 p-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+      <div className="grid gap-5 p-6">
         <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-5">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
@@ -254,7 +254,7 @@ export function ProfileStatsPanel({ user }: { user: LeaderboardProfile }) {
             <Activity size={16} />
             태그 분포
           </div>
-          <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-1 2xl:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
             <div className="h-[280px]">
               {radarData.length >= 3 ? (
                 <ResponsiveContainer width="100%" height="100%">
