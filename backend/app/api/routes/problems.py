@@ -10,6 +10,8 @@ from app.api.routes.auth import get_current_user, get_optional_current_user, req
 from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.services.compiler import compiler_instance
 from app.services.compile_queue import classify_grading_result, compile_queue
+from app.services.rating import RatingStats, calculate_rating_stats, invalidate_rating_cache, rating_stats_for_users
+from app.services.redis_client import cache_get_json, cache_set_json, redis_key
 
 router = APIRouter()
 
@@ -151,23 +153,48 @@ def _serialize_problem(problem: db_models.Problem, include_hidden: bool = False,
     }
 
 
-def _leaderboard_entry(user: db_models.User, rank: int) -> dict:
+def _leaderboard_entry(user: db_models.User, rank: int, rating_stats: RatingStats | None = None) -> dict:
+    stats = rating_stats or calculate_rating_stats([])
     return {
         "rank": rank,
         "username": user.username,
         "total_score": user.total_score,
+        "rating": stats.rating,
+        "tier": stats.tier,
+        "solved_count": stats.solved_count,
         "avatar_url": user.avatar_url,
     }
 
 
-def _leaderboard_rank(db: Session, user_id: str) -> int:
-    ordered_users = (
+def _leaderboard_rows(db: Session) -> list[tuple[db_models.User, RatingStats]]:
+    users = (
         db.query(db_models.User)
         .filter(db_models.User.role != "admin")
-        .order_by(db_models.User.total_score.desc(), db_models.User.username.asc())
+        .order_by(db_models.User.username.asc())
         .all()
     )
-    return next((index for index, current in enumerate(ordered_users, start=1) if current.id == user_id), 0)
+    stats_by_user = rating_stats_for_users(db, [user.id for user in users])
+    rows = [(user, stats_by_user.get(user.id, calculate_rating_stats([]))) for user in users]
+    return sorted(
+        rows,
+        key=lambda row: (
+            -row[1].rating,
+            -row[1].solved_count,
+            -row[0].total_score,
+            row[0].username,
+        ),
+    )
+
+
+def _leaderboard_rank(db: Session, user_id: str) -> int:
+    return next(
+        (
+            index
+            for index, (current, _stats) in enumerate(_leaderboard_rows(db), start=1)
+            if current.id == user_id
+        ),
+        0,
+    )
 
 @router.post("/", response_model=schemas.ProblemRead)
 def create_problem(
@@ -190,6 +217,7 @@ def create_problem(
     db.add(db_problem)
     db.commit()
     db.refresh(db_problem)
+    invalidate_rating_cache()
     return _serialize_problem(db_problem, include_hidden=True)
 
 @router.get("/", response_model=List[schemas.ProblemRead])
@@ -241,6 +269,7 @@ def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depend
     
     db.commit()
     db.refresh(db_problem)
+    invalidate_rating_cache()
     return _serialize_problem(db_problem, include_hidden=True)
 
 @router.delete("/{id}")
@@ -257,6 +286,7 @@ def delete_problem(id: str, db: Session = Depends(get_db), current_user: db_mode
     db.query(db_models.UserProblemScore).filter(db_models.UserProblemScore.challenge_id == id).delete(synchronize_session=False)
     db.delete(db_problem)
     db.commit()
+    invalidate_rating_cache()
     return {"message": "Successfully deleted"}
 
 @router.get("/leaderboard", response_model=List[schemas.LeaderboardRead])
@@ -264,14 +294,18 @@ def get_leaderboard(
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    users = (
-        db.query(db_models.User)
-        .filter(db_models.User.role != "admin")
-        .order_by(db_models.User.total_score.desc(), db_models.User.username.asc())
-        .limit(limit)
-        .all()
-    )
-    return [_leaderboard_entry(user, rank) for rank, user in enumerate(users, start=1)]
+    cache_key = redis_key("leaderboard", str(limit))
+    cached = cache_get_json(cache_key)
+    if isinstance(cached, list):
+        return cached
+
+    rows = _leaderboard_rows(db)[:limit]
+    payload = [
+        _leaderboard_entry(user, rank, stats)
+        for rank, (user, stats) in enumerate(rows, start=1)
+    ]
+    cache_set_json(cache_key, payload)
+    return payload
 
 
 @router.post("/leaderboard/score", response_model=schemas.LeaderboardScoreRead)
@@ -323,9 +357,12 @@ def submit_leaderboard_score(
 
     db.commit()
     db.refresh(user)
+    invalidate_rating_cache(user.id)
+
+    stats = rating_stats_for_users(db, [user.id]).get(user.id, calculate_rating_stats([]))
 
     return {
-        **_leaderboard_entry(user, _leaderboard_rank(db, user.id)),
+        **_leaderboard_entry(user, _leaderboard_rank(db, user.id), stats),
         "challenge_id": score.challenge_id,
         "awarded_points": awarded_points,
         "already_solved": already_solved,
@@ -532,6 +569,7 @@ async def submit_problem(
 
     total_score = current_user.total_score if current_user is not None else 0
     awarded_points = 0
+    should_invalidate_rating = False
     if final_status == "Accepted" and current_user is not None and not already_solved:
         awarded_points = problem.points
         current_user.total_score += awarded_points
@@ -543,6 +581,7 @@ async def submit_problem(
             points_awarded=awarded_points
         )
         db.add(score_record)
+        should_invalidate_rating = True
     elif current_user is not None:
         total_score = current_user.total_score
 
@@ -564,6 +603,8 @@ async def submit_problem(
     if current_user is not None:
         _prune_old_submissions(db, current_user.id)
     db.commit()
+    if should_invalidate_rating and current_user is not None:
+        invalidate_rating_cache(current_user.id)
 
     return schemas.SubmissionResponse(
         status=final_status,

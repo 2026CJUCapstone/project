@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str | None = None
     SMTP_FROM: str | None = None
     SMTP_STARTTLS: bool = True
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_RECYCLE_SECONDS: int = 1800
+    REDIS_URL: str | None = None
+    REDIS_KEY_PREFIX: str = "webcompiler"
+    REDIS_CACHE_TTL_SECONDS: int = 30
+    REDIS_QUEUE_POLL_INTERVAL_SECONDS: float = 0.05
+    REDIS_QUEUE_HEARTBEAT_SECONDS: int = 120
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", enable_decoding=False)
 

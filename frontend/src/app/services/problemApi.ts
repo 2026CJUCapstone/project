@@ -119,6 +119,9 @@ export interface LeaderboardEntry {
   rank: number;
   username: string;
   totalScore: number;
+  rating: number;
+  tier: string;
+  solvedCount: number;
   avatarUrl?: string | null;
 }
 

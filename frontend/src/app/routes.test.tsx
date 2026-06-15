@@ -32,6 +32,9 @@ describe("app routes", () => {
         rank: 1,
         username: "bpp_master",
         totalScore: 120,
+        rating: 36,
+        tier: "Iron V",
+        solvedCount: 2,
         avatarUrl: null,
       },
     ]);
@@ -47,7 +50,8 @@ describe("app routes", () => {
     expect(await screen.findByRole("heading", { name: "리더보드" })).toBeInTheDocument();
     expect(await screen.findByText("전체 랭킹")).toBeInTheDocument();
     expect(await screen.findAllByText("bpp_master")).toHaveLength(2);
-    expect(screen.getByText("120 XP")).toBeInTheDocument();
+    expect(screen.getAllByText("36")).not.toHaveLength(0);
+    expect(screen.getAllByText("Iron V")).not.toHaveLength(0);
   });
 
   it("renders the challenges page", async () => {

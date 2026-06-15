@@ -1,3 +1,5 @@
+import type { TagProficiency } from './authApi';
+
 export interface LeaderboardProfile {
   name: string;
   avatar: string;
@@ -7,6 +9,10 @@ export interface LeaderboardProfile {
   nickname?: string | null;
   role?: 'user' | 'admin' | string;
   totalScore?: number;
+  rating?: number;
+  tier?: string;
+  solvedCount?: number;
+  tagProficiencies?: TagProficiency[];
 }
 
 const USER_STORAGE_KEY = 'b-compiler-user';
@@ -24,6 +30,18 @@ function safeParseProfile(value: string | null): LeaderboardProfile | null {
     if (typeof parsed.name !== 'string' || typeof parsed.avatar !== 'string') {
       return null;
     }
+    const tagProficiencies = Array.isArray(parsed.tagProficiencies)
+      ? parsed.tagProficiencies.filter(
+        (item): item is TagProficiency =>
+          typeof item === 'object' &&
+          item !== null &&
+          typeof item.tag === 'string' &&
+          typeof item.solvedCount === 'number' &&
+          typeof item.difficultyScore === 'number' &&
+          typeof item.maxDifficultyValue === 'number' &&
+          typeof item.proficiency === 'number',
+      )
+      : undefined;
     return {
       name: parsed.name,
       avatar: parsed.avatar,
@@ -33,6 +51,10 @@ function safeParseProfile(value: string | null): LeaderboardProfile | null {
       nickname: typeof parsed.nickname === 'string' ? parsed.nickname : null,
       role: typeof parsed.role === 'string' ? parsed.role : undefined,
       totalScore: typeof parsed.totalScore === 'number' ? parsed.totalScore : undefined,
+      rating: typeof parsed.rating === 'number' ? parsed.rating : undefined,
+      tier: typeof parsed.tier === 'string' ? parsed.tier : undefined,
+      solvedCount: typeof parsed.solvedCount === 'number' ? parsed.solvedCount : undefined,
+      tagProficiencies,
     };
   } catch {
     return null;
@@ -56,6 +78,10 @@ export function profileFromAuthUser(user: {
   avatarUrl?: string | null;
   role?: string;
   totalScore?: number;
+  rating?: number;
+  tier?: string;
+  solvedCount?: number;
+  tagProficiencies?: TagProficiency[];
 }): LeaderboardProfile {
   const name = user.nickname?.trim() || user.username;
   return {
@@ -67,6 +93,10 @@ export function profileFromAuthUser(user: {
     avatar: user.avatarUrl || createAvatarUrl(name),
     role: user.role ?? 'user',
     totalScore: user.totalScore,
+    rating: user.rating,
+    tier: user.tier,
+    solvedCount: user.solvedCount,
+    tagProficiencies: user.tagProficiencies,
   };
 }
 

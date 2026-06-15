@@ -5,6 +5,15 @@ export interface LoginResponse {
   tokenType: string;
 }
 
+export interface TagProficiency {
+  tag: string;
+  solvedCount: number;
+  difficultyScore: number;
+  maxDifficulty?: string | null;
+  maxDifficultyValue: number;
+  proficiency: number;
+}
+
 interface BackendTokenResponse {
   accessToken?: string;
   tokenType?: string;
@@ -18,6 +27,10 @@ export interface AuthUser {
   email?: string | null;
   nickname?: string | null;
   totalScore: number;
+  rating?: number;
+  tier?: string;
+  solvedCount?: number;
+  tagProficiencies?: TagProficiency[];
   avatarUrl?: string | null;
   role: 'user' | 'admin' | string;
 }

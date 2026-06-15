@@ -15,6 +15,7 @@ from app.models import database as db_models
 from app.models import schemas
 from app.services import auth
 from app.services import email as email_service
+from app.services.rating import rating_stats_for_user, tag_proficiencies_for_user
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -41,6 +42,24 @@ def _as_utc(value: datetime) -> datetime:
 
 
 RESET_REQUEST_MESSAGE = "계정이 확인되면 비밀번호 재설정 메일을 보냈습니다."
+
+
+def _serialize_user(user: db_models.User, db: Session) -> dict:
+    stats = rating_stats_for_user(db, user.id)
+    tag_proficiencies = tag_proficiencies_for_user(db, user.id)
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "nickname": user.nickname,
+        "total_score": user.total_score,
+        "rating": stats.rating,
+        "tier": stats.tier,
+        "solved_count": stats.solved_count,
+        "tag_proficiencies": [item.to_cache_dict() for item in tag_proficiencies],
+        "avatar_url": user.avatar_url,
+        "role": user.role,
+    }
 
 
 @router.post("/register")
@@ -107,13 +126,19 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 @router.get("/me", response_model=schemas.UserRead)
-def read_me(current_user: db_models.User = Depends(get_current_user)):
-    return current_user
+def read_me(
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(get_current_user),
+):
+    return _serialize_user(current_user, db)
 
 
 @router.get("/profile", response_model=schemas.UserRead)
-def read_profile(current_user: db_models.User = Depends(get_current_user)):
-    return current_user
+def read_profile(
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(get_current_user),
+):
+    return _serialize_user(current_user, db)
 
 
 @router.patch("/profile", response_model=schemas.UserRead)
@@ -150,7 +175,7 @@ def update_profile(
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
-    return current_user
+    return _serialize_user(current_user, db)
 
 
 @router.post("/password-reset/request", response_model=schemas.PasswordResetResponse)

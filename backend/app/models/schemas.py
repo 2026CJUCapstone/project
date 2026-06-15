@@ -182,6 +182,9 @@ class LeaderboardRead(CamelModel):
     rank: int
     username: str
     total_score: int
+    rating: int
+    tier: str
+    solved_count: int
     avatar_url: Optional[str] = None
 
 
@@ -196,6 +199,15 @@ class LeaderboardScoreRead(LeaderboardRead):
     challenge_id: str
     awarded_points: int
     already_solved: bool
+
+
+class TagProficiencyRead(CamelModel):
+    tag: str
+    solved_count: int
+    difficulty_score: int
+    max_difficulty: Optional[str] = None
+    max_difficulty_value: int = 0
+    proficiency: int
 
 
 class TestCase(CamelModel):
@@ -290,6 +302,10 @@ class UserRead(CamelModel):
     email: Optional[str] = None
     nickname: Optional[str] = None
     total_score: int
+    rating: int = 0
+    tier: str = "Unrated"
+    solved_count: int = 0
+    tag_proficiencies: List[TagProficiencyRead] = Field(default_factory=list)
     avatar_url: Optional[str] = None
     role: str = "user"
 

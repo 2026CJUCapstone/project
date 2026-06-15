@@ -6,6 +6,7 @@ import { AuthModal } from './AuthModal';
 import { useCompilerStore } from '../store/compilerStore';
 import { getCurrentUser, updateProfile } from '../services/authApi';
 import { saveCodeProject } from '../services/projectApi';
+import { getProblemTagLabel } from '../constants/problemTags';
 import {
   clearLeaderboardProfile,
   getSavedLeaderboardProfile,
@@ -13,6 +14,14 @@ import {
   saveLeaderboardProfile,
   type LeaderboardProfile,
 } from '../services/leaderboardProfile';
+
+function formatDifficulty(difficulty?: string | null) {
+  if (!difficulty) return '기록 없음';
+  return difficulty.replace(/([a-z]+)(\d+)/i, (_, family: string, level: string) => {
+    const label = family.charAt(0).toUpperCase() + family.slice(1);
+    return `${label} ${level}`;
+  });
+}
 
 export function Header() {
   const navigate = useNavigate();
@@ -103,6 +112,22 @@ export function Header() {
     setUser(null);
     localStorage.removeItem('authToken');
     clearLeaderboardProfile();
+  };
+
+  const openProfileSettings = async () => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    setIsProfileOpen(true);
+    try {
+      const current = profileFromAuthUser(await getCurrentUser());
+      setUser(current);
+      saveLeaderboardProfile(current);
+    } catch {
+      // 프로필 편집 자체는 기존 로그인 상태 정보로 열어두고, 저장 시 서버 오류를 다시 표시한다.
+    }
   };
 
   const handleManualSave = async () => {
@@ -294,7 +319,9 @@ export function Header() {
           </button>
           
           <button
-            onClick={() => (user ? setIsProfileOpen(true) : setIsAuthModalOpen(true))}
+            onClick={() => {
+              void openProfileSettings();
+            }}
             className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2d2d2d] rounded-md transition-colors flex items-center gap-2"
             title="설정"
           >
@@ -308,8 +335,12 @@ export function Header() {
               username={user.name} 
               avatarUrl={user.avatar} 
               role={user.role}
-              onOpenProfile={() => setIsProfileOpen(true)}
-              onOpenSettings={() => setIsProfileOpen(true)}
+              onOpenProfile={() => {
+                void openProfileSettings();
+              }}
+              onOpenSettings={() => {
+                void openProfileSettings();
+              }}
               onLogout={handleLogout}
             />
           ) : (
@@ -333,7 +364,7 @@ export function Header() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <form
             onSubmit={handleProfileSave}
-            className="w-full max-w-md rounded-lg border border-gray-200 dark:border-[#333] bg-white dark:bg-[#1e1e1e] p-6 shadow-2xl"
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg border border-gray-200 bg-white p-6 shadow-2xl dark:border-[#333] dark:bg-[#1e1e1e]"
           >
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -349,6 +380,66 @@ export function Header() {
               >
                 <X size={18} />
               </button>
+            </div>
+
+            <div className="mb-5 grid grid-cols-2 gap-x-4 gap-y-3 border-y border-gray-200 py-3 dark:border-[#333] sm:grid-cols-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rating</p>
+                <p className="mt-1 font-mono text-lg font-bold text-blue-600 dark:text-blue-400">
+                  {(user.rating ?? 0).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tier</p>
+                <p className="mt-1 truncate text-sm font-bold text-gray-900 dark:text-white">{user.tier ?? 'Unrated'}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Solved</p>
+                <p className="mt-1 font-mono text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                  {(user.solvedCount ?? 0).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">XP</p>
+                <p className="mt-1 font-mono text-lg font-bold text-gray-700 dark:text-gray-200">
+                  {(user.totalScore ?? 0).toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-[#333] dark:bg-[#151515]">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">태그 숙련도</h3>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  해결 난이도 합산 기준
+                </span>
+              </div>
+              {user.tagProficiencies?.length ? (
+                <div className="space-y-3">
+                  {user.tagProficiencies.map((item) => (
+                    <div key={item.tag}>
+                      <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                        <span className="font-semibold text-gray-700 dark:text-gray-200">
+                          {getProblemTagLabel(item.tag)}
+                        </span>
+                        <span className="font-mono text-gray-500 dark:text-gray-400">
+                          {item.solvedCount} solved · {item.difficultyScore} pts · 최고 {formatDifficulty(item.maxDifficulty)}
+                        </span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-[#2a2a2a]">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500"
+                          style={{ width: `${Math.max(4, Math.min(100, item.proficiency))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-md border border-dashed border-gray-300 px-3 py-4 text-center text-sm text-gray-500 dark:border-[#444] dark:text-gray-400">
+                  아직 태그 숙련도를 계산할 accepted 기록이 없습니다.
+                </p>
+              )}
             </div>
 
             <div className="space-y-4">
