@@ -65,15 +65,15 @@ export function Landing() {
     >
       <section className="relative isolate overflow-hidden border-b border-slate-200 dark:border-white/10">
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_14%,rgba(59,130,246,0.14),transparent_32%),radial-gradient(circle_at_82%_76%,rgba(139,92,246,0.12),transparent_28%)] dark:bg-[radial-gradient(circle_at_18%_14%,rgba(59,130,246,0.2),transparent_32%),radial-gradient(circle_at_82%_76%,rgba(139,92,246,0.18),transparent_28%)]" />
-        <div className="mx-auto grid min-h-[650px] max-w-7xl items-center gap-14 px-6 py-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-10 lg:py-24">
+        <div className="mx-auto grid min-h-[650px] max-w-7xl items-center gap-14 px-6 py-20 lg:grid-cols-[1.12fr_0.88fr] lg:px-10 lg:py-24">
           <div>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold tracking-[0.18em] text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-300">
               <Sparkles size={14} /> B++ LEARNING PLAYGROUND
             </div>
-            <h1 className="max-w-3xl text-4xl font-black leading-[1.12] tracking-[-0.04em] text-slate-950 sm:text-5xl lg:text-6xl dark:text-white">
-              코드를 쓰고,
+            <h1 className="max-w-3xl text-4xl font-black leading-[1.12] tracking-[-0.04em] text-slate-950 sm:text-[42px] lg:text-[38px] xl:text-[46px] dark:text-white">
+              브라우저에서 코드를 실행하고
               <br />
-              <span className="text-blue-600 dark:text-blue-400">내부를 보고</span>, 문제로 증명하세요.
+              <span className="text-blue-600 dark:text-blue-400">컴파일 과정을 확인하세요.</span>
             </h1>
             <p className="mt-7 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg dark:text-slate-300">
               B++ Online Compiler는 코드 실행에서 끝나지 않습니다. 컴파일러의 변환 과정을 직접 확인하고,

@@ -27,7 +27,7 @@ test.describe("webcompiler browser e2e", () => {
     await page.goto("/webcompiler/");
 
     await expect(page.getByText("B++ Online Compiler")).toBeVisible();
-    await expect(page.getByRole("heading", { name: /코드를 쓰고/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /브라우저에서 코드를 실행하고/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /바로 코드 실행하기/ })).toBeVisible();
   });
 
