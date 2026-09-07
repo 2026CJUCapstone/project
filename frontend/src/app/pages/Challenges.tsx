@@ -89,7 +89,7 @@ function ChallengeRow({ challenge, index }: { challenge: Challenge; index: numbe
       <div className="flex justify-end">
         <button
           className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors"
-          onClick={() => navigate('/', { state: { challenge } })}
+          onClick={() => navigate('/ide', { state: { challenge } })}
         >
           <PlayCircle size={14} />
           문제 풀기

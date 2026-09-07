@@ -9,6 +9,7 @@ import { CompileQueue } from "./pages/CompileQueue";
 import { Submissions } from "./pages/Submissions";
 import { Admin } from "./pages/Admin";
 import { PasswordReset } from "./pages/PasswordReset";
+import { Landing } from "./pages/Landing";
 
 const routerBasePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -17,7 +18,8 @@ export const routeDefinitions = [
     path: "/",
     Component: Layout,
     children: [
-      { index: true, Component: IDE },
+      { index: true, Component: Landing },
+      { path: "ide", Component: IDE },
       { path: "leaderboard", Component: Leaderboard },
       { path: "challenges", Component: Challenges },
       { path: "challenges/:challengeId", Component: ChallengeDetail },

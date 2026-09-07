@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
-import { Terminal, Play, Save, Square, Swords, Trophy, MessageSquare, Settings, Sun, Moon, Hammer, X, Activity, ClipboardList } from 'lucide-react';
+import { Terminal, Play, Save, Square, Swords, Trophy, MessageSquare, Settings, Sun, Moon, Hammer, X, Activity, ClipboardList, Home, Code2, Menu } from 'lucide-react';
 import { UserProfile } from './UserProfile';
 import { AuthModal } from './AuthModal';
 import { ProfileStatsPanel } from './ProfileStatsPanel';
@@ -18,9 +18,10 @@ import {
 export function Header() {
   const navigate = useNavigate();
   const location = useLocation();
-  const isIdeMode = location.pathname === '/';
+  const isIdeMode = location.pathname === '/ide';
   
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [user, setUser] = useState<LeaderboardProfile | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [profileNickname, setProfileNickname] = useState('');
@@ -171,24 +172,25 @@ export function Header() {
 
   return (
     <>
-      <header className="flex items-center justify-between h-14 px-6 bg-white dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shrink-0 shadow-sm z-10 transition-colors duration-200">
-        <div className="flex items-center gap-6">
+      <header className="relative flex h-14 shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-white px-3 shadow-sm transition-colors duration-200 dark:border-[#333] dark:bg-[#1e1e1e] sm:px-6 z-50">
+        <div className="flex min-w-0 items-center gap-2 xl:gap-6">
           <button 
             onClick={() => navigate('/')} 
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none"
+            className="flex shrink-0 items-center gap-2 hover:opacity-80 transition-opacity focus:outline-none sm:gap-3"
           >
             <div className="flex items-center justify-center w-8 h-8 bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-lg shadow-inner">
               <Terminal size={18} strokeWidth={2.5} />
             </div>
-            <span className="text-lg font-bold text-gray-900 dark:text-gray-100 tracking-wide select-none">
+            <span className="hidden text-lg font-bold text-gray-900 dark:text-gray-100 tracking-wide select-none sm:inline">
               B++ Online Compiler
             </span>
+            <span className="text-base font-bold text-gray-900 dark:text-gray-100 sm:hidden">B++</span>
           </button>
 
-          <div className="w-[1px] h-6 bg-gray-200 dark:bg-[#444] mx-2"></div>
+          <div className="mx-2 hidden h-6 w-px bg-gray-200 dark:bg-[#444] xl:block"></div>
 
           {isIdeMode && (
-            <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-[#252525] p-1 rounded-md border border-gray-200 dark:border-[#333] transition-colors duration-200">
+            <div className="flex shrink-0 items-center gap-1 bg-gray-50 dark:bg-[#252525] p-1 rounded-md border border-gray-200 dark:border-[#333] transition-colors duration-200 sm:gap-1.5">
               <select
                 value={language}
                 onChange={(event) => setLanguage(event.target.value as typeof language)}
@@ -206,7 +208,7 @@ export function Header() {
                 onClick={() => {
                   void handleManualSave();
                 }}
-                className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors"
+                className="hidden p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors sm:block"
                 title="저장"
               >
                 <Save size={16} />
@@ -215,7 +217,7 @@ export function Header() {
                 onClick={() => { void compile(); }}
                 disabled={isCompiling || isRunning}
                 data-testid="compile-button"
-                className="p-1.5 text-orange-600 dark:text-orange-500 hover:text-orange-700 dark:hover:text-orange-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="hidden p-1.5 text-orange-600 dark:text-orange-500 hover:text-orange-700 dark:hover:text-orange-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed sm:block"
                 title="컴파일 (Ctrl+Shift+B)"
               >
                 <Hammer size={16} />
@@ -234,7 +236,7 @@ export function Header() {
               <button
                 onClick={cancelRun}
                 disabled={!isRunning}
-                className="p-1.5 text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="hidden p-1.5 text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed sm:block"
                 title="중지"
               >
                 <Square size={16} className="fill-current" />
@@ -242,7 +244,39 @@ export function Header() {
             </div>
           )}
 
-          <div className="flex items-center gap-1 ml-2">
+          <button
+            type="button"
+            onClick={() => setIsMobileNavOpen((open) => !open)}
+            className="ml-1 rounded-md p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-[#2d2d2d] xl:hidden"
+            aria-label="메뉴 열기"
+            aria-expanded={isMobileNavOpen}
+          >
+            {isMobileNavOpen ? <X size={19} /> : <Menu size={19} />}
+          </button>
+
+          <div className="ml-2 hidden items-center gap-1 xl:flex">
+            <button
+              onClick={() => navigate('/')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                location.pathname === '/'
+                  ? 'bg-gray-100 dark:bg-[#2d2d2d] text-gray-900 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2d2d2d]'
+              }`}
+            >
+              <Home size={16} className="text-slate-500 dark:text-slate-300" />
+              홈
+            </button>
+            <button
+              onClick={() => navigate('/ide')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
+                location.pathname === '/ide'
+                  ? 'bg-gray-100 dark:bg-[#2d2d2d] text-gray-900 dark:text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2d2d2d]'
+              }`}
+            >
+              <Code2 size={16} className="text-cyan-600 dark:text-cyan-400" />
+              IDE
+            </button>
             <button 
               onClick={() => navigate('/challenges')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
@@ -301,7 +335,7 @@ export function Header() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
           <button 
             onClick={toggleTheme}
             className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2d2d2d] rounded-md transition-colors flex items-center gap-2" 
@@ -320,7 +354,7 @@ export function Header() {
             <Settings size={18} />
           </button>
           
-          <div className="w-[1px] h-6 bg-gray-200 dark:bg-[#444]"></div>
+          <div className="hidden h-6 w-px bg-gray-200 dark:bg-[#444] sm:block"></div>
 
           {user ? (
             <UserProfile 
@@ -338,13 +372,46 @@ export function Header() {
           ) : (
             <button 
               onClick={() => setIsAuthModalOpen(true)}
-              className="px-5 py-1.5 bg-white dark:bg-[#2d2d2d] hover:bg-gray-50 dark:hover:bg-[#3d3d3d] border border-gray-200 dark:border-[#444] text-gray-700 dark:text-gray-200 rounded-md text-sm font-medium transition-all shadow-sm active:scale-95"
+              className="px-3 py-1.5 bg-white dark:bg-[#2d2d2d] hover:bg-gray-50 dark:hover:bg-[#3d3d3d] border border-gray-200 dark:border-[#444] text-gray-700 dark:text-gray-200 rounded-md text-sm font-medium transition-all shadow-sm active:scale-95 sm:px-5"
             >
               로그인
             </button>
           )}
         </div>
       </header>
+
+      {isMobileNavOpen && (
+        <nav className="fixed inset-x-0 top-14 z-40 grid grid-cols-2 gap-2 border-b border-gray-200 bg-white p-3 shadow-xl dark:border-[#333] dark:bg-[#171717] sm:grid-cols-4 xl:hidden" aria-label="모바일 메뉴">
+          {[
+            { path: '/', label: '홈', icon: Home },
+            { path: '/ide', label: 'IDE', icon: Code2 },
+            { path: '/challenges', label: '챌린지', icon: Swords },
+            { path: '/leaderboard', label: '리더보드', icon: Trophy },
+            { path: '/queue', label: '컴파일 큐', icon: Activity },
+            { path: '/submissions', label: '제출 기록', icon: ClipboardList },
+            { path: '/community', label: '커뮤니티', icon: MessageSquare },
+          ].map(({ path, label, icon: Icon }) => {
+            const active = path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+            return (
+              <button
+                key={path}
+                type="button"
+                onClick={() => {
+                  navigate(path);
+                  setIsMobileNavOpen(false);
+                }}
+                className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${
+                  active
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-[#252525]'
+                }`}
+              >
+                <Icon size={16} /> {label}
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       <AuthModal 
         isOpen={isAuthModalOpen} 

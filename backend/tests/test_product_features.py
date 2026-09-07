@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.core.config import settings
+from app.core.bootstrap import COMMUNITY_GUIDE_NOTICE_ID
 from app.core.database import SessionLocal
 from app.main import app
 from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, Submission, User, UserProblemScore
@@ -207,6 +208,21 @@ async def test_notice_posts_require_admin_role():
         finally:
             db.close()
         _delete_users(username)
+
+
+@pytest.mark.asyncio
+async def test_community_guide_notice_is_published():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            "/api/v1/community/posts",
+            params={"problemId": "__notice__"},
+        )
+
+    assert response.status_code == 200
+    notices = response.json()
+    guide = next(item for item in notices if item["id"] == COMMUNITY_GUIDE_NOTICE_ID)
+    assert "B++ 커뮤니티 이용 안내" in guide["content"]
+    assert "문제 토론" in guide["content"]
 
 
 @pytest.mark.asyncio

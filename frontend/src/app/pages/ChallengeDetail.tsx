@@ -142,7 +142,7 @@ export function ChallengeDetail() {
               큐
             </button>
             <button
-              onClick={() => navigate('/', { state: { challenge } })}
+              onClick={() => navigate('/ide', { state: { challenge } })}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white"
             >
               <PlayCircle size={16} />

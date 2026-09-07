@@ -40,6 +40,19 @@ describe("app routes", () => {
     ]);
   });
 
+  it("renders the platform landing page", async () => {
+    const router = createMemoryRouter(routeDefinitions, {
+      initialEntries: ["/"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByTestId("landing-page")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /코드를 쓰고/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /바로 코드 실행하기/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /챌린지 둘러보기/ })).toBeInTheDocument();
+  });
+
   it("renders the leaderboard page", async () => {
     const router = createMemoryRouter(routeDefinitions, {
       initialEntries: ["/leaderboard"],

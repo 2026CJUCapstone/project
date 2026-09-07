@@ -23,10 +23,17 @@ print(f"program says: {line}")
 `;
 
 test.describe("webcompiler browser e2e", () => {
-  test("loads the app from /webcompiler and shows the default example", async ({ page }) => {
+  test("introduces the platform from /webcompiler", async ({ page }) => {
     await page.goto("/webcompiler/");
 
     await expect(page.getByText("B++ Online Compiler")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /코드를 쓰고/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /바로 코드 실행하기/ })).toBeVisible();
+  });
+
+  test("loads the IDE and shows the default example", async ({ page }) => {
+    await page.goto("/webcompiler/ide");
+
     await expect(page.getByTestId("compile-run-button")).toBeVisible();
     await expect(page.getByTestId("output-console")).not.toContainText("> _");
     await expect(page.locator(".view-lines").first()).toContainText("var spf: [101]i64;");
@@ -34,7 +41,7 @@ test.describe("webcompiler browser e2e", () => {
   });
 
   test("runs B++ code through the browser at /webcompiler", async ({ page }) => {
-    await page.goto("/webcompiler/");
+    await page.goto("/webcompiler/ide");
     await page.evaluate((code) => {
       window.localStorage.setItem("b-compiler-editor-code", code);
     }, validBppProgram);
@@ -60,7 +67,7 @@ test.describe("webcompiler browser e2e", () => {
   });
 
   test("accepts terminal input and renders terminal output at /webcompiler", async ({ page }) => {
-    await page.goto("/webcompiler/");
+    await page.goto("/webcompiler/ide");
     await page.evaluate((code) => {
       window.localStorage.setItem("b-compiler-editor-code", code);
     }, interactivePythonProgram);
