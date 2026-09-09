@@ -17,42 +17,42 @@ import { useNavigate } from 'react-router';
 const featureCards = [
   {
     icon: Terminal,
-    eyebrow: 'ONLINE IDE',
-    title: '설치 없이 바로 실행',
-    description: '브라우저에서 B++, C, C++, Python, Java, JavaScript 코드를 작성하고 컴파일 결과를 확인하세요.',
+    eyebrow: 'IDE',
+    title: '설치 없이 코드 실행',
+    description: 'B++, C, C++, Python, Java, JavaScript를 지원합니다. 언어를 선택하고 코드를 실행하면 결과를 확인할 수 있습니다.',
     accent: 'text-blue-600 dark:text-blue-300',
     panel: 'bg-blue-50 dark:bg-blue-500/10',
   },
   {
     icon: Layers3,
-    eyebrow: 'COMPILER INSIGHT',
-    title: '컴파일 과정을 눈으로',
-    description: 'AST, SSA, IR, ASM으로 이어지는 변환 단계를 그래프로 살펴보며 코드가 실행 파일이 되는 과정을 이해하세요.',
+    eyebrow: '컴파일 분석',
+    title: 'B++ 컴파일 과정 살펴보기',
+    description: 'B++ 코드의 AST와 SSA는 그래프로, IR과 어셈블리 코드는 텍스트로 확인할 수 있습니다.',
     accent: 'text-violet-600 dark:text-violet-300',
     panel: 'bg-violet-50 dark:bg-violet-500/10',
   },
   {
     icon: Swords,
-    eyebrow: 'CHALLENGES',
-    title: '문제로 실력을 증명',
-    description: '난이도와 주제별 알고리즘 문제를 풀고 자동 채점 결과와 제출 기록으로 성장을 확인하세요.',
+    eyebrow: '챌린지',
+    title: '알고리즘 문제 풀기',
+    description: '난이도와 주제별로 문제를 찾아 풀어보세요. 제출한 코드의 채점 결과와 이전 제출 기록을 확인할 수 있습니다.',
     accent: 'text-emerald-600 dark:text-emerald-300',
     panel: 'bg-emerald-50 dark:bg-emerald-500/10',
   },
   {
     icon: MessageCircle,
-    eyebrow: 'COMMUNITY',
-    title: '함께 묻고 나누기',
-    description: '문제별 토론과 자유 게시판에서 풀이 방향, 언어 사용법, 개선 아이디어를 동료 학습자와 나누세요.',
+    eyebrow: '커뮤니티',
+    title: '질문과 풀이 나누기',
+    description: '문제를 풀다가 막힌 부분이나 언어 사용법을 질문해 보세요. 자유 게시판에는 서비스 개선 의견도 남길 수 있습니다.',
     accent: 'text-orange-600 dark:text-orange-300',
     panel: 'bg-orange-50 dark:bg-orange-500/10',
   },
 ];
 
 const steps = [
-  ['01', '코드를 작성하세요', '온라인 IDE에서 예제 코드를 실행하거나 원하는 언어로 새 프로그램을 시작합니다.'],
-  ['02', '내부 동작을 확인하세요', '컴파일 결과와 단계별 그래프를 오가며 코드가 어떻게 분석되고 변환되는지 살펴봅니다.'],
-  ['03', '문제에 도전하세요', '챌린지를 해결하고 제출 결과, 레이팅, 커뮤니티 피드백으로 다음 목표를 정합니다.'],
+  ['01', '코드 실행하기', 'IDE에서 언어를 선택하면 기본 예제 코드가 나타납니다. 예제를 그대로 실행하거나 직접 코드를 작성해 보세요.'],
+  ['02', 'B++ 컴파일 결과 살펴보기', 'B++ 코드를 실행한 뒤 AST·SSA 그래프와 IR·어셈블리 코드를 살펴보세요. 코드가 분석되고 변환되는 과정을 확인할 수 있습니다.'],
+  ['03', '알고리즘 문제 풀기', '챌린지에서 문제를 골라 코드를 제출해 보세요. 채점 결과와 레이팅을 확인하고, 궁금한 점은 커뮤니티에 질문할 수 있습니다.'],
 ];
 
 export function Landing() {
@@ -61,23 +61,23 @@ export function Landing() {
   return (
     <div
       data-testid="landing-page"
-      className="w-full overflow-y-auto bg-white text-slate-950 dark:bg-[#0b0d12] dark:text-white"
+      className="w-full overflow-y-auto break-keep bg-white text-slate-950 dark:bg-[#0b0d12] dark:text-white"
     >
       <section className="relative isolate overflow-hidden border-b border-slate-200 dark:border-white/10">
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_18%_14%,rgba(59,130,246,0.14),transparent_32%),radial-gradient(circle_at_82%_76%,rgba(139,92,246,0.12),transparent_28%)] dark:bg-[radial-gradient(circle_at_18%_14%,rgba(59,130,246,0.2),transparent_32%),radial-gradient(circle_at_82%_76%,rgba(139,92,246,0.18),transparent_28%)]" />
         <div className="mx-auto grid min-h-[650px] max-w-7xl items-center gap-14 px-6 py-20 lg:grid-cols-[1.12fr_0.88fr] lg:px-10 lg:py-24">
           <div>
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold tracking-[0.18em] text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-300">
-              <Sparkles size={14} /> B++ LEARNING PLAYGROUND
+              <Sparkles size={14} /> B++ 온라인 컴파일러
             </div>
             <h1 className="max-w-3xl text-4xl font-black leading-[1.12] tracking-[-0.04em] text-slate-950 sm:text-[42px] lg:text-[38px] xl:text-[46px] dark:text-white">
               브라우저에서 코드를 실행하고
               <br />
-              <span className="text-blue-600 dark:text-blue-400">컴파일 과정을 확인하세요.</span>
+              <span className="text-blue-600 dark:text-blue-400">B++의 컴파일 과정을 살펴보세요.</span>
             </h1>
             <p className="mt-7 max-w-2xl text-base leading-8 text-slate-600 sm:text-lg dark:text-slate-300">
-              B++ Online Compiler는 코드 실행에서 끝나지 않습니다. 컴파일러의 변환 과정을 직접 확인하고,
-              알고리즘 문제를 풀고, 다른 학습자와 지식을 나누는 실습형 프로그래밍 플랫폼입니다.
+              별도 설치 없이 코드를 작성하고 실행할 수 있습니다. B++ 코드의 컴파일 과정을 살펴보거나,
+              알고리즘 문제를 풀고 커뮤니티에서 질문을 주고받을 수 있습니다.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
               <button
@@ -85,7 +85,7 @@ export function Landing() {
                 onClick={() => navigate('/ide')}
                 className="group inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 active:scale-[0.98]"
               >
-                <Play size={17} className="fill-current" /> 바로 코드 실행하기
+                <Play size={17} className="fill-current" /> 코드 실행하기
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
               </button>
               <button
@@ -99,7 +99,7 @@ export function Landing() {
             <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
               <span className="inline-flex items-center gap-2"><CheckCircle2 size={15} className="text-emerald-500" /> 회원가입 없이 코드 실행</span>
               <span className="inline-flex items-center gap-2"><CheckCircle2 size={15} className="text-emerald-500" /> 6개 언어 지원</span>
-              <span className="inline-flex items-center gap-2"><CheckCircle2 size={15} className="text-emerald-500" /> 단계별 컴파일 분석</span>
+              <span className="inline-flex items-center gap-2"><CheckCircle2 size={15} className="text-emerald-500" /> B++ 컴파일 과정 분석</span>
             </div>
           </div>
 
@@ -146,12 +146,27 @@ export function Landing() {
         </div>
       </section>
 
+      <section aria-labelledby="bpp-language-heading" className="border-b border-slate-200 bg-white py-12 dark:border-white/10 dark:bg-[#0b0d12] sm:py-16">
+        <div className="mx-auto grid max-w-7xl gap-6 px-6 lg:grid-cols-[0.8fr_1.2fr] lg:gap-12 lg:px-10">
+          <div>
+            <div aria-hidden="true" className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400">
+              <Braces size={22} />
+            </div>
+            <h2 id="bpp-language-heading" className="text-2xl font-bold tracking-tight sm:text-3xl">B++는 어떤 언어인가요?</h2>
+          </div>
+          <div className="max-w-2xl space-y-3 break-keep text-base leading-8 text-slate-600 dark:text-slate-300">
+            <p>B++는 컴파일러의 동작 원리를 배우고 알고리즘 문제를 풀기 위해 만든 프로그래밍 언어입니다.</p>
+            <p>직접 작성한 코드가 어떻게 분석되고 실행 파일로 바뀌는지 단계별로 살펴볼 수 있습니다.</p>
+          </div>
+        </div>
+      </section>
+
       <section className="border-b border-slate-200 bg-slate-50 py-20 dark:border-white/10 dark:bg-[#0e1118]">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
           <div className="max-w-2xl">
-            <p className="text-xs font-bold tracking-[0.2em] text-blue-600 dark:text-blue-400">ONE PLACE, FULL CYCLE</p>
-            <h2 className="mt-3 text-3xl font-black tracking-[-0.03em] sm:text-4xl">배우고 실행하는 흐름이 끊기지 않도록</h2>
-            <p className="mt-4 leading-7 text-slate-600 dark:text-slate-400">도구를 옮겨 다니지 않고 한 화면에서 작성, 분석, 도전, 공유까지 이어갈 수 있습니다.</p>
+            <p className="text-xs font-bold tracking-[0.2em] text-blue-600 dark:text-blue-400">주요 기능</p>
+            <h2 className="mt-3 text-3xl font-black tracking-[-0.03em] sm:text-4xl">코드 실행과 문제 풀이</h2>
+            <p className="mt-4 leading-7 text-slate-600 dark:text-slate-400">코드 실행은 IDE에서, 알고리즘 연습은 챌린지에서 시작하세요. 질문이나 풀이 이야기는 커뮤니티에 남길 수 있습니다.</p>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {featureCards.map(({ icon: Icon, eyebrow, title, description, accent, panel }) => (
@@ -170,10 +185,10 @@ export function Landing() {
         <div className="mx-auto grid max-w-7xl gap-12 px-6 lg:grid-cols-[0.72fr_1.28fr] lg:px-10">
           <div>
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-950"><Zap size={22} /></div>
-            <h2 className="mt-6 text-3xl font-black tracking-[-0.03em]">처음이라면 이렇게 시작하세요</h2>
-            <p className="mt-4 max-w-md leading-7 text-slate-600 dark:text-slate-400">B++ 문법을 몰라도 괜찮습니다. 기본 예제를 실행한 뒤 결과를 바꾸어보는 것부터 시작하세요.</p>
+            <h2 className="mt-6 text-3xl font-black tracking-[-0.03em]">예제 코드부터 실행해 보세요</h2>
+            <p className="mt-4 max-w-md leading-7 text-slate-600 dark:text-slate-400">B++ 문법이 낯설다면 기본 예제부터 실행해 보세요. 코드를 조금씩 바꾸고 결과가 어떻게 달라지는지 확인하면 됩니다.</p>
             <button type="button" onClick={() => navigate('/community')} className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
-              커뮤니티 이용 안내 보기 <ArrowRight size={16} />
+              커뮤니티 가기 <ArrowRight size={16} />
             </button>
           </div>
           <ol className="grid gap-4">
@@ -189,7 +204,7 @@ export function Landing() {
 
       <section className="border-t border-slate-200 bg-slate-950 px-6 py-16 text-white dark:border-white/10">
         <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 lg:flex-row lg:items-center">
-          <div><p className="text-sm font-bold text-blue-400">READY TO BUILD?</p><h2 className="mt-2 text-3xl font-black tracking-tight">첫 번째 코드를 지금 실행해보세요.</h2><p className="mt-3 text-slate-400">브라우저만 있으면 시작할 수 있습니다.</p></div>
+          <div><h2 className="text-3xl font-black tracking-tight">코드를 실행해 보세요</h2><p className="mt-3 text-slate-400">IDE에서 언어를 선택하고 시작하면 됩니다.</p></div>
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={() => navigate('/ide')} className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-bold text-slate-950 hover:bg-slate-100"><Code2 size={17} /> IDE 열기</button>
             <button type="button" onClick={() => navigate('/leaderboard')} className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-5 py-3 text-sm font-bold text-white hover:bg-white/10"><Trophy size={17} /> 리더보드 보기</button>

@@ -28,7 +28,12 @@ test.describe("webcompiler browser e2e", () => {
 
     await expect(page.getByText("B++ Online Compiler")).toBeVisible();
     await expect(page.getByRole("heading", { name: /브라우저에서 코드를 실행하고/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /바로 코드 실행하기/ })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("B++의 컴파일 과정을 살펴보세요.");
+    await expect(page.getByRole("button", { name: "코드 실행하기", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "B++는 어떤 언어인가요?" })).toContainText("직접 작성한 코드가 어떻게 분석되고 실행 파일로 바뀌는지 단계별로 살펴볼 수 있습니다.");
+    await expect(page.getByText("B++ 코드의 AST와 SSA는 그래프로, IR과 어셈블리 코드는 텍스트로 확인할 수 있습니다.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "커뮤니티 가기", exact: true })).toBeVisible();
+    await expect(page.getByTestId("landing-page")).not.toContainText("READY TO BUILD?");
   });
 
   test("loads the IDE and shows the default example", async ({ page }) => {
