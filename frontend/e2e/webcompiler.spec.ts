@@ -68,13 +68,12 @@ test.describe("webcompiler browser e2e", () => {
 
   test("accepts terminal input and renders terminal output at /webcompiler", async ({ page }) => {
     await page.goto("/webcompiler/ide");
-    await page.evaluate((code) => {
-      window.localStorage.setItem("b-compiler-editor-code", code);
-    }, interactivePythonProgram);
-    await page.reload();
-    await expect(page.locator(".view-lines").first()).toContainText("line = input()");
-
+    await expect(page.locator(".view-lines").first()).toBeVisible();
     await page.getByRole("combobox", { name: "실행 언어 선택" }).selectOption("python");
+    await page.locator(".view-lines").first().click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.insertText(interactivePythonProgram);
+    await expect(page.locator(".view-lines").first()).toContainText("line = input()");
 
     await page.getByTestId("terminal-tab").click();
 

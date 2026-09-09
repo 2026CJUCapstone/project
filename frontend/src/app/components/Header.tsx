@@ -44,7 +44,7 @@ export function Header() {
     compileAndStartTerminal,
     isCompiling,
     language,
-    setLanguage,
+    selectLanguage,
     autoSaveEnabled,
     setAutoSaveEnabled,
   } = useCompilerStore();
@@ -193,7 +193,8 @@ export function Header() {
             <div className="flex shrink-0 items-center gap-1 bg-gray-50 dark:bg-[#252525] p-1 rounded-md border border-gray-200 dark:border-[#333] transition-colors duration-200 sm:gap-1.5">
               <select
                 value={language}
-                onChange={(event) => setLanguage(event.target.value as typeof language)}
+                onChange={(event) => selectLanguage(event.target.value as typeof language)}
+                disabled={isCompiling || isRunning}
                 className="bg-transparent text-xs font-medium text-gray-700 dark:text-gray-200 px-2 py-1.5 rounded outline-none"
                 title="실행 언어 선택"
               >

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { CODE_TEMPLATES } from './codeTemplates';
 import { checkHealth, compileCode, executeCode, type CompileResponse, type CompilerLanguage, type ExecuteResponse } from '../services/compilerApi';
 
 export type OutputLine = {
@@ -37,6 +38,7 @@ interface CompilerState {
   lastError: string | null;
   language: CompilerLanguage;
   setLanguage: (language: CompilerLanguage) => void;
+  selectLanguage: (language: CompilerLanguage) => void;
   isGraphViewerOpen: boolean;
   setGraphViewerOpen: (isOpen: boolean) => void;
   activeGraphTab: 'AST' | 'SSA' | 'IR' | 'ASM';
@@ -69,6 +71,7 @@ interface CompilerState {
   saveCode: (code: string, scope?: string | null) => void;
   loadCode: (scope?: string | null) => string | null;
   loadCodeSavedAt: (scope?: string | null) => number | null;
+  loadCodeLanguage: (scope?: string | null) => CompilerLanguage | null;
 }
 
 const LEGACY_STORAGE_KEY = 'b-compiler-editor-code';
@@ -189,6 +192,19 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   lastError: null,
   language: 'bpp',
   setLanguage: (language) => set({ language }),
+  selectLanguage: (language) => {
+    if (get().isCompiling || get().isRunning || get().language === language) return;
+    set({
+      language,
+      code: CODE_TEMPLATES[language],
+      lastCompile: null,
+      lastCompiledCode: null,
+      lastExecution: null,
+      lastError: null,
+      selectedText: '',
+      selectedSourceRange: null,
+    });
+  },
   isGraphViewerOpen: true,
   setGraphViewerOpen: (isOpen) => set({ isGraphViewerOpen: isOpen }),
   activeGraphTab: 'AST',
@@ -471,7 +487,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
       const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
       const savedAt = Date.now();
       localStorage.setItem(codeStorageKey(targetScope), code);
-      localStorage.setItem(codeStorageMetaKey(targetScope), JSON.stringify({ updatedAt: savedAt }));
+      localStorage.setItem(codeStorageMetaKey(targetScope), JSON.stringify({ updatedAt: savedAt, language: get().language }));
       set({ lastSavedTime: savedAt });
     } catch (error) {
       console.error('코드 저장 실패:', error);
@@ -491,6 +507,19 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
       return null;
     } catch (error) {
       console.error('코드 불러오기 실패:', error);
+      return null;
+    }
+  },
+
+  loadCodeLanguage: (scope) => {
+    try {
+      const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
+      const raw = localStorage.getItem(codeStorageMetaKey(targetScope));
+      const language: unknown = raw ? JSON.parse(raw).language : null;
+      return typeof language === 'string' && Object.prototype.hasOwnProperty.call(CODE_TEMPLATES, language)
+        ? language as CompilerLanguage
+        : null;
+    } catch {
       return null;
     }
   },

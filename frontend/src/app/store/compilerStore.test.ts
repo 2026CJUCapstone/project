@@ -82,4 +82,32 @@ describe("compilerStore", () => {
     expect(store.loadCode("problem:p-2")).toBe("problem two");
     expect(store.loadCodeSavedAt("main")).toEqual(expect.any(Number));
   });
+
+  it("replaces code on an explicit language selection and clears stale compile state", () => {
+    useCompilerStore.setState({ code: 'old code', lastCompile: { success: true, executionTime: 1 }, lastCompiledCode: 'old code' });
+    useCompilerStore.getState().selectLanguage('python');
+    const selected = useCompilerStore.getState();
+    expect(selected.language).toBe('python');
+    expect(selected.code).toContain('print(');
+    expect(selected.lastCompile).toBeNull();
+    expect(selected.lastCompiledCode).toBeNull();
+
+    selected.setCode('custom Python code');
+    selected.selectLanguage('python');
+    expect(useCompilerStore.getState().code).toBe('custom Python code');
+    selected.setLanguage('java');
+    expect(useCompilerStore.getState().code).toBe('custom Python code');
+  });
+
+  it("persists the language with the code while supporting older saved code", () => {
+    const store = useCompilerStore.getState();
+    expect(store.loadCodeLanguage('main')).toBeNull();
+    store.selectLanguage('java');
+    store.saveCode(useCompilerStore.getState().code, 'main');
+    store.selectLanguage('cpp');
+    store.saveCode(useCompilerStore.getState().code, 'problem:p-1');
+    expect(store.loadCodeLanguage('main')).toBe('java');
+    expect(store.loadCodeLanguage('problem:p-1')).toBe('cpp');
+    expect(store.loadCode('main')).toContain('public class Main');
+  });
 });

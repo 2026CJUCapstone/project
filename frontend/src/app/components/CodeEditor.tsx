@@ -22,6 +22,8 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     saveCode,
     loadCode,
     loadCodeSavedAt,
+    loadCodeLanguage,
+    code,
     setCode,
     setCodeStorageScope,
     compileAndStartTerminal,
@@ -35,6 +37,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const editorRef = useRef<any>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHydratingEditorRef = useRef(false);
+  const savedContentRef = useRef({ code: '', language: 'bpp' });
   const [hasHydratedEditor, setHasHydratedEditor] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const challengeId = location.state?.challenge?.id;
@@ -179,13 +182,12 @@ func main() -> u64 {
 
     setCodeStorageScope(codeStorageScope);
 
-    if (challengeId) {
-      setLanguage('bpp');
-    }
-
     const localCode = loadCode(codeStorageScope);
     const localSavedAt = loadCodeSavedAt(codeStorageScope);
+    const initialLanguage = loadCodeLanguage(codeStorageScope) ?? 'bpp';
+    setLanguage(initialLanguage);
     const nextCode = localCode ?? defaultCode;
+    savedContentRef.current = { code: nextCode, language: initialLanguage };
 
     isHydratingEditorRef.current = true;
     if (editorRef.current.getValue() !== nextCode) {
@@ -205,6 +207,8 @@ func main() -> u64 {
         try {
           const remote = await getCodeProject(codeStorageScope);
           if (cancelled || !remote || !editorRef.current) return;
+          const current = useCompilerStore.getState();
+          if (current.code !== nextCode || current.language !== initialLanguage) return;
           const remoteSavedAt = Date.parse(remote.updatedAt);
           const shouldUseRemote =
             localCode === null ||
@@ -214,7 +218,7 @@ func main() -> u64 {
             if (localCode !== remote.code) {
               void saveCodeProject(codeStorageScope, {
                 code: localCode,
-                language,
+                language: initialLanguage,
                 title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
               })
                 .then((saved) => setSyncStatus(saved ? 'server' : 'local'))
@@ -228,8 +232,10 @@ func main() -> u64 {
             editorRef.current.setValue(remote.code);
           }
           setLanguage(remote.language);
+          savedContentRef.current = { code: remote.code, language: remote.language };
           if (onCodeChange) onCodeChange(remote.code);
           setCode(remote.code);
+          saveCode(remote.code, codeStorageScope);
           setSaveStatus('saved');
           setSyncStatus('server');
           isHydratingEditorRef.current = false;
@@ -241,43 +247,46 @@ func main() -> u64 {
     return () => {
       cancelled = true;
     };
-  }, [challengeId, codeStorageScope, defaultCode, editorReady, language, loadCode, loadCodeSavedAt, onCodeChange, setCode, setCodeStorageScope, setLanguage, setSelectedSourceRange, setSelectedText]);
+  }, [codeStorageScope, defaultCode, editorReady, loadCode, loadCodeSavedAt, loadCodeLanguage, onCodeChange, saveCode, setCode, setCodeStorageScope, setLanguage, setSelectedSourceRange, setSelectedText]);
 
   // 자동저장 - debounce 방식으로 코드 변경 후 2초 뒤 저장
   useEffect(() => {
-    if (!autoSaveEnabled || !hasHydratedEditor) return;
+    if (!hasHydratedEditor) return;
+    if (savedContentRef.current.code === code && savedContentRef.current.language === language) return;
+    setSaveStatus('unsaved');
+    if (!autoSaveEnabled) return;
+    let cancelled = false;
 
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
     }
 
-    if (saveStatus === 'unsaved') {
-      setSaveStatus('saving');
-      autoSaveTimerRef.current = setTimeout(() => {
-        if (editorRef.current) {
-          const code = editorRef.current.getValue();
-          saveCode(code, codeStorageScope);
-          void saveCodeProject(codeStorageScope, {
-            code,
-            language,
-            title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
+    setSaveStatus('saving');
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (editorRef.current) {
+        saveCode(code, codeStorageScope);
+        savedContentRef.current = { code, language };
+        void saveCodeProject(codeStorageScope, {
+          code,
+          language,
+          title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
+        })
+          .then((saved) => { if (!cancelled) setSyncStatus(saved ? 'server' : 'local'); })
+          .catch((error) => {
+            console.warn('서버 코드 저장 실패:', error);
+            if (!cancelled) setSyncStatus('error');
           })
-            .then((saved) => setSyncStatus(saved ? 'server' : 'local'))
-            .catch((error) => {
-              console.warn('서버 코드 저장 실패:', error);
-              setSyncStatus('error');
-            })
-            .finally(() => setSaveStatus('saved'));
-        }
-      }, 2000);
-    }
+          .finally(() => { if (!cancelled) setSaveStatus('saved'); });
+      }
+    }, 2000);
 
     return () => {
+      cancelled = true;
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [autoSaveEnabled, codeStorageScope, language, saveStatus, saveCode, hasHydratedEditor]);
+  }, [autoSaveEnabled, code, codeStorageScope, language, saveCode, hasHydratedEditor]);
 
   // 마지막 저장 시간 포맷팅
   const getLastSavedText = () => {
@@ -363,6 +372,7 @@ func main() -> u64 {
           height="100%"
           language={editorLanguage}
           defaultValue={defaultCode}
+          value={code}
           theme={theme === 'dark' ? "bpp-dark" : "bpp-light"}
           onMount={(editor) => {
             editorRef.current = editor;
