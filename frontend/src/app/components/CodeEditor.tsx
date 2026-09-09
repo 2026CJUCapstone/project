@@ -1,7 +1,7 @@
 import Editor, { useMonaco } from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
 import { FileCode2, Copy, Check, Loader2, Clock } from "lucide-react";
-import { useLocation } from "react-router";
+import { useLocation, useParams } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
 import { getCodeProject, saveCodeProject } from "../services/projectApi";
 
@@ -14,6 +14,7 @@ function utf8ByteOffset(text: string, utf16Offset: number): number {
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
   const location = useLocation();
+  const { contestId, contestProblemId } = useParams();
   const {
     setSelectedText,
     setSelectedSourceRange,
@@ -41,7 +42,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const [hasHydratedEditor, setHasHydratedEditor] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const challengeId = location.state?.challenge?.id;
-  const codeStorageScope = challengeId ? `problem:${challengeId}` : 'main';
+  const codeStorageScope = contestId && contestProblemId ? `contest:${contestId}:${contestProblemId}` : challengeId ? `problem:${challengeId}` : 'main';
 
   let defaultCode = `import std.io;
 

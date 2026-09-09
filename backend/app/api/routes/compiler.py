@@ -8,6 +8,7 @@ from app.models import schemas
 from app.models.schemas import CodeRequest, CodeResponse, CompileRequest, CompileResponse
 from app.services import compiler as compiler_service
 from app.services.compile_queue import classify_compile_result, classify_run_result, compile_queue
+from app.services.contest_access import require_public_problem
 
 router = APIRouter()
 
@@ -101,4 +102,5 @@ async def get_compile_queue(
 def _get_problem(db: Session, problem_id: str | None) -> db_models.Problem | None:
     if not problem_id:
         return None
+    require_public_problem(db, problem_id)
     return db.query(db_models.Problem).filter(db_models.Problem.id == problem_id).first()

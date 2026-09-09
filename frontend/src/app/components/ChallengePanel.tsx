@@ -7,6 +7,8 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { JudgePanel } from "./JudgePanel";
+import { ContestJudgePanel } from "./ContestJudgePanel";
+import type { Contest } from "../services/contestApi";
 import type { TestCase } from "../services/problemApi";
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from "../constants/difficulty";
 import { getProblemTagClass, getProblemTagLabel } from "../constants/problemTags";
@@ -25,9 +27,10 @@ interface Props {
   challenge: Challenge;
   code: string;
   onClose?: () => void;
+  contest?: Contest;
 }
 
-export function ChallengePanel({ challenge, code, onClose }: Props) {
+export function ChallengePanel({ challenge, code, onClose, contest }: Props) {
   const [judgeOpen, setJudgeOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -54,14 +57,14 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
           <span className="text-xs font-semibold uppercase tracking-widest text-gray-200">문제</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          {!contest && <button
             onClick={goToCommunity}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-purple-300 hover:text-white hover:bg-purple-500/20 border border-purple-500/30 transition-colors"
             title="이 문제의 커뮤니티로 이동"
           >
             <MessageSquare size={12} />
             커뮤니티
-          </button>
+          </button>}
           {onClose && (
             <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-200 transition-colors">
               닫기
@@ -140,7 +143,7 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
         </div>
 
         {/* 채점 접기/펼치기 */}
-        <div className="border-t border-[#333]">
+        {contest ? <ContestJudgePanel contest={contest} problemId={challenge.id} /> : <div className="border-t border-[#333]">
           <button
             onClick={() => setJudgeOpen(!judgeOpen)}
             className="flex items-center justify-between w-full px-4 py-2.5 hover:bg-[#1a1a1a] transition-colors"
@@ -160,7 +163,7 @@ export function ChallengePanel({ challenge, code, onClose }: Props) {
               />
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

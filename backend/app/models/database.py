@@ -116,3 +116,56 @@ class Comment(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+class Contest(Base):
+    __tablename__ = "contests"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    creator_id = Column(String, ForeignKey("users.id"), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=False, default="")
+    starts_at = Column(DateTime, nullable=False, index=True)
+    ends_at = Column(DateTime, nullable=False, index=True)
+    published = Column(Boolean, nullable=False, default=False)
+    finalized_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+
+class ContestProblem(Base):
+    __tablename__ = "contest_problems"
+    __table_args__ = (UniqueConstraint("contest_id", "problem_id"), UniqueConstraint("contest_id", "position"))
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    contest_id = Column(String, ForeignKey("contests.id"), nullable=False, index=True)
+    problem_id = Column(String, ForeignKey("problems.id"), nullable=False, index=True)
+    position = Column(Integer, nullable=False)
+    points = Column(Integer, nullable=False)
+    is_new = Column(Boolean, nullable=False, default=False)
+    snapshot = Column(JSON, nullable=False)
+
+
+class ContestParticipant(Base):
+    __tablename__ = "contest_participants"
+    __table_args__ = (UniqueConstraint("contest_id", "user_id"),)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    contest_id = Column(String, ForeignKey("contests.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    joined_at = Column(DateTime, default=utc_now, nullable=False)
+
+
+class ContestSubmission(Base):
+    __tablename__ = "contest_submissions"
+    __table_args__ = (UniqueConstraint("contest_id", "user_id", "request_id"),)
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    contest_id = Column(String, ForeignKey("contests.id"), nullable=False, index=True)
+    contest_problem_id = Column(String, ForeignKey("contest_problems.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    request_id = Column(String, nullable=False)
+    language = Column(String, nullable=False)
+    code = Column(Text, nullable=False)
+    received_at = Column(DateTime, nullable=False, index=True)
+    status = Column(String, nullable=False, default="queued", index=True)
+    verdict = Column(String, nullable=False, default="pending")
+    finished_at = Column(DateTime, nullable=True)
+    lease_token = Column(String, nullable=True)
+    lease_until = Column(DateTime, nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)

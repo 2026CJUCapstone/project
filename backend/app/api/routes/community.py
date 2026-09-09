@@ -9,6 +9,7 @@ from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
+from app.services.contest_access import require_public_problem, private_problem_ids
 
 router = APIRouter()
 
@@ -47,6 +48,7 @@ def list_posts(
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
+    require_public_problem(db, problem_id, current_user)
     comments = (
         db.query(db_models.Comment)
         .filter(db_models.Comment.problem_id == problem_id)
@@ -72,6 +74,7 @@ def create_post(
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(get_current_user),
 ):
+    require_public_problem(db, payload.problem_id, current_user)
     if payload.problem_id == NOTICE_BOARD_ID and not _is_admin(current_user):
         raise HTTPException(status_code=403, detail="공지 작성은 관리자만 가능합니다.")
 
@@ -132,6 +135,8 @@ def update_post(
 @router.post("/posts/counts")
 def get_post_counts(payload: schemas.CommunityPostCountsRequest, db: Session = Depends(get_db)):
     problem_ids = [item for item in payload.problem_ids if item]
+    hidden_ids = set(db.scalars(private_problem_ids()).all())
+    problem_ids = [item for item in problem_ids if item not in hidden_ids]
     if not problem_ids:
         return {}
 

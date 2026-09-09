@@ -10,6 +10,10 @@ import { Submissions } from "./pages/Submissions";
 import { Admin } from "./pages/Admin";
 import { PasswordReset } from "./pages/PasswordReset";
 import { Landing } from "./pages/Landing";
+import { Contests } from "./pages/Contests";
+import { ContestDetail } from "./pages/ContestDetail";
+import { ContestEditor } from "./pages/ContestEditor";
+import { ContestProblemPage } from "./pages/ContestProblemPage";
 
 const routerBasePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -20,6 +24,11 @@ export const routeDefinitions = [
     children: [
       { index: true, Component: Landing },
       { path: "ide", Component: IDE },
+      { path: "contests", Component: Contests },
+      { path: "contests/new", Component: ContestEditor },
+      { path: "contests/:contestId", Component: ContestDetail },
+      { path: "contests/:contestId/edit", Component: ContestEditor },
+      { path: "contests/:contestId/problems/:contestProblemId", Component: ContestProblemPage },
       { path: "leaderboard", Component: Leaderboard },
       { path: "challenges", Component: Challenges },
       { path: "challenges/:challengeId", Component: ChallengeDetail },

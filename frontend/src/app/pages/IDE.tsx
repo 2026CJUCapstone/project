@@ -5,11 +5,12 @@ import { CodeEditor } from "../components/CodeEditor";
 import { OutputConsole } from "../components/OutputConsole";
 import { CompilerGraphViewer } from "../components/CompilerGraphViewer";
 import { useCompilerStore } from "../store/compilerStore";
+import type { ContestProblemDetail } from "../services/contestApi";
 
-export function IDE() {
+export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail } = {}) {
   const location = useLocation();
   const { code, setCode, isGraphViewerOpen } = useCompilerStore();
-  const challenge = location.state?.challenge;
+  const challenge = contestProblem ?? location.state?.challenge;
 
   return (
     <div className="relative w-full h-full bg-white dark:bg-[#0d0d0d] transition-colors duration-200">
@@ -17,7 +18,7 @@ export function IDE() {
         {challenge && (
           <>
             <Panel defaultSize={32} minSize={20} id="challenge-panel" order={1}>
-              <ChallengePanel challenge={challenge} code={code} />
+              <ChallengePanel challenge={challenge} code={code} contest={contestProblem?.contest} />
             </Panel>
 
             <PanelResizeHandle className="w-2 bg-gray-100 dark:bg-[#1e1e1e] border-x border-gray-200 dark:border-[#333] hover:bg-blue-100 dark:hover:bg-blue-600/50 transition-colors cursor-col-resize flex flex-col items-center justify-center relative z-10" id="challenge-horizontal-resize">

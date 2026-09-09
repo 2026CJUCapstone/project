@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from app.core.database import get_db
 from app.core.config import settings
@@ -12,6 +13,7 @@ from app.services.compiler import compiler_instance
 from app.services.compile_queue import classify_grading_result, compile_queue
 from app.services.rating import RatingStats, calculate_rating_stats, invalidate_rating_cache, rating_stats_for_users
 from app.services.redis_client import cache_get_json, cache_set_json, redis_key
+from app.services.contest_access import private_problem_ids, require_public_problem, now_utc
 
 router = APIRouter()
 
@@ -228,6 +230,8 @@ def list_problems(
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
     query = db.query(db_models.Problem).filter(~db_models.Problem.id.in_(SYSTEM_BOARD_IDS))
+    if current_user is None or current_user.role != "admin":
+        query = query.filter(~db_models.Problem.id.in_(private_problem_ids()))
     if difficulty:
         query = query.filter(db_models.Problem.difficulty == difficulty)
     
@@ -253,6 +257,11 @@ def list_problems(
 
 @router.put("/{id}", response_model=schemas.ProblemRead)
 def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
+    if db.query(db_models.ContestProblem.id).join(db_models.Contest).filter(
+        db_models.ContestProblem.problem_id == id, db_models.ContestProblem.is_new.is_(True),
+        or_(db_models.Contest.published.is_(False), db_models.Contest.ends_at > now_utc()),
+    ).first():
+        raise HTTPException(409, "비공개 대회 문제는 시작 전 대회 관리 화면에서 수정하세요.")
     db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="Problem not found")    
@@ -274,6 +283,8 @@ def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depend
 
 @router.delete("/{id}")
 def delete_problem(id: str, db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
+    if db.query(db_models.ContestProblem.id).filter_by(problem_id=id).first():
+        raise HTTPException(409, "대회에서 사용하는 문제는 삭제할 수 없습니다.")
     db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="Problem not found")
@@ -405,7 +416,7 @@ def list_submissions(
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
-    query = db.query(db_models.Submission)
+    query = db.query(db_models.Submission).filter(~db_models.Submission.problem_id.in_(private_problem_ids()))
     if problem_id:
         query = query.filter(db_models.Submission.problem_id == problem_id)
     if status:
@@ -425,10 +436,11 @@ def list_submissions(
             .first()
         )
         if matched_user is None:
-            return {"submissions": [], "total": db.query(db_models.Submission).count(), "filtered_total": 0}
+            return {"submissions": [], "total": db.query(db_models.Submission).filter(
+                ~db_models.Submission.problem_id.in_(private_problem_ids())).count(), "filtered_total": 0}
         query = query.filter(db_models.Submission.user_id == matched_user.id)
 
-    total = db.query(db_models.Submission).count()
+    total = db.query(db_models.Submission).filter(~db_models.Submission.problem_id.in_(private_problem_ids())).count()
     filtered_total = query.count()
     submissions = (
         query.order_by(desc(db_models.Submission.created_at))
@@ -466,6 +478,7 @@ def get_problem(
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
+    require_public_problem(db, id, current_user)
     problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
     if not problem or problem.id in SYSTEM_BOARD_IDS:
         raise HTTPException(status_code=404, detail="Problem not found")
@@ -489,6 +502,7 @@ async def submit_problem(
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user)
 ):
+    require_public_problem(db, id)
     _validate_submission_code_size(request.code)
     problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
     if not problem:
@@ -571,17 +585,25 @@ async def submit_problem(
     awarded_points = 0
     should_invalidate_rating = False
     if final_status == "Accepted" and current_user is not None and not already_solved:
-        awarded_points = problem.points
-        current_user.total_score += awarded_points
+        # A contest finalizer or another practice submission can award this
+        # problem while judging is in flight. The unique key is authoritative.
+        # This write also starts SQLite's outer transaction before SAVEPOINT.
+        db.query(db_models.User).filter_by(id=current_user.id).update({"id": current_user.id}, synchronize_session=False)
+        try:
+            with db.begin_nested():
+                db.add(db_models.UserProblemScore(user_id=current_user.id, challenge_id=id,
+                                                  points_awarded=problem.points))
+                db.flush()
+        except IntegrityError:
+            already_solved = True
+        else:
+            awarded_points = problem.points
+            db.query(db_models.User).filter_by(id=current_user.id).update({
+                db_models.User.total_score: db_models.User.total_score + awarded_points,
+            }, synchronize_session=False)
+            should_invalidate_rating = True
+        db.refresh(current_user)
         total_score = current_user.total_score
-
-        score_record = db_models.UserProblemScore(
-            user_id=current_user.id,
-            challenge_id=id,
-            points_awarded=awarded_points
-        )
-        db.add(score_record)
-        should_invalidate_rating = True
     elif current_user is not None:
         total_score = current_user.total_score
 

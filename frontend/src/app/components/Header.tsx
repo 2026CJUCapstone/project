@@ -18,7 +18,7 @@ import {
 export function Header() {
   const navigate = useNavigate();
   const location = useLocation();
-  const isIdeMode = location.pathname === '/ide';
+  const isIdeMode = location.pathname === '/ide' || /^\/contests\/[^/]+\/problems\/[^/]+$/.test(location.pathname);
   
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -248,14 +248,14 @@ export function Header() {
           <button
             type="button"
             onClick={() => setIsMobileNavOpen((open) => !open)}
-            className="ml-1 rounded-md p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-[#2d2d2d] xl:hidden"
+            className={`ml-1 shrink-0 rounded-md p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-[#2d2d2d] ${isIdeMode ? 'min-[1680px]:hidden' : 'xl:hidden'}`}
             aria-label="메뉴 열기"
             aria-expanded={isMobileNavOpen}
           >
             {isMobileNavOpen ? <X size={19} /> : <Menu size={19} />}
           </button>
 
-          <div className="ml-2 hidden items-center gap-1 xl:flex">
+          <div className={`ml-2 hidden shrink-0 items-center gap-1 whitespace-nowrap ${isIdeMode ? 'min-[1680px]:flex' : 'xl:flex'}`}>
             <button
               onClick={() => navigate('/')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
@@ -290,6 +290,13 @@ export function Header() {
               챌린지
             </button>
             <button 
+              onClick={() => navigate('/contests')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${location.pathname.startsWith('/contests') ? 'bg-gray-100 dark:bg-[#2d2d2d] text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#2d2d2d]'}`}
+            >
+              <Trophy size={16} className="text-orange-500" />
+              콘테스트
+            </button>
+            <button
               onClick={() => navigate('/leaderboard')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
                 location.pathname === '/leaderboard' 
@@ -382,11 +389,12 @@ export function Header() {
       </header>
 
       {isMobileNavOpen && (
-        <nav className="fixed inset-x-0 top-14 z-40 grid grid-cols-2 gap-2 border-b border-gray-200 bg-white p-3 shadow-xl dark:border-[#333] dark:bg-[#171717] sm:grid-cols-4 xl:hidden" aria-label="모바일 메뉴">
+        <nav className={`fixed inset-x-0 top-14 z-40 grid grid-cols-2 gap-2 border-b border-gray-200 bg-white p-3 shadow-xl dark:border-[#333] dark:bg-[#171717] sm:grid-cols-4 ${isIdeMode ? 'min-[1680px]:hidden' : 'xl:hidden'}`} aria-label="모바일 메뉴">
           {[
             { path: '/', label: '홈', icon: Home },
             { path: '/ide', label: 'IDE', icon: Code2 },
             { path: '/challenges', label: '챌린지', icon: Swords },
+            { path: '/contests', label: '콘테스트', icon: Trophy },
             { path: '/leaderboard', label: '리더보드', icon: Trophy },
             { path: '/queue', label: '컴파일 큐', icon: Activity },
             { path: '/submissions', label: '제출 기록', icon: ClipboardList },
