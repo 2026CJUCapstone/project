@@ -79,6 +79,13 @@ def test_binary_contract_is_not_newline_normalized(deploy, tmp_path, name):
     assert deploy.contract_bytes(path) == b'\x00\r\n'
 
 
+@pytest.mark.parametrize('name', ['Dockerfile', '.gitignore', 'hello.bpp', 'main.c', 'requirements.lock', 'worker.py'])
+def test_known_source_contract_normalizes_only_crlf(deploy, tmp_path, name):
+    path = tmp_path / name
+    path.write_bytes(b'first\r\nsecond\nthird\rfourth')
+    assert deploy.contract_bytes(path) == b'first\nsecond\nthird\rfourth'
+
+
 @pytest.mark.parametrize('edge_failure', [False, True])
 def test_failed_candidate_rolls_back_before_error_propagates(deploy, tmp_path, monkeypatch, edge_failure):
     state = {'phase': 'built', 'old': {'source_sha': 'old'}, 'old_ids': {}, 'postgres_id': 'pg'}

@@ -101,7 +101,7 @@ def contract_bytes(path):
     # The adopted release was exported by Windows Git. Compare recognized
     # UTF-8 text contracts across CRLF/LF, but preserve every other byte.
     # Binary/unknown files and runtime filename additions stay exact.
-    if path.suffix.lower() in {'.py', '.sh', '.yml', '.yaml', '.json', '.txt', '.md', '.conf', '.lock', '.toml', '.env'} or path.name == 'Dockerfile':
+    if path.suffix.lower() in {'.py', '.sh', '.yml', '.yaml', '.json', '.txt', '.md', '.conf', '.lock', '.toml', '.env', '.c', '.cpp', '.h', '.bpp'} or path.name in {'Dockerfile', '.gitignore'}:
         data.decode('utf-8')  # invalid text is an error, never lossy decoding
         return data.replace(b'\r\n', b'\n')
     return data
