@@ -41,14 +41,15 @@ def test_bundle_exact_sha_and_replaces_stale_marker(tmp_path):
 
 
 @pytest.mark.skipif(os.name != 'posix', reason='POSIX non-root runtime permission contract')
-def test_private_umask_does_not_make_runtime_assets_private(deploy, tmp_path):
+@pytest.mark.parametrize('member_name', ['frontend-dist/assets/file.js', 'frontend-dist/assets/sub/../file.js'])
+def test_private_umask_does_not_make_runtime_assets_private(deploy, tmp_path, member_name):
     archive = tmp_path / 'assets.tar'
     tmp_path.chmod(0o700)
     private = tmp_path / 'release-state.json'
     private.write_text('private')
     private.chmod(0o600)
     with tarfile.open(archive, 'w') as tar:
-        member = tarfile.TarInfo('frontend-dist/assets/file.js')
+        member = tarfile.TarInfo(member_name)
         member.size, member.mode = 1, 0o644
         tar.addfile(member, io.BytesIO(b'x'))
     before = os.umask(0o077)
@@ -61,6 +62,17 @@ def test_private_umask_does_not_make_runtime_assets_private(deploy, tmp_path):
     assert (tmp_path / 'frontend-dist').stat().st_mode & 0o777 == 0o755
     assert (tmp_path / 'frontend-dist/assets').stat().st_mode & 0o777 == 0o755
     assert (tmp_path / 'frontend-dist/assets/file.js').stat().st_mode & 0o777 == 0o644
+    marker = tmp_path / 'frontend-dist/.well-known/webcompiler-release.json'
+    marker.parent.mkdir()
+    marker.write_text('{}')
+    marker.chmod(0o644)
+    before = os.umask(0o077)
+    try:
+        context = deploy.build_context('frontend')
+    finally:
+        os.umask(before)
+    assert (context / marker.relative_to(tmp_path)).stat().st_mode & 0o777 == 0o644
+    assert not (context / 'release.json').exists()
 
 
 @pytest.mark.parametrize('name,kind', [('../outside', 'file'), ('/outside', 'file'), ('frontend-dist/link', 'link'), ('other/index.html', 'file')])
@@ -179,4 +191,4 @@ def test_build_context_never_contains_secret_journal(deploy, tmp_path, role, all
     assert (context / allowed).is_file()
     assert not (context / 'release-state.json').exists()
     assert not (context / 'pre-update-production.dump').exists()
-    assert {str(p.relative_to(context)).replace('\\', '/') for p in context.rglob('*') if p.is_file()} == ({allowed, 'release.json'} if role == 'frontend' else {allowed})
+    assert {str(p.relative_to(context)).replace('\\', '/') for p in context.rglob('*') if p.is_file()} == {allowed}
