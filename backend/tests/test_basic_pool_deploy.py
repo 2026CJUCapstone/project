@@ -63,10 +63,27 @@ def test_dependency_schema_runtime_changes_fail_before_rollout(deploy, tmp_path,
             path = base / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b'same\n')
+    # Existing Windows archive is semantically identical to Linux Git input.
+    for name in deploy.CONTRACTS + ['runtime/bpp-ref.txt']:
+        (before / name).write_bytes(b'same\r\n')
     deploy.check_contracts(before, after)
     (after / changed).write_bytes(b'changed\n')
     with pytest.raises(AssertionError):
         deploy.check_contracts(before, after)
+
+
+@pytest.mark.parametrize('name', ['contract.bin', 'contract.unknown'])
+def test_binary_contract_is_not_newline_normalized(deploy, tmp_path, name):
+    path = tmp_path / name
+    path.write_bytes(b'\x00\r\n')
+    assert deploy.contract_bytes(path) == b'\x00\r\n'
+
+
+@pytest.mark.parametrize('name', ['Dockerfile', '.gitignore', 'hello.bpp', 'main.c', 'requirements.lock', 'worker.py'])
+def test_known_source_contract_normalizes_only_crlf(deploy, tmp_path, name):
+    path = tmp_path / name
+    path.write_bytes(b'first\r\nsecond\nthird\rfourth')
+    assert deploy.contract_bytes(path) == b'first\nsecond\nthird\rfourth'
 
 
 @pytest.mark.parametrize('edge_failure', [False, True])

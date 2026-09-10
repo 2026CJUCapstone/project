@@ -20,7 +20,7 @@
 1. main의 정확한 commit이 CI에 통과했는지 확인한다. fork PR/다른 branch/실패 CI는 SSH 전에 거절한다. SSH는 사전에 신뢰한 해당 host:port 키를 고정한다.
 2. 같은 commit을 checkout한 GitHub runner에서 Node24/npm ci로 `/webcompiler/` 프런트를 빌드한다. package helper가 정확한 SHA marker를 넣는다.
 3. 단일 SSH stdin으로 gzip bundle을 전달한다. 기존 remote deploy lock을 잡은 다음 임시0600 파일에 수신하고 digest를 확인한다. 같은 lock을 fetch→checkout→image build→전환까지 유지한다.
-4. 원격 Git archive만 source로 사용한다. 이전 release와 schema/bootstrap/dependency lock/Dockerfile/nginx/Compose/runtime 계약을 비교한다. 변경된 계약이나 삭제된 backend module은 자동 overlay를 거절한다. 승인된 migration/clean image 준비 후 별도 절차가 필요하다.
+4. 원격 Git archive만 source로 사용한다. 이전 release와 schema/bootstrap/dependency lock/Dockerfile/nginx/Compose/runtime 계약을 비교한다. 기존 Windows archive의 알려진 UTF-8 텍스트 파일은 CRLF/LF 차이만 정규화하며 그 밖의 bytes/파일 추가·삭제는 보존한다. 새 shell은 실제 LF여야 한다. 변경된 계약이나 삭제된 backend module은 자동 overlay를 거절한다. 승인된 migration/clean image 준비 후 별도 절차가 필요하다.
 5. 정확한 기존 dependency image 위에 앱·sandbox launcher·새 프런트만 COPY한다. Docker context는 역할별 허용 파일만 복사한 별도 디렉터리이며 비밀을 포함한 journal/DB dump는 전송하지 않는다. CPU1/2GiB/no network/no pull 빌드이며 8GiB 가용공간이 필요하다. 이것은 clean dependency build나 새 이미지 SBOM attestation이 아니다.
 6. edge 일시503 → 신규 접수 차단 → 접수 작업 drain → DB dump/목록 검증 → API2개·worker·frontend만 교체한다. PostgreSQL/Redis/PgBouncer/proxy 컨테이너를 재생성하지 않는다.
 7. health/release SHA/관리자 인증6언어 실제 실행/보호 데이터 fingerprint/기존 stateful IDs를 검사한 후 공개한다. 실패 시 이전 이미지와 새 runtime incarnation으로 rollback하며 DB dump를 덮어쓰지 않는다.
