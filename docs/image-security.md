@@ -79,4 +79,22 @@ Docker29.3/containerd store에서 public Nginx의 `docker image inspect .Id`는 
 
 ### 남은 검증
 
+### main 병합 후속 검사 — 2026-09-10 12:39 UTC
+
+PR #24의 CI `34477170700`에서 backend-tests, frontend-checks, compose-config는 성공했으나 image-security는 CycloneDX 버전 비교 오류로 중단됐다. Trivy 0.74.0은 Debian 패키지의 epoch를 PURL의 `epoch=1` 같은 qualifier로 분리하고, CycloneDX version에는 `1:version-release`로 포함한다. 기존 검증기는 qualifier를 버려 서로 다른 문자열로 판단했다. `scan_image.py`에서 Debian/RPM epoch를 복원하도록 수정하고, 중복·비정상 epoch와 잘못된 버전은 계속 거부한다. PURL 전체 집합·이미지 ID 대조 및 취약점 차단 정책은 유지한다. 관련 로컬 scanner/orchestration 테스트 **59개 통과**.
+
+수정한 검증기로 현재 운영 백엔드의 불변 이미지 `sha256:1c64eae4593ff9ea3af26fd8c16599391cd022236c1fb64b408a70334f16aebf`를 **읽기 전용** 검사했다. 대상 이미지를 실행하거나 운영 데이터·컨테이너를 변경하지 않았다. 별도 systemd unit에 768MiB/추가 swap0/0.5CPU/128Tasks/600초 제한을 적용했고, 1.753초 후 종료했다.
+
+- Trivy DB UpdatedAt: `2026-09-10T07:06:15.043595671Z`.
+- Debian 13.6, 설치 패키지 131개 및 고유 PURL 131개가 변환 후 일치했다.
+- 탐지 행 수: **Critical 3 / High 51 / Medium 62 / Low 58 / Unknown 5**. 정책 결과는 **실패, exit1**이다. 패키지/권고 조합의 행 수이며, 독립 취약점 수나 실제 악용 가능성을 의미하지 않는다.
+- Critical 3개는 `perl-base 5.40.1-6`의 `CVE-2026-13221`, `CVE-2026-42496`, `CVE-2026-8376`이다. 보고서에서 이 항목들의 FixedVersion은 없으며 하나는 `fix_deferred`다. High/Unknown에도 배포판 수정 버전이 표시되지 않은 항목이 있다. 단순 버전 업데이트로 모두 해결된다고 단정하지 않는다.
+- 서버 증거: `/home/vulpo/webcompiler-main-tests-0dfa1918/backend-scan-epoch-fixed/{report.json,sbom.cdx.json,manifest.json}`. report SHA-256 `8a76ce38f683d443913915e41ab79a47fdaede509a67ccc51607ff7637a090cf`, SBOM SHA-256 `4a1f06ef2de03cedf4328b72cf53079b109efaec4da32e86b1d1490886e0e43b`.
+
+이 검사는 기존 운영 이미지의 **base scope** 결과로, 후속 PR의 정확한 소스 빌드나 세 역할 전체의 검증을 대신하지 않는다. PR #24는 초안으로 유지하며, 수정 후 CI의 정확한 새 이미지 검사도 별도로 실행한다. main에는 #22와 #23이 병합됐지만 새 자동 배포 성공은 아직 없다. 기존 운영 버전 `44b2af4c`를 유지한다.
+
+보안 정책을 낮추거나 탐지 항목을 임의 예외 처리하지 않았다. 기반 이미지·의존성 교체는 현재 기본 자동 배포의 고정 계약 범위를 넘으므로 별도 변경 계획과 실제 런타임 회귀·수동 전환 검증이 필요하다. 수정 미제공 항목의 처리 방침도 확인해야 한다.
+
+### 기존 감사의 남은 검증 범위
+
 전체 세 app image의 실제 보안 검사, GitHub 필수 job 실제 실행, compiler inventory·빌드 override·운영 artifact 연결은 아직 남아 있다. 실제 빌드와 기본 스택의 6언어·일반/대회 채점 HTTP 흐름은 별도 통과 증거가 있으며 보안 검사 통과로 계산하지 않는다. 혼합 부하, 완전한 rollout/rollback, 대회 브라우저 E2E, 운영 메일·백업·보존 정책 등 본래 목표의 남은 조건도 유지한다.
