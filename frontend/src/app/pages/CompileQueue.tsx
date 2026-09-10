@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Activity,
   CheckCircle2,
@@ -24,6 +24,7 @@ import {
   type CompileQueueStatus,
   type CompileQueueVerdict,
 } from '../services/compilerApi';
+import { normalizedPageParam } from '../services/pageQuery';
 
 const PAGE_SIZE = 50;
 
@@ -270,7 +271,16 @@ export function CompileQueue() {
   const statusFilter = (searchParams.get('status') || 'all') as CompileQueueStatus | 'all';
   const verdictFilter = (searchParams.get('verdict') || 'all') as CompileQueueVerdict | 'all';
   const kindFilter = (searchParams.get('kind') || 'all') as CompileQueueKind | 'all';
-  const currentPage = Math.max(1, Number(searchParams.get('page') || '1') || 1);
+  const currentPage = normalizedPageParam(searchParams.get('page'), PAGE_SIZE);
+  const queryKey = searchParams.toString();
+  const latestQueryKey = useRef(queryKey);
+  const filterGeneration = useRef(0);
+  const requestSequence = useRef(0);
+  const inFlightRequest = useRef<{ generation: number; queryKey: string; sequence: number } | null>(null);
+  if (latestQueryKey.current !== queryKey) {
+    latestQueryKey.current = queryKey;
+    filterGeneration.current += 1;
+  }
 
   useEffect(() => {
     setUsernameInput(searchParams.get('username') || '');
@@ -291,22 +301,42 @@ export function CompileQueue() {
   );
 
   const loadQueue = useCallback(async () => {
+    const generation = filterGeneration.current;
+    const inFlight = inFlightRequest.current;
+    if (inFlight?.generation === generation && inFlight.queryKey === queryKey) return;
+    const request = { generation, queryKey, sequence: ++requestSequence.current };
+    inFlightRequest.current = request;
+    const isCurrentRequest = () => generation === filterGeneration.current && queryKey === latestQueryKey.current;
     try {
       setErrorMessage(null);
       const response = await getCompileQueue(filters);
+      if (!isCurrentRequest()) return;
+
+      const nextFilteredTotal = response.filteredTotal ?? response.total;
+      const responsePages = Math.max(1, Math.ceil(nextFilteredTotal / PAGE_SIZE));
+      if (currentPage > responsePages) {
+        const next = new URLSearchParams(queryKey);
+        if (responsePages <= 1) next.delete('page');
+        else next.set('page', String(responsePages));
+        setSearchParams(next, { replace: true });
+        return;
+      }
+
       setJobs(response.jobs);
       setQueued(response.queued);
       setRunning(response.running);
       setTotal(response.total);
-      setFilteredTotal(response.filteredTotal ?? response.total);
+      setFilteredTotal(nextFilteredTotal);
       setProblemGroups(response.problemGroups ?? []);
       setUserGroups(response.userGroups ?? []);
     } catch (error) {
+      if (!isCurrentRequest()) return;
       setErrorMessage(error instanceof Error ? error.message : '컴파일 큐를 불러오지 못했습니다.');
     } finally {
-      setIsLoading(false);
+      if (inFlightRequest.current?.sequence === request.sequence) inFlightRequest.current = null;
+      if (isCurrentRequest()) setIsLoading(false);
     }
-  }, [filters]);
+  }, [currentPage, filters, queryKey, setSearchParams]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -316,6 +346,11 @@ export function CompileQueue() {
     }, 3000);
     return () => window.clearInterval(interval);
   }, [loadQueue]);
+
+  useEffect(() => () => {
+    filterGeneration.current += 1;
+    inFlightRequest.current = null;
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
 

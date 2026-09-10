@@ -54,10 +54,9 @@ def ensure_admin_user(db: Session) -> db_models.User:
         return admin
 
     admin.role = "admin"
-    if admin_password:
-        admin.hashed_password = auth.get_password_hash(admin_password)
-    elif not admin.hashed_password or auth.verify_password("admin1234", admin.hashed_password):
-        admin.hashed_password = auth.get_password_hash(secrets.token_urlsafe(32))
+    if not admin.hashed_password or auth.verify_password("admin1234", admin.hashed_password):
+        admin.hashed_password = auth.get_password_hash(admin_password or secrets.token_urlsafe(32))
+        admin.auth_version += 1
     if not admin.nickname and _nickname_is_available(db, settings.ADMIN_NICKNAME, admin.id):
         admin.nickname = settings.ADMIN_NICKNAME
     db.add(admin)
@@ -117,5 +116,6 @@ def ensure_community_guide_notice(db: Session, admin: db_models.User) -> None:
 def bootstrap_application_data(db: Session) -> None:
     admin = ensure_admin_user(db)
     ensure_system_boards(db, admin)
+    db.flush()
     ensure_community_guide_notice(db, admin)
     db.commit()

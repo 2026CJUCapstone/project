@@ -1,19 +1,30 @@
 import { createBrowserRouter } from "react-router";
 import { Layout } from "./Layout";
-import { IDE } from "./pages/IDE";
-import { Leaderboard } from "./pages/Leaderboard";
-import { Challenges } from "./pages/Challenges";
-import { ChallengeDetail } from "./pages/ChallengeDetail";
-import { Community } from "./pages/Community";
-import { CompileQueue } from "./pages/CompileQueue";
-import { Submissions } from "./pages/Submissions";
-import { Admin } from "./pages/Admin";
-import { PasswordReset } from "./pages/PasswordReset";
 import { Landing } from "./pages/Landing";
-import { Contests } from "./pages/Contests";
-import { ContestDetail } from "./pages/ContestDetail";
-import { ContestEditor } from "./pages/ContestEditor";
-import { ContestProblemPage } from "./pages/ContestProblemPage";
+import { lazyRoute } from "./lazyRoute";
+
+async function loadWithLocalMonaco<Module>(loadPage: () => Promise<Module>) {
+  const { configureLocalMonaco } = await import("./services/localMonaco");
+  configureLocalMonaco();
+  return loadPage();
+}
+
+const IDE = lazyRoute(() => loadWithLocalMonaco(() => import("./pages/IDE")), "IDE");
+const Leaderboard = lazyRoute(() => import("./pages/Leaderboard"), "Leaderboard");
+const Challenges = lazyRoute(() => import("./pages/Challenges"), "Challenges");
+const ChallengeDetail = lazyRoute(() => import("./pages/ChallengeDetail"), "ChallengeDetail");
+const Community = lazyRoute(() => import("./pages/Community"), "Community");
+const CompileQueue = lazyRoute(() => import("./pages/CompileQueue"), "CompileQueue");
+const Submissions = lazyRoute(() => import("./pages/Submissions"), "Submissions");
+const Admin = lazyRoute(() => import("./pages/Admin"), "Admin");
+const PasswordReset = lazyRoute(() => import("./pages/PasswordReset"), "PasswordReset");
+const Contests = lazyRoute(() => import("./pages/Contests"), "Contests");
+const ContestDetail = lazyRoute(() => import("./pages/ContestDetail"), "ContestDetail");
+const ContestEditor = lazyRoute(() => import("./pages/ContestEditor"), "ContestEditor");
+const ContestProblemPage = lazyRoute(
+  () => loadWithLocalMonaco(() => import("./pages/ContestProblemPage")),
+  "ContestProblemPage",
+);
 
 const routerBasePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 

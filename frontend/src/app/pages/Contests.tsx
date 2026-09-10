@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowRight, CalendarDays, Check, Clock3, Plus, Search, Trophy, Users } from 'lucide-react';
+import { ArrowRight, CalendarDays, Check, Clock3, Plus, RotateCcw, Search, Trophy, Users } from 'lucide-react';
 import { getCurrentUser } from '../services/authApi';
-import { contestRequest, CONTEST_STATES, type Contest, type ContestState } from '../services/contestApi';
+import { contestPageRequest, CONTEST_STATES, type Contest, type ContestState } from '../services/contestApi';
 import { ContestEmpty, ContestStatus, contestLength, contestSchedule } from '../components/ContestUI';
 
 const stateOrder: ContestState[] = ['running', 'upcoming', 'finalizing', 'finished', 'draft'];
@@ -37,34 +37,43 @@ function ContestCard({ contest }: { contest: Contest }) {
 }
 
 export function Contests() {
+  const pageSize = 24;
   const [contests, setContests] = useState<Contest[]>([]);
+  const [total, setTotal] = useState(0);
   const [admin, setAdmin] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    let busy = false;
-    const refresh = async () => {
-      if (busy) return;
-      busy = true;
+    const timer = setTimeout(async () => {
+      setLoading(true);
       try {
-        const data = await contestRequest<Contest[]>('', 'GET', undefined, controller.signal);
-        if (!controller.signal.aborted) { setContests(data); setError(''); }
+        const data = await contestPageRequest<Contest>('', pageSize, 0, controller.signal,
+          { state: filter === 'all' ? undefined : filter, search });
+        if (!controller.signal.aborted) { setContests(data.items); setTotal(data.total); setError(''); }
       } catch (e) { if (!controller.signal.aborted) setError((e as Error).message); }
-      finally { busy = false; if (!controller.signal.aborted) setLoading(false); }
-    };
-    void refresh();
+      finally { if (!controller.signal.aborted) setLoading(false); }
+    }, 250);
     if (localStorage.getItem('authToken')) void getCurrentUser().then(u => setAdmin(u.role === 'admin')).catch(() => {});
-    const timer = setInterval(refresh, 5000);
-    return () => { controller.abort(); clearInterval(timer); };
-  }, []);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [filter, refreshKey, search]);
+  const loadMore = async () => {
+    setLoading(true);
+    try {
+      const data = await contestPageRequest<Contest>('', pageSize, contests.length, undefined,
+        { state: filter === 'all' ? undefined : filter, search });
+      setContests(current => [...current, ...data.items.filter(item => !current.some(existing => existing.id === item.id))]); setTotal(data.total); setError('');
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  };
   const visible = contests.filter(c => matchesFilter(c, filter) && c.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return <div className="contest-page" data-testid="contest-list-page"><div className="contest-shell">
     <header className="contest-page-heading">
       <div className="contest-heading-main"><div className="contest-heading-icon"><Trophy size={25} /></div><div><h1>콘테스트</h1><p>참가할 대회를 선택하세요.</p></div></div>
-      {admin && <Link className="contest-primary" to="/contests/new"><Plus size={17} />대회 만들기</Link>}
+      <div className="flex gap-2"><button type="button" className="contest-primary" onClick={() => setRefreshKey(value => value + 1)}><RotateCcw size={17} />새로고침</button>{admin && <Link className="contest-primary" to="/contests/new"><Plus size={17} />대회 만들기</Link>}</div>
     </header>
     <div className="contest-toolbar">
       <nav className="contest-filters" aria-label="대회 상태 필터">{filters.map(item => <button className="contest-filter" key={item.id} aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>
@@ -81,5 +90,6 @@ export function Contests() {
       </section> : null;
     })}
     {!loading && !visible.length && !error && <ContestEmpty icon={<Trophy size={24} />} title={contests.length ? '조건에 맞는 대회가 없습니다' : '아직 등록된 대회가 없습니다'}>{contests.length ? '다른 상태를 선택하거나 검색어를 바꿔보세요.' : '대회가 등록되면 이곳에서 일정과 참가 정보를 확인할 수 있습니다.'}</ContestEmpty>}
+    {!loading && contests.length < total && <div className="mt-6 text-center"><button type="button" className="contest-primary" onClick={() => void loadMore()}>대회 더 보기 ({contests.length}/{total})</button></div>}
   </div></div>;
 }

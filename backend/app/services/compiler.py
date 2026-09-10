@@ -14,9 +14,10 @@ from typing import Literal
 
 import docker
 from docker.errors import APIError, DockerException
-from docker.types import Ulimit
+from docker.types import LogConfig, Ulimit
 
 from app.core.config import settings
+from app.services.execution_phase import ExecutionPhaseDecoder
 from app.services.compiler_graphs import (
     build_bpp_asm,
     build_bpp_asm_from_json,
@@ -99,6 +100,13 @@ class CompilerRunner(ABC):
 
 
 class DockerCompilerRunner:
+    def __init__(self, *, start_guard=None, labels=None, operation_guard=None, cleanup_guard=None, client_factory=None):
+        self.start_guard = start_guard
+        self.labels = labels or {}
+        self.operation_guard = operation_guard
+        self.cleanup_guard = cleanup_guard
+        self.client_factory = client_factory
+
     async def compile(
         self,
         source_code: str,
@@ -172,38 +180,33 @@ class DockerCompilerRunner:
             response["metadata"]["node_count"] = len(ast_graph["nodes"])
             resolved_targets.add("ast")
 
-        dump_tasks: dict[str, asyncio.Task[dict]] = {}
+        # One accepted job owns one execution slot. Do not fan it out into
+        # several simultaneous containers when graph JSON falls back to dumps.
+        dump_results: dict[str, dict] = {}
         if "ssa" in missing_targets:
-            dump_tasks["ssa"] = asyncio.create_task(
-                self._execute(
+            dump_results["ssa"] = await self._execute(
                     mode="dump-ssa",
                     source_code=source_code,
                     language=language,
                     optimize=optimize,
-                )
             )
         if "ir" in missing_targets:
-            dump_tasks["ir"] = asyncio.create_task(
-                self._execute(
+            dump_results["ir"] = await self._execute(
                     mode="dump-ir",
                     source_code=source_code,
                     language=language,
                     optimize=optimize,
-                )
             )
         if "asm" in missing_targets:
-            dump_tasks["asm"] = asyncio.create_task(
-                self._execute(
+            dump_results["asm"] = await self._execute(
                     mode="asm",
                     source_code=source_code,
                     language=language,
                     optimize=optimize,
-                )
             )
 
-        if dump_tasks:
-            dump_results = await asyncio.gather(*dump_tasks.values())
-            for target_name, dump_result in dict(zip(dump_tasks.keys(), dump_results)).items():
+        if dump_results:
+            for target_name, dump_result in dump_results.items():
                 if dump_result["exit_code"] != 0:
                     continue
                 if target_name == "ssa":
@@ -245,56 +248,82 @@ class DockerCompilerRunner:
 
         sandbox_root = Path(settings.SANDBOX_WORKDIR_ROOT)
         sandbox_root.mkdir(parents=True, exist_ok=True)
-        temp_dir = Path(tempfile.mkdtemp(prefix="job-", dir=sandbox_root))
-        temp_dir.chmod(0o755)
-        source_path = temp_dir / self._resolve_filename(language, source_code)
-        source_path.write_text(source_code, encoding="utf-8")
-        source_path.chmod(0o644)
-        stdin_path: Path | None = None
-
-        if mode == "run" and stdin:
-            stdin_path = temp_dir / "stdin.txt"
-            stdin_path.write_text(stdin, encoding="utf-8")
-            stdin_path.chmod(0o644)
-
-        client = self._get_client()
-        container_name = f"compiler-sandbox-{uuid.uuid4().hex[:12]}"
-        command = [mode, language, f"/workspace/{source_path.name}"]
-        if stdin_path is not None:
-            command.append(f"/workspace/{stdin_path.name}")
-
+        prefix = "job-"
+        if self.labels.get('webcompiler.job') and self.labels.get('webcompiler.lease'):
+            prefix = f"job-{self.labels['webcompiler.job']}-{self.labels['webcompiler.lease']}-"
+        temp_dir = Path(tempfile.mkdtemp(prefix=prefix, dir=sandbox_root))
         container = None
-        start_time = time.monotonic()
+        output_stream = None
+        output_task = None
+        phase_token = uuid.uuid4().hex
+        phase = ExecutionPhaseDecoder(phase_token)
+        failure_reason = None
 
         try:
-            container = await asyncio.to_thread(
+            temp_dir.chmod(0o755)
+            source_path = temp_dir / self._resolve_filename(language, source_code)
+            source_path.write_text(source_code, encoding="utf-8")
+            source_path.chmod(0o644)
+            stdin_path: Path | None = None
+
+            if mode == "run" and stdin:
+                stdin_path = temp_dir / "stdin.txt"
+                stdin_path.write_text(stdin, encoding="utf-8")
+                stdin_path.chmod(0o644)
+
+            client = self._get_client()
+            container_name = f"compiler-sandbox-{uuid.uuid4().hex[:12]}"
+            command = [mode, language, f"/workspace/{source_path.name}"]
+            if stdin_path is not None:
+                command.append(f"/workspace/{stdin_path.name}")
+
+            start_time = time.monotonic()
+        except BaseException:
+            await self._remove_workdir(temp_dir)
+            raise
+
+        try:
+            container = await self._allocate_container(
                 client.containers.create,
                 image=settings.SANDBOX_IMAGE,
                 command=command,
                 detach=True,
                 name=container_name,
+                labels=self.labels,
                 network_disabled=True,
                 read_only=True,
                 tmpfs={"/tmp": f"rw,exec,nosuid,size={settings.SANDBOX_MEMORY_MB}m"},
                 mem_limit=f"{settings.SANDBOX_MEMORY_MB}m",
+                memswap_limit=f"{settings.SANDBOX_MEMORY_MB}m",
                 nano_cpus=max(1, int(settings.SANDBOX_CPU_LIMIT * 1_000_000_000)),
                 pids_limit=settings.SANDBOX_PIDS_LIMIT,
                 ulimits=[Ulimit(name="nofile", soft=settings.SANDBOX_NOFILE_LIMIT, hard=settings.SANDBOX_NOFILE_LIMIT)],
                 cap_drop=["ALL"],
                 security_opt=["no-new-privileges"],
+                log_config=LogConfig(type="none"),
                 volumes={str(temp_dir): {"bind": "/workspace", "mode": "ro"}},
                 environment={
                     "COMPILER_OPTIMIZE": "1" if optimize else "0",
+                    "COMPILER_PHASE_TOKEN": phase_token,
                     "HOME": "/tmp",
                 },
             )
-            await asyncio.to_thread(container.start)
+            # Attach before start, so fast programs cannot lose their first bytes.
+            # Stream directly; Docker must not retain an unbounded log on disk.
+            output_stream = await asyncio.to_thread(container.attach, stream=True, logs=False, demux=True)
+            output_task = asyncio.create_task(asyncio.to_thread(self._collect_output, output_stream, container, phase))
+            await self._start_container(container)
             await self._wait_for_exit(container)
 
             wait_result = await asyncio.to_thread(container.wait)
-            stdout = await asyncio.to_thread(container.logs, stdout=True, stderr=False)
-            stderr = await asyncio.to_thread(container.logs, stdout=False, stderr=True)
+            stdout, stderr, output_exceeded = await asyncio.wait_for(asyncio.shield(output_task), timeout=settings.EXECUTION_TIMEOUT)
             exit_code = int(wait_result.get("StatusCode", 1))
+            if container.attrs.get('State', {}).get('OOMKilled') is True:
+                failure_reason = 'memory_limit_exceeded'
+            if output_exceeded:
+                exit_code = 1
+                stderr += b"\nOutput limit exceeded."
+                failure_reason = 'output_limit_exceeded'
         except TimeoutError:
             if container is not None:
                 await self._kill_container(container)
@@ -304,6 +333,8 @@ class DockerCompilerRunner:
                 "stderr": "실행 시간이 초과되었습니다. (Timeout)",
                 "exit_code": 124,
                 "execution_time": elapsed_ms,
+                "execution_phase": phase.phase,
+                "failure_reason": "time_limit_exceeded",
             }
         except (DockerException, APIError) as exc:
             raise SandboxExecutionError(f"Docker 샌드박스 실행 중 오류가 발생했습니다: {exc}") from exc
@@ -312,7 +343,15 @@ class DockerCompilerRunner:
         finally:
             if container is not None:
                 await self._remove_container(container)
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            if output_stream is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(output_stream.close)
+            if output_task is not None:
+                if not output_task.done():
+                    output_task.cancel()
+                with contextlib.suppress(Exception, asyncio.CancelledError):
+                    await output_task
+            await self._remove_workdir(temp_dir)
 
         elapsed_ms = round((time.monotonic() - start_time) * 1000, 2)
         return {
@@ -320,7 +359,69 @@ class DockerCompilerRunner:
             "stderr": stderr.decode("utf-8", errors="replace"),
             "exit_code": exit_code,
             "execution_time": elapsed_ms,
+            "execution_phase": phase.phase,
+            "failure_reason": failure_reason,
         }
+
+    async def _allocate_container(self, create, **kwargs):
+        def allocate():
+            if self.operation_guard is None:
+                return create(**kwargs)
+            def action(operation):
+                options={**kwargs,'name':operation['name'],
+                    'labels':{**(kwargs.get('labels') or self.labels),
+                        'webcompiler.operation':operation['id']}}
+                return create(**options)
+            return self.operation_guard('create',action)
+        task = asyncio.create_task(asyncio.to_thread(allocate))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # Cancelling to_thread does not cancel the Docker request. Wait for
+            # allocation to finish so the newly created container is not lost.
+            with contextlib.suppress(Exception):
+                container = await task
+                await self._remove_container(container)
+            raise
+
+    async def _start_container(self, container):
+        def start():
+            if self.operation_guard is not None:
+                return self.operation_guard('start',lambda operation:container.start(),container_id=container.id)
+            if self.start_guard is None:
+                container.start()
+            elif not self.start_guard(container.start):
+                raise SandboxExecutionError("Execution lease is no longer valid")
+        task = asyncio.create_task(asyncio.to_thread(start))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # Join the start request before finally removes the container.
+            with contextlib.suppress(Exception):
+                await task
+            raise
+
+    def _collect_output(self, stream, container, phase=None):
+        """One combined stdout/stderr budget; no all-output logs() call."""
+        remaining = max(1, settings.SANDBOX_OUTPUT_MAX_BYTES)
+        stdout, stderr = bytearray(), bytearray()
+        def decoded_chunks():
+            for out, err in stream:
+                yield out, phase.feed(err or b'') if phase is not None else err
+            if phase is not None:
+                yield None, phase.finish()
+        for out, err in decoded_chunks():
+            for chunk, target in ((out, stdout), (err, stderr)):
+                if not chunk:
+                    continue
+                kept = min(remaining, len(chunk))
+                target.extend(chunk[:kept])
+                remaining -= kept
+                if kept < len(chunk):
+                    with contextlib.suppress(DockerException, APIError):
+                        container.kill()
+                    return bytes(stdout), bytes(stderr), True
+        return bytes(stdout), bytes(stderr), False
 
     def _resolve_requested_targets(self, target: str) -> set[str]:
         if target == "all":
@@ -341,6 +442,8 @@ class DockerCompilerRunner:
         return False
 
     def _get_client(self) -> docker.DockerClient:
+        if self.client_factory is not None:
+            return self.client_factory()
         try:
             client = docker.from_env()
             client.ping()
@@ -365,7 +468,16 @@ class DockerCompilerRunner:
 
     async def _remove_container(self, container: docker.models.containers.Container) -> None:
         with contextlib.suppress(DockerException, APIError):
-            await asyncio.to_thread(container.remove, force=True)
+            await self._cleanup(lambda:container.remove(force=True))
+
+    async def _cleanup(self, action):
+        if self.cleanup_guard is None:
+            await asyncio.to_thread(action)
+            return True
+        return await asyncio.to_thread(self.cleanup_guard,action)
+
+    async def _remove_workdir(self, directory):
+        return await self._cleanup(lambda:shutil.rmtree(directory,ignore_errors=True))
 
     def _resolve_filename(self, language: str, source_code: str) -> str:
         if language == "java":

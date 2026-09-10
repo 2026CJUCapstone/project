@@ -1,0 +1,157 @@
+# Base + deploy + shared-runtime + lb + ready-lb. Production rollout scripts
+# must promote only after the local controller reports deploymentReady=true.
+x-runtime-ownership-labels: &runtime-ownership-labels
+  io.webcompiler.runtime.version: '1'
+  io.webcompiler.runtime.id: ${WEBCOMPILER_RUNTIME_INSTANCE_ID:?Set the reserved runtime instance}
+  io.webcompiler.runtime.pool: ${COMPOSE_PROJECT_NAME:?Set the color project}
+  io.webcompiler.runtime.release: ${DEPLOY_SHA:?Set the exact verified release}
+  io.webcompiler.runtime.sandbox-pool: ${SANDBOX_POOL_ID:-webcompiler}
+
+services:
+  backend:
+    labels:
+      <<: *runtime-ownership-labels
+      io.webcompiler.runtime.role: backend
+    networks: !override
+      api_plane: {}
+      shared_postgres: {}
+    environment:
+      # Shared network DNS also contains the other color's pooler. Use a
+      # color-specific alias on every attached network, not ambiguous pgbouncer.
+      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:?Set an explicit shared PostgreSQL credential}@${COMPOSE_PROJECT_NAME:?Set the color project}-pooler:5432/${WEBCOMPILER_POSTGRES_DB:-compiler}
+      TRUSTED_PROXY_CIDRS: ${WEBCOMPILER_API_NETWORK_CIDRS:?Set the private API network CIDRs}
+
+  worker:
+    labels:
+      <<: *runtime-ownership-labels
+      io.webcompiler.runtime.role: worker
+    networks: !override
+      shared_postgres: {}
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:?Set an explicit shared PostgreSQL credential}@${COMPOSE_PROJECT_NAME:?Set the color project}-pooler:5432/${WEBCOMPILER_POSTGRES_DB:-compiler}
+
+  pgbouncer:
+    labels:
+      <<: *runtime-ownership-labels
+      io.webcompiler.runtime.role: pgbouncer
+    networks: !override
+      shared_postgres:
+        aliases: ["${COMPOSE_PROJECT_NAME:?Set the color project}-pooler"]
+
+  initialize:
+    labels:
+      <<: *runtime-ownership-labels
+      io.webcompiler.runtime.role: initialize
+    networks: !override
+      shared_postgres: {}
+
+  frontend:
+    labels:
+      <<: *runtime-ownership-labels
+      io.webcompiler.runtime.role: frontend
+    build:
+      args:
+        FRONTEND_API_UPSTREAM: api-proxy:8080
+    networks: !override
+      frontend_plane: {}
+      edge_ingress: {}
+    depends_on: !override
+      api-proxy: { condition: service_started }
+
+  proxy-control-init:
+    labels:
+      <<: *runtime-ownership-labels
+      io.webcompiler.runtime.role: proxy-control-init
+    image: ${WEBCOMPILER_BACKEND_IMAGE:-webcompiler-backend:local}
+    build: { context: ./backend }
+    user: "0:0"
+    command: ["python", "-m", "app.proxy_initialize"]
+    environment:
+      DEPLOYMENT_SHA: ${DEPLOY_SHA:?Set the exact verified release}
+      PROXY_POOL_ID: ${COMPOSE_PROJECT_NAME:?Set the color project}
+      RUNTIME_INSTANCE_ID: ${WEBCOMPILER_RUNTIME_INSTANCE_ID:?Set the reserved runtime instance}
+      PROXY_TRUSTED_INGRESS_CIDRS: ${WEBCOMPILER_PROXY_TRUSTED_INGRESS_CIDRS:?Set verified host-edge peer CIDRs}
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    volumes: [proxy_control:/control]
+    restart: "no"
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.125
+    pids_limit: 16
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  api-proxy:
+    labels:
+      <<: *runtime-ownership-labels
+      io.webcompiler.runtime.role: api-proxy
+    networks: !override
+      api_plane: {}
+      frontend_plane: {}
+      edge_ingress: {}
+    command: ["-c", "/control/nginx.conf", "-g", "daemon off;"]
+    volumes: !override
+      - type: volume
+        source: proxy_control
+        target: /control
+        read_only: true
+    depends_on: !override
+      proxy-control-init: { condition: service_completed_successfully }
+      backend: { condition: service_started }
+
+  proxy-controller:
+    labels:
+      <<: *runtime-ownership-labels
+      io.webcompiler.runtime.role: proxy-controller
+    image: ${WEBCOMPILER_BACKEND_IMAGE:-webcompiler-backend:local}
+    build: { context: ./backend }
+    user: "10001:10001"
+    command: ["python", "-m", "app.proxy_controller"]
+    pid: service:api-proxy
+    network_mode: service:api-proxy
+    environment:
+      DEPLOYMENT_SHA: ${DEPLOY_SHA:?Set the exact verified release}
+      PROXY_POOL_ID: ${COMPOSE_PROJECT_NAME:?Set the color project}
+      RUNTIME_INSTANCE_ID: ${WEBCOMPILER_RUNTIME_INSTANCE_ID:?Set the reserved runtime instance}
+      PROXY_ALLOWED_CIDRS: ${WEBCOMPILER_API_NETWORK_CIDRS:?Set the private API network CIDRs}
+      PROXY_TRUSTED_INGRESS_CIDRS: ${WEBCOMPILER_PROXY_TRUSTED_INGRESS_CIDRS:?Set verified host-edge peer CIDRs}
+      PROXY_DISCOVERY_SERVICE: backend
+    volumes: [proxy_control:/control]
+    depends_on:
+      api-proxy: { condition: service_started }
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=16m,mode=1777,noexec,nosuid"]
+    mem_limit: 96m
+    memswap_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  proxy_control:
+    name: ${COMPOSE_PROJECT_NAME:?Set the color project}-proxy-${DEPLOY_SHA:?Set the exact verified release}-${WEBCOMPILER_RUNTIME_INSTANCE_ID:?Set the reserved runtime instance}
+
+networks:
+  api_plane:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:?Set the color project}-api-plane
+  frontend_plane:
+    internal: true
+  # Internal-only bridges do not provide the effective published loopback
+  # listeners needed by the host edge. Only trusted HTTP ingress joins here;
+  # APIs, workers, poolers and initializers stay on their internal planes.
+  edge_ingress:
+    driver: bridge
+    internal: false
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"

@@ -1,0 +1,94 @@
+name: Setup bounded BuildKit builder
+description: Create and bind the isolated CI-only BuildKit container used by all image builds.
+
+runs:
+  using: composite
+  steps:
+    - name: Create and bind CI builder
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        builder_name='webcompiler-ci'
+        node_name="${builder_name}0"
+        container_name="buildx_buildkit_${node_name}"
+        volume_name="${container_name}_state"
+        image='moby/buildkit@sha256:37539dd4d60fc70968d164d3850d903a2c56f6402214a1953fbf9fcb81ada731'
+        buildkit_config="${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}/runtime/buildkitd.toml"
+
+        [[ -f "$buildkit_config" && ! -L "$buildkit_config" ]] || {
+          echo 'Missing regular BuildKit configuration' >&2
+          exit 1
+        }
+
+        listing_file="$(mktemp "${RUNNER_TEMP:?RUNNER_TEMP is required}/buildx-list.XXXXXX")"
+        trap 'rm -f "$listing_file"' EXIT
+        docker buildx ls --format '{{json .}}' > "$listing_file"
+        python3 - "$builder_name" "$listing_file" <<'PY'
+        import json
+        from pathlib import Path
+        import sys
+
+        name, listing = sys.argv[1:]
+        for raw in Path(listing).read_text(encoding="utf-8").splitlines():
+            if not raw.strip():
+                continue
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise SystemExit("Malformed Buildx builder listing") from exc
+            if not isinstance(row, dict):
+                raise SystemExit("Malformed Buildx builder listing")
+            if row.get("Name") == name:
+                raise SystemExit("Refusing to reuse an existing CI Buildx builder")
+        PY
+
+        container_names="$(docker container ls --all --format '{{.Names}}')"
+        if grep -Fqx -- "$container_name" <<<"$container_names"; then
+          echo 'Refusing to reuse an existing CI BuildKit container' >&2
+          exit 1
+        fi
+        volume_names="$(docker volume ls --format '{{.Name}}')"
+        if grep -Fqx -- "$volume_name" <<<"$volume_names"; then
+          echo 'Refusing to reuse an existing CI BuildKit state volume' >&2
+          exit 1
+        fi
+
+        docker buildx create \
+          --name "$builder_name" \
+          --node "$node_name" \
+          --driver docker-container \
+          --driver-opt "image=$image" \
+          --driver-opt memory=2g \
+          --driver-opt memory-swap=2g \
+          --driver-opt cpu-quota=100000 \
+          --driver-opt cpu-period=100000 \
+          --driver-opt restart-policy=no \
+          --buildkitd-config "$buildkit_config" \
+          unix:///var/run/docker.sock >/dev/null
+        docker buildx inspect "$builder_name" --bootstrap >/dev/null
+
+        container_id="$(docker container inspect --format '{{.Id}}' "$container_name")"
+        [[ "$container_id" =~ ^[0-9a-f]{64}$ ]] || {
+          echo 'BuildKit container did not yield a full immutable ID' >&2
+          exit 1
+        }
+        docker container update --pids-limit 512 "$container_id" >/dev/null
+
+        verified_id="$(WEBCOMPILER_BUILD_BUILDER="$builder_name" \
+          WEBCOMPILER_BUILD_MEMORY_MB=2048 \
+          WEBCOMPILER_BUILD_CPU_MILLIS=1000 \
+          WEBCOMPILER_BUILD_PIDS=512 \
+          WEBCOMPILER_BUILD_CONTAINER_ID="$container_id" \
+          python3 "$GITHUB_WORKSPACE/scripts/verify_build_builder.py")"
+        [[ "$verified_id" == "$container_id" ]] || {
+          echo 'BuildKit verifier returned an unexpected container identity' >&2
+          exit 1
+        }
+
+        : "${GITHUB_ENV:?GITHUB_ENV is required}"
+        printf 'WEBCOMPILER_BUILD_BUILDER=%s\n' "$builder_name" >> "$GITHUB_ENV"
+        printf 'WEBCOMPILER_BUILD_MEMORY_MB=2048\n' >> "$GITHUB_ENV"
+        printf 'WEBCOMPILER_BUILD_CPU_MILLIS=1000\n' >> "$GITHUB_ENV"
+        printf 'WEBCOMPILER_BUILD_PIDS=512\n' >> "$GITHUB_ENV"
+        printf 'WEBCOMPILER_BUILD_CONTAINER_ID=%s\n' "$container_id" >> "$GITHUB_ENV"

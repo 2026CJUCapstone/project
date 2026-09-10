@@ -44,8 +44,8 @@ def get_redis() -> Redis | None:
             health_check_interval=30,
         )
         client.ping()
-    except Exception as exc:
-        logger.warning("Redis is unavailable; falling back to local mode: %s", exc)
+    except Exception:
+        logger.warning("Redis is unavailable; shared admission and terminal access remain closed")
         _client = None
         _next_retry_at = now + _RETRY_INTERVAL_SECONDS
         return None
@@ -76,7 +76,7 @@ def cache_set_json(key: str, value: Any, ttl_seconds: int | None = None) -> None
         return
     ttl = ttl_seconds or settings.REDIS_CACHE_TTL_SECONDS
     try:
-        client.setex(key, ttl, json.dumps(value, separators=(",", ":")))
+        client.set(key, json.dumps(value, separators=(",", ":")), ex=ttl)
     except Exception:
         return
 

@@ -2,6 +2,7 @@
 
 import { API_BASE_URL, getAuthHeaders, parseApiError } from './apiBase';
 import type { CompileQueueVerdict } from './compilerApi';
+import { submitPracticeExecution } from './executionApi';
 import type { ProblemTag } from '../constants/problemTags';
 
 export type { ProblemTag } from '../constants/problemTags';
@@ -139,12 +140,24 @@ export interface LeaderboardScoreResult extends LeaderboardEntry {
 }
 
 // 문제 목록 조회
-export async function getProblems(): Promise<Problem[]> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/problems/`, {
-    headers: authHeaders(),
+export async function getProblemsPage(limit = 50, offset = 0, filters: {
+  search?: string; difficultyMin?: ProblemDifficulty; difficultyMax?: ProblemDifficulty; tags?: ProblemTag[];
+} = {}, signal?: AbortSignal): Promise<{ items: Problem[]; total: number }> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (filters.search?.trim()) params.set('search', filters.search.trim());
+  if (filters.difficultyMin) params.set('difficultyMin', filters.difficultyMin);
+  if (filters.difficultyMax) params.set('difficultyMax', filters.difficultyMax);
+  filters.tags?.forEach(tag => params.append('tag', tag));
+  const res = await fetch(`${API_BASE_URL}/api/v1/problems/?${params}`, {
+    headers: authHeaders(), signal,
   });
   if (!res.ok) throw new Error('문제 목록을 불러오지 못했습니다.');
-  return res.json();
+  const items = await res.json() as Problem[];
+  return { items, total: Number(res.headers.get('X-Total-Count') ?? items.length) };
+}
+
+export async function getProblems(): Promise<Problem[]> {
+  return (await getProblemsPage()).items;
 }
 
 export async function getProblem(id: string): Promise<Problem> {
@@ -187,18 +200,7 @@ export async function updateProblem(id: string, data: ProblemCreateRequest): Pro
 }
 
 export async function submitProblem(id: string, code: string, language: string): Promise<ProblemSubmissionResult> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/problems/${id}/submit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({ code, language }),
-  });
-
-  if (!res.ok) {
-    const errorData = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(errorData.detail || '문제 제출에 실패했습니다.');
-  }
-
-  return res.json();
+  return submitPracticeExecution<ProblemSubmissionResult>(id, { code, language });
 }
 
 export async function getSubmissions(filters: SubmissionFilters = {}): Promise<SubmissionListResponse> {

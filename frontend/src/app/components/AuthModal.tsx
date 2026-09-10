@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import { setAuthToken } from '../services/authIdentity';
 import { ArrowLeft, KeyRound, LogIn, Mail, UserPlus, X } from 'lucide-react';
 import {
   confirmPasswordReset,
@@ -21,6 +22,8 @@ interface AuthModalProps {
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthModalProps) {
+  const inputIdPrefix = useId();
+  const inputId = (field: string) => `${inputIdPrefix}-${field}`;
   const [mode, setMode] = useState<AuthMode>(initialResetToken ? 'reset' : 'login');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -108,14 +111,18 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
       return;
     }
 
-    const normalizedUsername = username.trim().slice(0, 64);
+    const normalizedUsername = username.trim();
     const normalizedEmail = email.trim().toLowerCase();
+    const startingToken = localStorage.getItem('authToken');
 
     try {
       setIsSubmitting(true);
 
-      if (normalizedUsername.length < 3) {
+      if (isRegister && normalizedUsername.length < 3) {
         throw new Error('사용자 이름은 3자 이상이어야 합니다.');
+      }
+      if (isLogin && !normalizedUsername) {
+        throw new Error('사용자 이름을 입력하세요.');
       }
       if (password.length < 8) {
         throw new Error('비밀번호는 8자 이상이어야 합니다.');
@@ -124,16 +131,16 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
         throw new Error('올바른 이메일 주소를 입력하세요.');
       }
 
-      if (isLogin) {
-        const token = await login(normalizedUsername, password);
-        localStorage.setItem('authToken', token.accessToken);
-      } else {
+      if (!isLogin) {
         await register(normalizedUsername, normalizedEmail, password, nickname.trim() || undefined);
-        const token = await login(normalizedUsername, password);
-        localStorage.setItem('authToken', token.accessToken);
+        if (localStorage.getItem('authToken') !== startingToken) return;
       }
+      const token = await login(normalizedUsername, password);
+      if (localStorage.getItem('authToken') !== startingToken) return;
+      setAuthToken(token.accessToken);
 
       const user = await getCurrentUser();
+      if (localStorage.getItem('authToken') !== token.accessToken) return;
       onLogin(profileFromAuthUser(user));
       onClose();
     } catch (error) {
@@ -224,8 +231,9 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
         {(isLogin || isRegister) && (
           <form onSubmit={handleCredentialSubmit} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">사용자 이름</label>
+              <label htmlFor={inputId('username')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">사용자 이름</label>
               <input
+                id={inputId('username')}
                 type="text"
                 required
                 value={username}
@@ -238,8 +246,9 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
             {isRegister && (
               <>
                 <div className="space-y-1.5">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">이메일</label>
+                  <label htmlFor={inputId('email')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">이메일</label>
                   <input
+                    id={inputId('email')}
                     type="email"
                     required
                     value={email}
@@ -249,10 +258,11 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label htmlFor={inputId('nickname')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     닉네임 <span className="text-gray-400 dark:text-gray-500 font-normal">(선택)</span>
                   </label>
                   <input
+                    id={inputId('nickname')}
                     type="text"
                     value={nickname}
                     onChange={(event) => setNickname(event.target.value)}
@@ -264,8 +274,9 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
             )}
 
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">비밀번호</label>
+              <label htmlFor={inputId('password')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">비밀번호</label>
               <input
+                id={inputId('password')}
                 type="password"
                 required
                 value={password}
@@ -280,8 +291,9 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
 
             {isRegister && (
               <div className="space-y-1.5">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">비밀번호 확인</label>
+                <label htmlFor={inputId('confirm-password')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">비밀번호 확인</label>
                 <input
+                  id={inputId('confirm-password')}
                   type="password"
                   required
                   value={confirmPassword}
@@ -311,8 +323,9 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
         {mode === 'forgot' && (
           <form onSubmit={handleResetRequest} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">아이디 또는 이메일</label>
+              <label htmlFor={inputId('reset-identity')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">아이디 또는 이메일</label>
               <input
+                id={inputId('reset-identity')}
                 type="text"
                 required
                 value={resetIdentity}
@@ -334,8 +347,9 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
         {mode === 'reset' && (
           <form onSubmit={handleResetConfirm} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">재설정 토큰</label>
+              <label htmlFor={inputId('reset-token')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">재설정 토큰</label>
               <input
+                id={inputId('reset-token')}
                 type="text"
                 required
                 value={resetToken}
@@ -345,8 +359,9 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">새 비밀번호</label>
+              <label htmlFor={inputId('new-password')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">새 비밀번호</label>
               <input
+                id={inputId('new-password')}
                 type="password"
                 required
                 value={newPassword}
@@ -359,8 +374,9 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">새 비밀번호 확인</label>
+              <label htmlFor={inputId('confirm-new-password')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">새 비밀번호 확인</label>
               <input
+                id={inputId('confirm-new-password')}
                 type="password"
                 required
                 value={confirmNewPassword}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Terminal, Play, Save, Square, Swords, Trophy, MessageSquare, Settings, Sun, Moon, Hammer, X, Activity, ClipboardList, Home, Code2, Menu } from 'lucide-react';
 import { UserProfile } from './UserProfile';
@@ -7,6 +7,8 @@ import { ProfileStatsPanel } from './ProfileStatsPanel';
 import { useCompilerStore } from '../store/compilerStore';
 import { getCurrentUser, updateProfile } from '../services/authApi';
 import { saveCodeProject } from '../services/projectApi';
+import { ApiError } from '../services/apiBase';
+import { setAuthToken, subscribeAuthIdentity } from '../services/authIdentity';
 import {
   clearLeaderboardProfile,
   getSavedLeaderboardProfile,
@@ -29,6 +31,13 @@ export function Header() {
   const [profileAvatar, setProfileAvatar] = useState('');
   const [profileError, setProfileError] = useState('');
   const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const profileDraftEdited = useRef(false);
+  const profileReadVersion = useRef(0);
+  const profileEditorToken = useRef<string | null>(null);
+  const userSessionToken = useRef(localStorage.getItem('authToken'));
+  const [authConnectionError, setAuthConnectionError] = useState(false);
+  const [isRefreshingAuth, setIsRefreshingAuth] = useState(false);
+  const [authRefreshAttempt, setAuthRefreshAttempt] = useState(0);
   const initialResetToken = new URLSearchParams(location.search).get('resetToken');
   
   const {
@@ -36,6 +45,7 @@ export function Header() {
     toggleTheme,
     code,
     codeStorageScope,
+    codeStorageOwner,
     saveCode,
     addOutput,
     cancelRun,
@@ -43,6 +53,7 @@ export function Header() {
     compile,
     compileAndStartTerminal,
     isCompiling,
+    isEditorReady,
     language,
     selectLanguage,
     autoSaveEnabled,
@@ -58,37 +69,75 @@ export function Header() {
   }, [theme]);
 
   useEffect(() => {
+    let observedToken = localStorage.getItem('authToken');
+    return subscribeAuthIdentity(() => {
+      const currentToken = localStorage.getItem('authToken');
+      if (currentToken === observedToken) return;
+      observedToken = currentToken;
+      profileReadVersion.current += 1;
+      profileEditorToken.current = null;
+      userSessionToken.current = null;
+      setIsProfileOpen(false);
+      setIsProfileSaving(false);
+      setProfileError('');
+      setUser(null);
+      clearLeaderboardProfile();
+      setAuthConnectionError(false);
+      setAuthRefreshAttempt(attempt => attempt + 1);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!localStorage.getItem('authToken')) {
+      setUser(null);
+      clearLeaderboardProfile();
+      setIsRefreshingAuth(false);
+      return;
+    }
     const saved = getSavedLeaderboardProfile();
     if (saved) setUser(saved);
 
-    if (!localStorage.getItem('authToken')) return;
-
     let mounted = true;
-    (async () => {
+    const checkedToken = localStorage.getItem('authToken');
+    const checkedProfileVersion = profileReadVersion.current;
+    const refreshCurrentUser = async () => {
+      if (mounted) setIsRefreshingAuth(true);
       try {
         const current = profileFromAuthUser(await getCurrentUser());
-        if (!mounted) return;
+        if (!mounted || localStorage.getItem('authToken') !== checkedToken
+          || profileReadVersion.current !== checkedProfileVersion) return;
         setUser(current);
+        userSessionToken.current = checkedToken;
         saveLeaderboardProfile(current);
-      } catch {
-        if (!mounted) return;
-        localStorage.removeItem('authToken');
-        clearLeaderboardProfile();
-        setUser(null);
+        setAuthConnectionError(false);
+      } catch (error) {
+        if (!mounted || localStorage.getItem('authToken') !== checkedToken) return;
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          setAuthToken(null);
+          clearLeaderboardProfile();
+          setUser(null);
+          setAuthConnectionError(false);
+        } else {
+          // A network interruption or server error does not prove that the session expired.
+          setAuthConnectionError(true);
+        }
+      } finally {
+        if (mounted) setIsRefreshingAuth(false);
       }
-    })();
+    };
+    void refreshCurrentUser();
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [authRefreshAttempt]);
 
   useEffect(() => {
-    if (!user) return;
-    setProfileNickname(user.nickname || user.name || '');
+    if (!user || (isProfileOpen && profileDraftEdited.current)) return;
+    setProfileNickname(user.nickname ?? '');
     setProfileEmail(user.email || '');
-    setProfileAvatar(user.avatar || '');
-  }, [user]);
+    setProfileAvatar(user.avatarUrl === undefined ? user.avatar : user.avatarUrl ?? '');
+  }, [user, isProfileOpen]);
 
   useEffect(() => {
     if (initialResetToken) {
@@ -97,13 +146,17 @@ export function Header() {
   }, [initialResetToken]);
 
   const handleLogin = (profile: LeaderboardProfile) => {
+    userSessionToken.current = localStorage.getItem('authToken');
     setUser(profile);
     saveLeaderboardProfile(profile);
   };
 
   const handleLogout = () => {
+    profileReadVersion.current += 1;
+    setIsProfileOpen(false);
     setUser(null);
-    localStorage.removeItem('authToken');
+    setAuthConnectionError(false);
+    setAuthToken(null);
     clearLeaderboardProfile();
   };
 
@@ -113,14 +166,29 @@ export function Header() {
       return;
     }
 
+    if (localStorage.getItem('authToken') !== userSessionToken.current) return;
+
+    const readVersion = ++profileReadVersion.current;
+    const checkedToken = localStorage.getItem('authToken');
+    profileEditorToken.current = checkedToken;
+    profileDraftEdited.current = false;
+    setProfileError('');
     setIsProfileOpen(true);
     try {
       const current = profileFromAuthUser(await getCurrentUser());
+      if (profileReadVersion.current !== readVersion
+        || localStorage.getItem('authToken') !== checkedToken) return;
       setUser(current);
       saveLeaderboardProfile(current);
     } catch {
       // 프로필 편집 자체는 기존 로그인 상태 정보로 열어두고, 저장 시 서버 오류를 다시 표시한다.
     }
+  };
+
+  const closeProfileSettings = () => {
+    profileReadVersion.current += 1;
+    profileEditorToken.current = null;
+    setIsProfileOpen(false);
   };
 
   const handleManualSave = async () => {
@@ -130,7 +198,7 @@ export function Header() {
         code,
         language,
         title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
-      });
+      }, codeStorageOwner);
       addOutput({
         type: 'success',
         text: savedRemote
@@ -150,6 +218,15 @@ export function Header() {
   const handleProfileSave = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user || isProfileSaving) return;
+    // Storage events may arrive after a click in this tab. Never send the old
+    // editor's draft using a token belonging to a different session.
+    if (!profileEditorToken.current || localStorage.getItem('authToken') !== profileEditorToken.current) {
+      closeProfileSettings();
+      return;
+    }
+    // A read started before this write must not restore the old profile later.
+    profileReadVersion.current += 1;
+    const checkedToken = localStorage.getItem('authToken');
     setProfileError('');
     setIsProfileSaving(true);
     try {
@@ -160,13 +237,15 @@ export function Header() {
           avatarUrl: profileAvatar.trim() || null,
         }),
       );
+      if (localStorage.getItem('authToken') !== checkedToken) return;
       setUser(updated);
       saveLeaderboardProfile(updated);
       setIsProfileOpen(false);
     } catch (error) {
+      if (localStorage.getItem('authToken') !== checkedToken) return;
       setProfileError(error instanceof Error ? error.message : '프로필 저장에 실패했습니다.');
     } finally {
-      setIsProfileSaving(false);
+      if (localStorage.getItem('authToken') === checkedToken) setIsProfileSaving(false);
     }
   };
 
@@ -194,7 +273,7 @@ export function Header() {
               <select
                 value={language}
                 onChange={(event) => selectLanguage(event.target.value as typeof language)}
-                disabled={isCompiling || isRunning}
+                disabled={!isEditorReady || isCompiling || isRunning}
                 className="bg-transparent text-xs font-medium text-gray-700 dark:text-gray-200 px-2 py-1.5 rounded outline-none"
                 title="실행 언어 선택"
               >
@@ -211,12 +290,13 @@ export function Header() {
                 }}
                 className="hidden p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors sm:block"
                 title="저장"
+                disabled={!isEditorReady}
               >
                 <Save size={16} />
               </button>
               <button
                 onClick={() => { void compile(); }}
-                disabled={isCompiling || isRunning}
+                disabled={!isEditorReady || isCompiling || isRunning}
                 data-testid="compile-button"
                 className="hidden p-1.5 text-orange-600 dark:text-orange-500 hover:text-orange-700 dark:hover:text-orange-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed sm:block"
                 title="컴파일 (Ctrl+Shift+B)"
@@ -227,7 +307,7 @@ export function Header() {
                 onClick={() => {
                   void compileAndStartTerminal();
                 }}
-                disabled={isRunning || isCompiling}
+                disabled={!isEditorReady || isRunning || isCompiling}
                 data-testid="compile-run-button"
                 className="p-1.5 text-green-600 dark:text-green-500 hover:text-green-700 dark:hover:text-green-400 hover:bg-gray-200 dark:hover:bg-[#3d3d3d] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="컴파일 & 실행 (Ctrl+Enter)"
@@ -388,6 +468,20 @@ export function Header() {
         </div>
       </header>
 
+      {authConnectionError && (
+        <div className="flex items-center justify-center gap-3 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200" role="status">
+          <span>로그인 정보를 확인하지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.</span>
+          <button
+            type="button"
+            onClick={() => setAuthRefreshAttempt((attempt) => attempt + 1)}
+            disabled={isRefreshingAuth}
+            className="font-semibold underline disabled:opacity-60"
+          >
+            {isRefreshingAuth ? '확인 중...' : '다시 시도'}
+          </button>
+        </div>
+      )}
+
       {isMobileNavOpen && (
         <nav className={`fixed inset-x-0 top-14 z-40 grid grid-cols-2 gap-2 border-b border-gray-200 bg-white p-3 shadow-xl dark:border-[#333] dark:bg-[#171717] sm:grid-cols-4 ${isIdeMode ? 'min-[1680px]:hidden' : 'xl:hidden'}`} aria-label="모바일 메뉴">
           {[
@@ -443,7 +537,7 @@ export function Header() {
               </div>
               <button
                 type="button"
-                onClick={() => setIsProfileOpen(false)}
+                onClick={closeProfileSettings}
                 className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-[#333]"
               >
                 <X size={18} />
@@ -467,7 +561,7 @@ export function Header() {
                 <input
                   type="email"
                   value={profileEmail}
-                  onChange={(event) => setProfileEmail(event.target.value)}
+                  onChange={(event) => { profileDraftEdited.current = true; setProfileEmail(event.target.value); }}
                   className="mt-1 w-full rounded-md border border-gray-300 dark:border-[#333] bg-gray-50 dark:bg-[#141414] px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500"
                   placeholder="you@example.com"
                 />
@@ -476,7 +570,7 @@ export function Header() {
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">닉네임</span>
                 <input
                   value={profileNickname}
-                  onChange={(event) => setProfileNickname(event.target.value)}
+                  onChange={(event) => { profileDraftEdited.current = true; setProfileNickname(event.target.value); }}
                   className="mt-1 w-full rounded-md border border-gray-300 dark:border-[#333] bg-gray-50 dark:bg-[#141414] px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500"
                   placeholder="표시할 이름"
                 />
@@ -485,7 +579,7 @@ export function Header() {
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">아바타 URL</span>
                 <input
                   value={profileAvatar}
-                  onChange={(event) => setProfileAvatar(event.target.value)}
+                  onChange={(event) => { profileDraftEdited.current = true; setProfileAvatar(event.target.value); }}
                   className="mt-1 w-full rounded-md border border-gray-300 dark:border-[#333] bg-gray-50 dark:bg-[#141414] px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500"
                   placeholder="비워두면 자동 생성"
                 />
@@ -507,7 +601,7 @@ export function Header() {
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setIsProfileOpen(false)}
+                onClick={closeProfileSettings}
                 className="px-4 py-2 text-sm rounded-md border border-gray-300 dark:border-[#444] text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#2d2d2d]"
               >
                 취소

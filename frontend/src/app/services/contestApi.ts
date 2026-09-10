@@ -40,6 +40,22 @@ export async function contestRequest<T>(path = '', method = 'GET', body?: unknow
   }
   return response.json();
 }
+export async function contestPageRequest<T>(path = '', limit = 50, offset = 0, signal?: AbortSignal,
+  filters: { state?: string; search?: string } = {}): Promise<{ items: T[]; total: number }> {
+  const separator = path.includes('?') ? '&' : '?';
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (filters.state && filters.state !== 'all') params.set('state', filters.state);
+  if (filters.search?.trim()) params.set('search', filters.search.trim());
+  const response = await fetch(`${API_BASE_URL}/api/v1/contests${path}${separator}${params}`, {
+    signal, headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(typeof error.detail === 'string' ? error.detail : '목록을 불러오지 못했습니다.');
+  }
+  const items = await response.json() as T[];
+  return { items, total: Number(response.headers.get('X-Total-Count') ?? items.length) };
+}
 export const CONTEST_STATES: Record<ContestState, string> = {
   draft: '초안', upcoming: '예정', running: '진행 중', finalizing: '최종 채점 중', finished: '종료',
 };

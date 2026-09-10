@@ -1,0 +1,2 @@
+# Shell entrypoints must keep LF in Windows checkouts and git archive exports.
+*.sh text eol=lf

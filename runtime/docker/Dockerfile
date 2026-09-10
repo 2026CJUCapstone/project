@@ -1,4 +1,5 @@
-FROM ubuntu:24.04
+FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS node-runtime
+FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
 
 RUN set -eux; \
     if ! (apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
@@ -13,6 +14,8 @@ RUN set -eux; \
       git \
       gcc \
       g++ \
+      libatomic1 \
+      libstdc++6 \
       default-jdk-headless \
       nasm \
       make); then \
@@ -30,21 +33,27 @@ RUN set -eux; \
         git \
         gcc \
         g++ \
+        libatomic1 \
+        libstdc++6 \
         default-jdk-headless \
         nasm \
         make; \
     fi; \
     rm -rf /var/lib/apt/lists/*
 
-# Node.js 20.x via NodeSource
+# Use the pinned glibc build, not Alpine's musl binary or a mutable setup script.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN set -eux; \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
-    if ! apt-get install -y --no-install-recommends nodejs; then \
-      rm -rf /var/lib/apt/lists/*; \
-      apt-get update -o Acquire::Retries=3; \
-      apt-get install -y --no-install-recommends nodejs; \
-    fi; \
-    rm -rf /var/lib/apt/lists/*
+    ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm; \
+    ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx; \
+    ln -s node /usr/local/bin/nodejs; \
+    test "$(node --version)" = v24.21.0; \
+    ldd /usr/local/bin/node > /tmp/node-libraries.txt; \
+    ! grep -q 'not found' /tmp/node-libraries.txt; \
+    rm /tmp/node-libraries.txt; \
+    npm --version; \
+    printf '40 2\n' | node -e 'const fs=require("node:fs"); const values=fs.readFileSync(0,"utf8").trim().split(/\s+/).map(Number); if(values[0]+values[1]!==42) process.exit(1)'
 
 ARG BPP_REPO=https://github.com/Creeper0809/Bpp
 ARG BPP_REF=main
@@ -102,5 +111,11 @@ RUN chmod +x /usr/local/bin/run.sh
 
 RUN useradd -ms /bin/bash sandboxuser
 USER sandboxuser
+
+# Check executable/read permissions as the actual submission user as well.
+RUN test "$(nodejs --version)" = v24.21.0 \
+    && npm --version \
+    && npx --version \
+    && printf '40 2\n' | node -e 'const fs=require("node:fs"); const values=fs.readFileSync(0,"utf8").trim().split(/\s+/).map(Number); if(values[0]+values[1]!==42) process.exit(1)'
 
 ENTRYPOINT ["/usr/local/bin/run.sh"]

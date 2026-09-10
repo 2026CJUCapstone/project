@@ -1,19 +1,20 @@
 import asyncio
-import contextlib
 import logging
-import uuid
-from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import SessionLocal
 from app.models import database as m
-from app.services import compiler as compiler_service
-from app.services.compile_queue import compile_queue, classify_grading_result
 from app.services.contest_access import now_utc, utc_naive, iso
 from app.services.rating import invalidate_rating_cache
+from app.services.scoreboard_cache import (
+    bump_scoreboard_revision,
+    cache_safe_session,
+    current_revision,
+    read_public,
+    write_public,
+)
 
 logger = logging.getLogger(__name__)
 PENALTY_VERDICTS = {"wrong_answer", "runtime_error", "time_limit_exceeded", "memory_limit_exceeded"}
@@ -79,19 +80,34 @@ def submission_read(submission, include_code=False):
     return result
 
 
-def scoreboard(db, contest):
-    problems = problem_rows(db, contest.id)
-    submissions = db.query(m.ContestSubmission).filter_by(contest_id=contest.id).order_by(
+def _scoreboard_projection(db, contest):
+    """Compute the cache-safe scoreboard shape from receipt-ordered facts."""
+    # ContestProblem.snapshot includes private statement/test material.  Score
+    # computation needs only the stable public identifier, position and points.
+    problems = db.query(
+        m.ContestProblem.id,
+        m.ContestProblem.position,
+        m.ContestProblem.points,
+    ).filter_by(contest_id=contest.id).order_by(m.ContestProblem.position).all()
+    submissions = db.query(
+        m.ContestSubmission.id,
+        m.ContestSubmission.contest_problem_id,
+        m.ContestSubmission.user_id,
+        m.ContestSubmission.received_at,
+        m.ContestSubmission.status,
+        m.ContestSubmission.verdict,
+    ).filter_by(contest_id=contest.id).order_by(
         m.ContestSubmission.received_at, m.ContestSubmission.id).all()
     by_user = {}
     for s in submissions:
         by_user.setdefault(s.user_id, []).append(s)
     rows = []
-    users = db.query(m.User).join(m.ContestParticipant, m.ContestParticipant.user_id == m.User.id).filter(
-        m.ContestParticipant.contest_id == contest.id).all()
-    for user in users:
+    participant_ids = [user_id for (user_id,) in db.query(m.ContestParticipant.user_id).join(
+        m.User, m.User.id == m.ContestParticipant.user_id).filter(
+            m.ContestParticipant.contest_id == contest.id).all()]
+    for user_id in participant_ids:
         cells, total, penalty_count, last_seconds = [], 0, 0, 0
-        user_submissions = by_user.get(user.id, [])
+        user_submissions = by_user.get(user_id, [])
         for p in problems:
             attempts = [s for s in user_submissions if s.contest_problem_id == p.id]
             accepted = next((s for s in attempts if s.verdict == "accepted" and s.status == "completed"), None)
@@ -112,8 +128,8 @@ def scoreboard(db, contest):
                           "acceptedAt": iso(accepted.received_at) if accepted else None,
                           "elapsedSeconds": elapsed, "pending": pending,
                           "verdict": "accepted" if accepted else ("pending" if pending else attempts[-1].verdict if attempts else None)})
-        rows.append({"userId": user.id, "username": user.nickname or user.username,
-                     "totalPoints": total, "penaltySeconds": last_seconds + penalty_count * 300, "problems": cells})
+        rows.append({"userId": user_id, "totalPoints": total,
+                     "penaltySeconds": last_seconds + penalty_count * 300, "problems": cells})
     rows.sort(key=lambda r: (-r["totalPoints"], r["penaltySeconds"], r["userId"]))
     previous, rank = None, 0
     for position, row in enumerate(rows, 1):
@@ -122,9 +138,57 @@ def scoreboard(db, contest):
             rank = position
         row["rank"] = rank
         previous = key
-    return {"rows": rows, "state": contest_state(contest), "serverTime": iso(now_utc()),
-            "pendingCount": sum(s.status in PENDING for s in submissions),
+    return {"rows": rows, "pendingCount": sum(s.status in PENDING for s in submissions),
             "problems": [{"id": p.id, "label": chr(65 + p.position), "points": p.points} for p in problems]}
+
+
+def _scoreboard_names(db, rows):
+    user_ids = [row["userId"] for row in rows]
+    if not user_ids:
+        return {}
+    return {
+        user_id: nickname or username
+        for user_id, nickname, username in db.query(m.User.id, m.User.nickname, m.User.username).filter(
+            m.User.id.in_(user_ids)).all()
+    }
+
+
+def _scoreboard_response(db, contest, projection, at):
+    names = _scoreboard_names(db, projection["rows"])
+    rows = []
+    for row in projection["rows"]:
+        # Never mutate a Redis-decoded object: a cache hit must remain the
+        # name-free, public projection written by the original request.
+        rows.append({
+            "userId": row["userId"],
+            "username": names.get(row["userId"], row["userId"]),
+            "totalPoints": row["totalPoints"],
+            "penaltySeconds": row["penaltySeconds"],
+            "problems": [dict(cell) for cell in row["problems"]],
+            "rank": row["rank"],
+        })
+    return {"rows": rows, "state": contest_state(contest, at), "serverTime": iso(at),
+            "pendingCount": projection["pendingCount"],
+            "problems": [dict(problem) for problem in projection["problems"]]}
+
+
+def scoreboard(db, contest, *, public_cache=False, at=None):
+    """Return a fresh public response, optionally reusing a safe Redis shape."""
+    at = at or now_utc()
+    use_cache = public_cache and cache_safe_session(db)
+    # A long-lived SQLAlchemy session can hold an old Contest instance.  Use
+    # an explicit scalar so the Redis key always tracks DB state, not identity
+    # map state from a prior request.
+    revision = current_revision(db, contest.id) if use_cache else None
+    projection = read_public(contest.id, revision) if revision is not None else None
+    if projection is None:
+        projection = _scoreboard_projection(db, contest)
+        # A writer may commit between the ledger projection and this query.
+        # Never place a mixed-generation board in Redis; a later request can
+        # calculate it again against one generation.
+        if use_cache and revision is not None and cache_safe_session(db) and current_revision(db, contest.id) == revision:
+            write_public(contest.id, revision, projection)
+    return _scoreboard_response(db, contest, projection, at)
 
 
 def finalize_contests():
@@ -166,116 +230,10 @@ def finalize_contests():
                     continue
                 db.query(m.User).filter_by(id=s.user_id).update({m.User.total_score: m.User.total_score + points})
                 awarded_users.add(s.user_id)
+            bump_scoreboard_revision(db, contest_id)
             db.commit()
             for user_id in awarded_users:
                 invalidate_rating_cache(user_id)
-
-
-def claim_submission():
-    at, token = now_utc(), uuid.uuid4().hex
-    eligible = or_(m.ContestSubmission.status == "queued", and_(m.ContestSubmission.status == "running",
-                      or_(m.ContestSubmission.lease_until.is_(None), m.ContestSubmission.lease_until < at)))
-    with SessionLocal() as db:
-        candidate = db.query(m.ContestSubmission.id).filter(eligible).order_by(m.ContestSubmission.received_at).first()
-        if candidate is None:
-            return None
-        updated = db.query(m.ContestSubmission).filter(m.ContestSubmission.id == candidate.id, eligible).update({
-            "status": "running", "verdict": "running", "lease_token": token,
-            "lease_until": at + timedelta(seconds=120), "attempts": m.ContestSubmission.attempts + 1,
-        }, synchronize_session=False)
-        db.commit()
-        return (candidate.id, token) if updated else None
-
-
-def renew_lease(submission_id, token):
-    with SessionLocal() as db:
-        count = db.query(m.ContestSubmission).filter_by(id=submission_id, lease_token=token, status="running").update({
-            "lease_until": now_utc() + timedelta(seconds=120)})
-        db.commit()
-        return count
-
-
-async def judge_submission(submission_id, token):
-    with SessionLocal() as db:
-        s = db.get(m.ContestSubmission, submission_id)
-        if not s or s.lease_token != token:
-            return
-        code, language, attempts = s.code, s.language, s.attempts
-        snap = db.get(m.ContestProblem, s.contest_problem_id).snapshot
-
-    async def heartbeat():
-        while True:
-            await asyncio.sleep(20)
-            if not renew_lease(submission_id, token):
-                return
-
-    heartbeat_task = asyncio.create_task(heartbeat())
-    verdict = "system_error"
-    async def private_execution(method, **kwargs):
-        try:
-            return await method(**kwargs)
-        except Exception:
-            # Queue failures are public. Never propagate sandbox diagnostics
-            # that might contain source code or a hidden test's input.
-            logger.exception("Contest sandbox failure for %s", submission_id)
-            raise RuntimeError("Contest sandbox unavailable") from None
-    try:
-        if attempts > 3:
-            return
-        # Omit identifying metadata from the public compile queue for contest jobs.
-        compiled = await compile_queue.run(
-            kind="compile", language=language, source_code=code,
-            result_classifier=lambda r: "compile_success" if r["exit_code"] == 0 else "compile_error",
-            task=lambda: private_execution(compiler_service.compiler_instance._execute, mode="compile", source_code=code, language=language),
-        )
-        if compiled["exit_code"] != 0:
-            verdict = "compile_error" if compiled["exit_code"] not in (124, 137) else "system_error"
-        else:
-            cases = snap["sample"] + snap["hidden"]
-            verdict = "accepted" if cases else "system_error"
-            for case in cases:
-                result = await compile_queue.run(
-                    kind="grading", language=language, source_code=code,
-                    result_classifier=lambda r, expected=case["expectedOutput"]: classify_grading_result(r, expected),
-                    task=lambda case=case: private_execution(compiler_service.compiler_instance.run, source_code=code, language=language, stdin=case["input"]),
-                )
-                verdict = classify_grading_result(result, case["expectedOutput"])
-                if verdict != "accepted":
-                    break
-    except asyncio.CancelledError:
-        # Graceful shutdown releases the lease; crashes recover on lease expiry.
-        with SessionLocal() as db:
-            db.query(m.ContestSubmission).filter_by(id=submission_id, lease_token=token).update({"status": "queued", "verdict": "pending"})
-            db.commit()
-        raise
-    except Exception:
-        logger.exception("Contest judging failed for %s", submission_id)
-    finally:
-        heartbeat_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await heartbeat_task
-        with SessionLocal() as db:
-            retry = verdict == "system_error" and attempts < 3
-            db.query(m.ContestSubmission).filter_by(id=submission_id, lease_token=token, status="running").update({
-                "status": "queued" if retry else "completed", "verdict": "pending" if retry else verdict,
-                "finished_at": None if retry else now_utc(), "lease_until": None, "lease_token": None,
-            })
-            db.commit()
-
-
-async def contest_worker():
-    while True:
-        try:
-            claim = claim_submission()
-            if claim:
-                await judge_submission(*claim)
-            else:
-                await asyncio.sleep(1)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Contest worker iteration failed")
-            await asyncio.sleep(2)
 
 
 async def contest_maintenance():

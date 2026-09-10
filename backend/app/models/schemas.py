@@ -103,8 +103,7 @@ class ChallengeCreate(ChallengeBase):
 
 class ChallengeRead(ChallengeBase):
     id: int
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CamelModel(BaseModel):
@@ -424,14 +423,19 @@ class CommunityPostCountsRequest(CamelModel):
     problem_ids: List[str]
 
 
-class CodeProjectUpsert(CamelModel):
+class CodeProjectBase(CamelModel):
     code: str
     language: CompilerLanguage = "bpp"
     title: str = Field(default="main", min_length=1, max_length=120)
 
 
-class CodeProjectRead(CodeProjectUpsert):
+class CodeProjectUpsert(CodeProjectBase):
+    expected_revision: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class CodeProjectRead(CodeProjectBase):
     id: str
+    revision: str
     scope: str
     created_at: datetime
     updated_at: datetime

@@ -1,7 +1,7 @@
-from collections import Counter
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_current_user, get_optional_current_user
@@ -104,6 +104,7 @@ def delete_post(
     comment = db.query(db_models.Comment).filter(db_models.Comment.id == post_id).first()
     if comment is None:
         raise HTTPException(status_code=404, detail="Post not found")
+    require_public_problem(db, comment.problem_id, current_user)
     if comment.user_id != current_user.id and not _is_admin(current_user):
         raise HTTPException(status_code=403, detail="Only author or admin can delete this post")
 
@@ -121,6 +122,7 @@ def update_post(
     comment = db.query(db_models.Comment).filter(db_models.Comment.id == post_id).first()
     if comment is None:
         raise HTTPException(status_code=404, detail="Post not found")
+    require_public_problem(db, comment.problem_id, current_user)
     if comment.user_id != current_user.id and not _is_admin(current_user):
         raise HTTPException(status_code=403, detail="Only author or admin can edit this post")
 
@@ -136,15 +138,17 @@ def update_post(
 def get_post_counts(payload: schemas.CommunityPostCountsRequest, db: Session = Depends(get_db)):
     problem_ids = [item for item in payload.problem_ids if item]
     hidden_ids = set(db.scalars(private_problem_ids()).all())
+    hidden_ids.update(problem_id for (problem_id,) in db.query(db_models.Problem.id).filter(
+        db_models.Problem.id.in_(problem_ids), db_models.Problem.deleted_at.is_not(None)).all())
     problem_ids = [item for item in problem_ids if item not in hidden_ids]
     if not problem_ids:
         return {}
 
-    comments = (
-        db.query(db_models.Comment.problem_id)
+    counts = dict(
+        db.query(db_models.Comment.problem_id, func.count(db_models.Comment.id))
         .filter(db_models.Comment.problem_id.in_(problem_ids))
+        .group_by(db_models.Comment.problem_id)
         .all()
     )
-    counts = Counter(problem_id for (problem_id,) in comments)
 
     return {problem_id: counts.get(problem_id, 0) for problem_id in problem_ids}

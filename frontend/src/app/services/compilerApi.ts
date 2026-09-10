@@ -1,5 +1,6 @@
 // API 기본 설정 및 타입 정의
 import { getAuthHeaders } from './apiBase';
+import { submitExecution } from './executionApi';
 
 function normalizeApiBaseUrl(value: string): string {
   if (!value || value === '/') {
@@ -332,19 +333,15 @@ function mapCompileResponse(r: BackendCompileResponse): CompileResponse {
  * 백엔드 POST /api/v1/compiler/compile
  */
 export async function compileCode(request: CompileRequest, options: RequestOptions = {}): Promise<CompileResponse> {
-  const response = await requestJson<BackendCompileResponse>(
-    '/api/v1/compiler/compile',
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        code: request.code,
-        language: request.language ?? 'bpp',
-        problemId: request.problemId || undefined,
-        options: request.options ?? { optimize: false, target: 'all' },
-      }),
-    },
-    options,
-  );
+  const configured = request.options ?? { optimize: false, target: 'all' as const };
+  const response = await submitExecution<BackendCompileResponse>({
+    source_code: request.code,
+    language: request.language ?? 'bpp',
+    optimize: configured.optimize,
+    problem_id: request.problemId || undefined,
+    kind: 'compile',
+    target: configured.target,
+  }, { signal: options.signal, maxWaitMs: options.timeout });
 
   return mapCompileResponse(response);
 }
@@ -353,22 +350,15 @@ export async function compileCode(request: CompileRequest, options: RequestOptio
  * 코드 실행
  */
 export async function executeCode(request: ExecuteRequest, options: RequestOptions = {}): Promise<ExecuteResponse> {
-  const response = await requestJson<BackendRunResponse>(
-    '/api/v1/compiler/run',
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        language: request.language ?? 'bpp',
-        code: request.code,
-        stdin: request.input,
-        problemId: request.problemId || undefined,
-      }),
-    },
-    {
-      ...options,
-      timeout: request.timeout ?? options.timeout,
-    },
-  );
+  const response = await submitExecution<BackendRunResponse>({
+    source_code: request.code,
+    language: request.language ?? 'bpp',
+    stdin: request.input,
+    optimize: false,
+    problem_id: request.problemId || undefined,
+    kind: 'run',
+    target: 'all',
+  }, { ...options, maxWaitMs: request.timeout ?? options.timeout });
 
   return {
     success: response.exit_code === 0,

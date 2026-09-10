@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { routeDefinitions } from "./routes";
-import { getLeaderboard, getProblem, getProblems } from "./services/problemApi";
+import { getLeaderboard, getProblem, getProblems, getProblemsPage } from "./services/problemApi";
 
 vi.mock("./services/problemApi", () => ({
   DIFFICULTY_LEVELS: [
@@ -14,6 +14,7 @@ vi.mock("./services/problemApi", () => ({
     'diamond5', 'diamond4', 'diamond3', 'diamond2', 'diamond1',
   ],
   getProblems: vi.fn(),
+  getProblemsPage: vi.fn(),
   getProblem: vi.fn(),
   createProblem: vi.fn(),
   deleteProblem: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("./services/problemApi", () => ({
 describe("app routes", () => {
   beforeEach(() => {
     vi.mocked(getProblems).mockResolvedValue([]);
+    vi.mocked(getProblemsPage).mockResolvedValue({ items: [], total: 0 });
     vi.mocked(getProblem).mockRejectedValue(new Error("not found"));
     vi.mocked(getLeaderboard).mockResolvedValue([
       {
@@ -147,7 +149,7 @@ describe("app routes", () => {
 
     render(<RouterProvider router={router} />);
 
-    expect(await screen.findByRole("heading", { name: "두 수의 합" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "두 수의 합" }, { timeout: 10_000 })).toBeInTheDocument();
     expect(await screen.findByText("입력")).toBeInTheDocument();
     expect(await screen.findByText("출력")).toBeInTheDocument();
   });

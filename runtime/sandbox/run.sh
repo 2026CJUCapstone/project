@@ -23,6 +23,16 @@ if [[ -n "$STDIN_FILE" && ! -f "$STDIN_FILE" ]]; then
   exit 1
 fi
 
+# Opt-in per-request control frames. Compilers run before user code, so the
+# first run frame cannot be forged by program output. Uninstrumented terminal
+# callers receive no frames. Never derive execution phase from diagnostics.
+report_phase() {
+  if [[ "${COMPILER_PHASE_TOKEN:-}" =~ ^[0-9a-f]{32}$ ]]; then
+    printf '\036webcompiler:%s:%s\037\n' "$COMPILER_PHASE_TOKEN" "$1" >&2
+  fi
+}
+report_phase compile
+
 C_FLAGS=(-Wall -Wextra -std=c11)
 CPP_FLAGS=(-Wall -Wextra -std=c++17)
 
@@ -44,6 +54,7 @@ PY
 }
 
 run_python() {
+  report_phase run
   if [[ -n "$STDIN_FILE" ]]; then
     python3 "$SOURCE_FILE" < "$STDIN_FILE"
   else
@@ -56,6 +67,7 @@ compile_c() {
 }
 
 run_c() {
+  report_phase run
   if [[ -n "$STDIN_FILE" ]]; then
     /tmp/program < "$STDIN_FILE"
   else
@@ -68,6 +80,7 @@ compile_cpp() {
 }
 
 run_cpp() {
+  report_phase run
   if [[ -n "$STDIN_FILE" ]]; then
     /tmp/program < "$STDIN_FILE"
   else
@@ -82,6 +95,7 @@ compile_java() {
 run_java() {
   local class_name
   class_name="$(basename "$SOURCE_FILE" .java)"
+  report_phase run
   if [[ -n "$STDIN_FILE" ]]; then
     java -cp /tmp/java-classes "$class_name" < "$STDIN_FILE"
   else
@@ -94,6 +108,7 @@ compile_javascript() {
 }
 
 run_javascript() {
+  report_phase run
   if [[ -n "$STDIN_FILE" ]]; then
     node "$SOURCE_FILE" < "$STDIN_FILE"
   else
@@ -185,6 +200,7 @@ emit_bpp_json() {
 }
 
 run_bpp() {
+  report_phase run
   if [[ -n "$STDIN_FILE" ]]; then
     /tmp/program < "$STDIN_FILE"
   else

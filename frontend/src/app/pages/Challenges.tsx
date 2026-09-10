@@ -1,13 +1,18 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { AlertCircle, CheckCircle2, CircleDashed, PlayCircle, Code2, Tag, Loader2, Search, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { DIFFICULTY_LEVELS, getProblems } from '../services/problemApi';
-import type { ProblemTag, ProblemDifficulty } from '../services/problemApi';
+import { DIFFICULTY_LEVELS, getProblemsPage } from '../services/problemApi';
+import type { Problem, ProblemTag, ProblemDifficulty } from '../services/problemApi';
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from '../constants/difficulty';
 import { PROBLEM_TAG_OPTIONS, getProblemTagClass, getProblemTagLabel } from '../constants/problemTags';
 
 type Difficulty = ProblemDifficulty;
 type ChallengeTag = ProblemTag;
+
+const toChallenge = (p: Problem): Challenge => ({
+  id: p.id, title: p.title, difficulty: p.difficulty, tags: p.tags ?? [], description: p.description,
+  testCases: p.testCases, solved: p.solved, attempted: p.attempted, lastSubmissionVerdict: p.lastSubmissionVerdict,
+});
 type SortOption = 'difficultyAsc' | 'difficultyDesc' | 'title';
 
 interface Challenge {
@@ -49,14 +54,12 @@ function ChallengeRow({ challenge, index }: { challenge: Challenge; index: numbe
   const StatusIcon = challenge.solved ? CheckCircle2 : CircleDashed;
 
   return (
-    <div className="grid grid-cols-[56px_120px_90px_1fr_220px_140px] gap-3 items-center px-4 py-3 border-b border-gray-200 dark:border-[#242424] hover:bg-gray-50/80 dark:hover:bg-[#191919] transition-colors">
-      <div className="text-sm text-gray-500">{index + 1}</div>
-      <div>
+    <article className="flex flex-col gap-3 border-b border-gray-200 px-4 py-4 transition-colors last:border-b-0 hover:bg-gray-50/80 dark:border-[#242424] dark:hover:bg-[#191919] lg:grid lg:grid-cols-[40px_100px_76px_minmax(160px,1fr)_minmax(120px,180px)_110px] lg:items-center lg:py-3">
+      <div className="hidden text-sm text-gray-500 lg:block">{index + 1}</div>
+      <div className="flex items-center gap-2 lg:block">
         <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-semibold border ${getDifficultyBadgeClass(challenge.difficulty)}`}>
           {DIFFICULTY_LABELS[challenge.difficulty] ?? challenge.difficulty}
         </span>
-      </div>
-      <div>
         <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold ${
           challenge.solved
             ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
@@ -71,14 +74,15 @@ function ChallengeRow({ challenge, index }: { challenge: Challenge; index: numbe
       <button
         type="button"
         onClick={() => navigate(`/challenges/${challenge.id}`)}
-        className="text-left"
+        className="min-w-0 text-left focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+        aria-label={`${challenge.title} 문제 상세 보기`}
       >
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
           {challenge.title}
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mt-1">{getProblemSummary(challenge.description)}</p>
       </button>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5" aria-label="문제 태그">
         {challenge.tags.map((tag) => (
           <span key={tag} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs border ${getProblemTagClass(tag)}`}>
             <Tag size={10} />
@@ -86,21 +90,25 @@ function ChallengeRow({ challenge, index }: { challenge: Challenge; index: numbe
           </span>
         ))}
       </div>
-      <div className="flex justify-end">
+      <div className="flex lg:justify-end">
         <button
-          className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md transition-colors"
+          type="button"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 lg:w-auto lg:py-1.5"
           onClick={() => navigate('/ide', { state: { challenge } })}
+          aria-label={`${challenge.title} 문제 풀기`}
         >
           <PlayCircle size={14} />
           문제 풀기
         </button>
       </div>
-    </div>
+    </article>
   );
 }
 
 export function Challenges() {
+  const pageSize = 24;
   const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [minDifficulty, setMinDifficulty] = useState<Difficulty>('iron5');
@@ -108,30 +116,51 @@ export function Challenges() {
   const [selectedTags, setSelectedTags] = useState<Set<ChallengeTag>>(new Set());
   const [sortBy, setSortBy] = useState<SortOption>('difficultyAsc');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const pageRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    getProblems()
-      .then((problems) => {
-        const mapped: Challenge[] = problems.map((p) => ({
-          id: p.id,
-          title: p.title,
-          difficulty: p.difficulty,
-          tags: p.tags ?? [],
-          description: p.description,
-          testCases: p.testCases,
-          solved: p.solved,
-          attempted: p.attempted,
-          lastSubmissionVerdict: p.lastSubmissionVerdict,
-        }));
+    const controller = new AbortController();
+    pageRequest.current?.abort();
+    pageRequest.current = controller;
+    setLoading(true);
+    const timer = setTimeout(() => {
+      setLoading(true);
+      getProblemsPage(pageSize, 0, { search: searchText, difficultyMin: minDifficulty, difficultyMax: maxDifficulty, tags: [...selectedTags] }, controller.signal)
+      .then(({ items, total: nextTotal }) => {
+        if (controller.signal.aborted) return;
+        const mapped = items.map(toChallenge);
         setChallenges(mapped);
+        setTotal(nextTotal);
         setLoadError(null);
       })
       .catch((error) => {
+        if (controller.signal.aborted) return;
         setChallenges([]);
         setLoadError(error instanceof Error ? error.message : '문제를 불러오지 못했습니다.');
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); pageRequest.current?.abort(); };
+  }, [maxDifficulty, minDifficulty, searchText, selectedTags]);
+
+  const loadMore = async () => {
+    if (loading) return;
+    const controller = new AbortController();
+    pageRequest.current?.abort();
+    pageRequest.current = controller;
+    setLoading(true);
+    try {
+      const { items, total: nextTotal } = await getProblemsPage(pageSize, challenges.length,
+        { search: searchText, difficultyMin: minDifficulty, difficultyMax: maxDifficulty, tags: [...selectedTags] }, controller.signal);
+      if (controller.signal.aborted) return;
+      setChallenges(current => [...current, ...items.map(toChallenge).filter(item => !current.some(existing => existing.id === item.id))]);
+      setTotal(nextTotal);
+      setLoadError(null);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setLoadError(error instanceof Error ? error.message : '문제를 불러오지 못했습니다.');
+    } finally { if (!controller.signal.aborted) setLoading(false); }
+  };
 
   const filteredChallenges = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -184,8 +213,8 @@ export function Challenges() {
 
   return (
     <div className="w-full h-full bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 overflow-hidden">
-      <div className="h-full grid grid-cols-1 lg:grid-cols-[300px_1fr]">
-        <aside className="border-r border-gray-200 dark:border-[#333] bg-gray-50 dark:bg-[#1e1e1e] overflow-y-auto">
+      <div className="grid h-full grid-cols-1 grid-rows-[minmax(0,42vh)_minmax(0,1fr)] lg:grid-cols-[300px_1fr] lg:grid-rows-1">
+        <aside className="overflow-y-auto border-b border-gray-200 bg-gray-50 dark:border-[#333] dark:bg-[#1e1e1e] lg:border-b-0 lg:border-r">
           <div className="p-5 space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold tracking-wide">필터</h2>
@@ -330,11 +359,11 @@ export function Challenges() {
           </div>
         </aside>
 
-        <section className="h-full overflow-y-auto">
-          <div className="p-6">
+        <section className="h-full min-h-0 overflow-y-auto">
+          <div className="p-4 sm:p-6">
             <div className="mb-4 flex items-center justify-between">
               <h1 className="text-xl font-bold">문제 목록</h1>
-              <p className="text-sm text-gray-500">{filteredChallenges.length}문제</p>
+              <p className="text-sm text-gray-500" aria-live="polite">{total}문제</p>
             </div>
 
             {loadError && !loading && (
@@ -350,9 +379,9 @@ export function Challenges() {
                 <p className="text-gray-500 text-sm">문제를 불러오는 중...</p>
               </div>
             ) : filteredChallenges.length > 0 ? (
-              <div className="rounded-xl border border-gray-200 dark:border-[#333] bg-white dark:bg-[#161616] overflow-x-auto">
-                <div className="min-w-[860px]">
-                  <div className="grid grid-cols-[56px_120px_90px_1fr_220px_140px] gap-3 px-4 py-3 border-b border-gray-200 dark:border-[#242424] text-xs font-semibold text-gray-500">
+              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-[#333] dark:bg-[#161616]">
+                <div>
+                  <div className="hidden grid-cols-[40px_100px_76px_minmax(160px,1fr)_minmax(120px,180px)_110px] gap-3 border-b border-gray-200 px-4 py-3 text-xs font-semibold text-gray-500 dark:border-[#242424] lg:grid">
                     <div>#</div>
                     <div>난이도</div>
                     <div>상태</div>
@@ -375,6 +404,13 @@ export function Challenges() {
                   className="mt-6 px-4 py-2 bg-white dark:bg-[#2d2d2d] hover:bg-gray-50 dark:hover:bg-[#3d3d3d] text-gray-700 dark:text-white rounded-lg text-sm transition-colors border border-gray-200 dark:border-[#444] shadow-sm"
                 >
                   필터 초기화
+                </button>
+              </div>
+            )}
+            {!loading && challenges.length < total && (
+              <div className="mt-5 text-center">
+                <button type="button" onClick={() => void loadMore()} className="rounded-lg border border-gray-300 px-5 py-2 text-sm font-semibold hover:border-blue-500 dark:border-[#444]">
+                  문제 더 보기 ({challenges.length}/{total})
                 </button>
               </div>
             )}

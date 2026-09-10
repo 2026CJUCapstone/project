@@ -37,7 +37,10 @@ test('multiple cards have independent destinations and filters (fixture data onl
     {...base,id:'third',title:'주간 프로그래밍 대회',state:'running'},
     {...base,id:'next',title:'다음 주 콘테스트',state:'upcoming'},
   ];
-  await page.route('**/api/v1/contests', route => route.fulfill({json:fixtures}));
+  // The list endpoint adds query parameters for its filters.  Match only the
+  // collection URL, including its optional query string, so this fixture does
+  // not fall through to a real local API or swallow the detail routes below.
+  await page.route(/\/api\/v1\/contests(?:\?.*)?$/, route => route.fulfill({json:fixtures}));
   await page.route('**/api/v1/contests/second', route => route.fulfill({json:fixtures[1]}));
   await page.route('**/api/v1/contests/second/scoreboard', route => route.fulfill({json:{rows:[],problems:[],pendingCount:0,state:'running'}}));
   await page.setViewportSize({width:1440,height:960});

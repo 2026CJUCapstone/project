@@ -3,10 +3,10 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Contests } from './Contests';
 import { ContestDetail } from './ContestDetail';
-import { contestRequest, type Contest } from '../services/contestApi';
+import { contestPageRequest, contestRequest, type Contest } from '../services/contestApi';
 
 vi.mock('../services/contestApi', async importOriginal => ({
-  ...await importOriginal<typeof import('../services/contestApi')>(), contestRequest: vi.fn(),
+  ...await importOriginal<typeof import('../services/contestApi')>(), contestRequest: vi.fn(), contestPageRequest: vi.fn(),
 }));
 const contest: Contest = {id:'c',title:'테스트 대회',description:'규칙',published:true,
   startsAt:'2030-01-01T00:00:00Z',endsAt:'2030-01-01T02:00:00Z',serverTime:'2030-01-01T01:00:00Z',
@@ -16,7 +16,7 @@ const contest: Contest = {id:'c',title:'테스트 대회',description:'규칙',p
 describe('contest pages', () => {
   beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
   it('groups public contests and links to the detail page', async () => {
-    vi.mocked(contestRequest).mockResolvedValue([contest]);
+    vi.mocked(contestPageRequest).mockResolvedValue({ items: [contest], total: 1 });
     render(<MemoryRouter><Contests /></MemoryRouter>);
     expect(await screen.findByRole('heading',{name:'진행 중'})).toBeInTheDocument();
     expect(screen.getByRole('link',{name:/테스트 대회/})).toHaveAttribute('href','/contests/c');
@@ -40,9 +40,9 @@ describe('contest pages', () => {
   });
 
   it('renders multiple contest cards, filters and searches without changing the selected contest', async () => {
-    vi.mocked(contestRequest).mockResolvedValue([
+    vi.mocked(contestPageRequest).mockResolvedValue({ items: [
       contest, {...contest,id:'next',title:'다음 대회',state:'upcoming'}, {...contest,id:'past',title:'지난 대회',state:'finished'},
-    ]);
+    ], total: 3 });
     render(<MemoryRouter><Contests /></MemoryRouter>);
     expect(await screen.findAllByTestId('contest-card')).toHaveLength(3);
     fireEvent.click(screen.getByRole('button',{name:/^예정/}));

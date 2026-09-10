@@ -5,6 +5,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PROJECT_ROOT="$ROOT_DIR"
 
+WEBCOMPILER_BUILD_CONTAINER_ID="$(python3 "$PROJECT_ROOT/scripts/verify_build_builder.py")"
+export WEBCOMPILER_BUILD_CONTAINER_ID
+
 runtime_build_signature() {
   sha256sum \
     "$PROJECT_ROOT/runtime/docker/Dockerfile" \
@@ -16,10 +19,16 @@ runtime_build_signature() {
 BPP_REPO="${BPP_REPO:-https://github.com/Creeper0809/Bpp}"
 BPP_BRANCH="${BPP_BRANCH:-main}"
 BPP_REF="${BPP_REF:-}"
+if [[ -z "$BPP_REF" && -f "$PROJECT_ROOT/runtime/bpp-ref.txt" ]]; then
+  BPP_REF="$(tr -d '\r\n' < "$PROJECT_ROOT/runtime/bpp-ref.txt")"
+  [[ "$BPP_REF" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid pinned compiler revision' >&2; exit 2; }
+fi
 BPP_BOOTSTRAP_TAG="${BPP_BOOTSTRAP_TAG:-}"
 BPP_BOOTSTRAP_URL="${BPP_BOOTSTRAP_URL:-}"
 BPP_BOOTSTRAP_SHA256="${BPP_BOOTSTRAP_SHA256:-}"
-SANDBOX_IMAGE_TAG="${SANDBOX_IMAGE_TAG:-compiler-sandbox}"
+# SANDBOX_IMAGE is shared with the runtime. Keep SANDBOX_IMAGE_TAG as a
+# compatibility fallback for the existing updater scripts.
+SANDBOX_IMAGE="${SANDBOX_IMAGE:-${SANDBOX_IMAGE_TAG:-compiler-sandbox}}"
 TEST_SKIP_LLVM_BUILD="${TEST_SKIP_LLVM_BUILD:-1}"
 TEST_FAST_IO="${TEST_FAST_IO:-0}"
 BPP_TEST_NAME_FILTER="${BPP_TEST_NAME_FILTER:-14_print_anything_success|43_language_feature_runtime_bundle_success}"
@@ -44,7 +53,7 @@ echo "  test_fast_io=$TEST_FAST_IO"
 echo "  test_name_filter=${BPP_TEST_NAME_FILTER:-<none>}"
 echo "  runtime_build_signature=$RUNTIME_BUILD_SIGNATURE"
 
-docker build \
+docker buildx build --builder "${WEBCOMPILER_BUILD_BUILDER:?Explicit bounded builder required}" --load \
   --shm-size=2g \
   --build-arg "BPP_REPO=$BPP_REPO" \
   --build-arg "BPP_REF=$BPP_REF" \
@@ -55,6 +64,8 @@ docker build \
   --build-arg "TEST_FAST_IO=$TEST_FAST_IO" \
   --build-arg "BPP_TEST_NAME_FILTER=$BPP_TEST_NAME_FILTER" \
   --build-arg "RUNTIME_BUILD_SIGNATURE=$RUNTIME_BUILD_SIGNATURE" \
-  -t "$SANDBOX_IMAGE_TAG" \
+  -t "$SANDBOX_IMAGE" \
   -f "$PROJECT_ROOT/runtime/docker/Dockerfile" \
   "$PROJECT_ROOT/runtime"
+
+python3 "$PROJECT_ROOT/scripts/verify_build_builder.py" >/dev/null

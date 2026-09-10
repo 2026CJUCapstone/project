@@ -1,79 +1,64 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_optional_current_user
 from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
-from app.models.schemas import CodeRequest, CodeResponse, CompileRequest, CompileResponse
-from app.services import compiler as compiler_service
-from app.services.compile_queue import classify_compile_result, classify_run_result, compile_queue
+from app.models.schemas import CodeRequest, CompileRequest
+from app.api.routes import executions
+from app.services.compile_queue import compile_queue
 from app.services.contest_access import require_public_problem
 
 router = APIRouter()
 
 
-@router.post("/compile", response_model=CompileResponse, tags=["compiler"])
-async def compile_code(
+@router.post("/compile", status_code=202, tags=["compiler"])
+def compile_code(
     request: CompileRequest,
+    http_request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
-    problem = _get_problem(db, request.problem_id)
-    try:
-        result = await compile_queue.run(
+    return executions.accept_execution(
+        executions.ExecutionRequest(
             kind="compile",
-            language=request.language,
             source_code=request.code,
+            language=request.language,
+            optimize=request.options.optimize,
             target=request.options.target,
-            user_id=current_user.id if current_user else None,
-            username=current_user.username if current_user else None,
             problem_id=request.problem_id,
-            problem_title=problem.title if problem else None,
-            result_classifier=classify_compile_result,
-            task=lambda: compiler_service.compiler_instance.compile(
-                source_code=request.code,
-                language=request.language,
-                optimize=request.options.optimize,
-                target=request.options.target,
-            ),
-        )
-        return CompileResponse(**result)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except compiler_service.SandboxExecutionError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        ),
+        http_request,
+        response,
+        db,
+        current_user,
+    )
 
 
-@router.post("/run", response_model=CodeResponse, tags=["Direct Execution"])
-async def run_code(
+@router.post("/run", status_code=202, tags=["Direct Execution"])
+def run_code(
     request: CodeRequest,
+    http_request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
-    problem = _get_problem(db, request.problem_id)
-    try:
-        result = await compile_queue.run(
+    return executions.accept_execution(
+        executions.ExecutionRequest(
             kind="run",
-            language=request.language,
             source_code=request.source_code,
-            user_id=current_user.id if current_user else None,
-            username=current_user.username if current_user else None,
+            language=request.language,
+            stdin=request.stdin or "",
+            optimize=request.optimize,
             problem_id=request.problem_id,
-            problem_title=problem.title if problem else None,
-            result_classifier=classify_run_result,
-            task=lambda: compiler_service.compiler_instance.run(
-                source_code=request.source_code,
-                language=request.language,
-                stdin=request.stdin or "",
-                optimize=request.optimize,
-            ),
-        )
-        return CodeResponse(**result)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except compiler_service.SandboxExecutionError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        ),
+        http_request,
+        response,
+        db,
+        current_user,
+    )
 
 
 @router.get("/queue", response_model=schemas.CompileQueueResponse)

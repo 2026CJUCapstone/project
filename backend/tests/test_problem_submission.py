@@ -5,8 +5,9 @@ from httpx import ASGITransport, AsyncClient
 
 from app.core.database import SessionLocal
 from app.main import app
-from app.models.database import Problem, User
+from app.models.database import Problem, Submission, User
 from app.services import compiler as compiler_service
+from tests.execution_helpers import finish_receipt
 
 
 def _create_problem_with_grading_case() -> tuple[str, str]:
@@ -38,6 +39,7 @@ def _create_problem_with_grading_case() -> tuple[str, str]:
 def _delete_problem_fixture(user_id: str, problem_id: str) -> None:
     db = SessionLocal()
     try:
+        db.query(Submission).filter(Submission.problem_id == problem_id).delete()
         db.query(Problem).filter(Problem.id == problem_id).delete()
         db.query(User).filter(User.id == user_id).delete()
         db.commit()
@@ -67,7 +69,11 @@ async def test_submission_response_does_not_reveal_grading_case_counts(monkeypat
     async def fake_run(source_code: str, language: str, stdin: str = "", optimize: bool = False):
         return {"stdout": "ok\n", "stderr": "", "exit_code": 0, "execution_time": 1.0}
 
+    async def fake_execute(**_kwargs):
+        return {"stdout": "", "stderr": "", "exit_code": 0, "execution_time": 1.0}
+
     monkeypatch.setattr(compiler_service.compiler_instance, "run", fake_run)
+    monkeypatch.setattr(compiler_service.compiler_instance, "_execute", fake_execute)
 
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -75,9 +81,10 @@ async def test_submission_response_does_not_reveal_grading_case_counts(monkeypat
                 f"/api/v1/problems/{problem_id}/submit",
                 json={"code": "func main() -> u64 { return 0; }", "language": "bpp"},
             )
+            assert response.status_code == 202
+            completed = await finish_receipt(client, response)
 
-        assert response.status_code == 200
-        body = response.json()
+        body = completed["value"]
         assert body["status"] == "Accepted"
         assert body["verdict"] == "accepted"
         assert body["gradingCompleted"] is True

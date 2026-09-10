@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CheckCircle, XCircle, Clock, Send } from "lucide-react";
 import { submitProblem, type ProblemSubmissionResult, type TestCase } from "../services/problemApi";
 import type { CompileQueueVerdict } from "../services/compilerApi";
+import { useCompilerStore } from "../store/compilerStore";
 
 interface Props {
   code: string;
@@ -27,6 +28,7 @@ const verdictLabels: Record<CompileQueueVerdict, string> = {
 };
 
 export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClose }: Props) {
+  const language = useCompilerStore(state => state.language);
   const [result, setResult] = useState<ProblemSubmissionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isJudging, setIsJudging] = useState(false);
@@ -43,7 +45,7 @@ export function JudgePanel({ code, challengeId, challengeTitle, testCases, onClo
     setIsJudging(true);
     setError(null);
     try {
-      const res = await submitProblem(challengeId, code, 'bpp');
+      const res = await submitProblem(challengeId, code, language);
       setResult(res);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '제출에 실패했습니다.');

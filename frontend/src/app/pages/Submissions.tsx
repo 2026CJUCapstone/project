@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Filter, RefreshCw, RotateCcw, XCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { getSubmissions, type SubmissionFilters, type SubmissionRecord } from '../services/problemApi';
 import type { CompileQueueVerdict } from '../services/compilerApi';
+import { normalizedPageParam } from '../services/pageQuery';
 
 const PAGE_SIZE = 50;
 
@@ -81,7 +82,16 @@ export function Submissions() {
   const [problemInput, setProblemInput] = useState(searchParams.get('problemId') || '');
   const [usernameInput, setUsernameInput] = useState(searchParams.get('username') || '');
 
-  const currentPage = Math.max(1, Number(searchParams.get('page') || '1') || 1);
+  const currentPage = normalizedPageParam(searchParams.get('page'), PAGE_SIZE);
+  const queryKey = searchParams.toString();
+  const latestQueryKey = useRef(queryKey);
+  const filterGeneration = useRef(0);
+  const requestSequence = useRef(0);
+  const inFlightRequest = useRef<{ generation: number; queryKey: string; sequence: number } | null>(null);
+  if (latestQueryKey.current !== queryKey) {
+    latestQueryKey.current = queryKey;
+    filterGeneration.current += 1;
+  }
   const verdictFilter = (searchParams.get('verdict') || 'all') as CompileQueueVerdict | 'all';
   const statusFilter = searchParams.get('status') || '';
   const mineFilter = searchParams.get('mine') === 'true';
@@ -105,23 +115,47 @@ export function Submissions() {
   );
 
   const loadSubmissions = useCallback(async () => {
+    const generation = filterGeneration.current;
+    const inFlight = inFlightRequest.current;
+    if (inFlight?.generation === generation && inFlight.queryKey === queryKey) return;
+    const request = { generation, queryKey, sequence: ++requestSequence.current };
+    inFlightRequest.current = request;
+    const isCurrentRequest = () => generation === filterGeneration.current && queryKey === latestQueryKey.current;
     try {
+      setIsLoading(true);
       setErrorMessage(null);
       const response = await getSubmissions(filters);
+      if (!isCurrentRequest()) return;
+
+      const responsePages = Math.max(1, Math.ceil(response.filteredTotal / PAGE_SIZE));
+      if (currentPage > responsePages) {
+        const next = new URLSearchParams(queryKey);
+        if (responsePages <= 1) next.delete('page');
+        else next.set('page', String(responsePages));
+        setSearchParams(next, { replace: true });
+        return;
+      }
+
       setSubmissions(response.submissions);
       setFilteredTotal(response.filteredTotal);
       setTotal(response.total);
     } catch (error) {
+      if (!isCurrentRequest()) return;
       setErrorMessage(error instanceof Error ? error.message : '제출 이력을 불러오지 못했습니다.');
     } finally {
-      setIsLoading(false);
+      if (inFlightRequest.current?.sequence === request.sequence) inFlightRequest.current = null;
+      if (isCurrentRequest()) setIsLoading(false);
     }
-  }, [filters]);
+  }, [currentPage, filters, queryKey, setSearchParams]);
 
   useEffect(() => {
-    setIsLoading(true);
     void loadSubmissions();
   }, [loadSubmissions]);
+
+  useEffect(() => () => {
+    filterGeneration.current += 1;
+    inFlightRequest.current = null;
+  }, []);
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
 
