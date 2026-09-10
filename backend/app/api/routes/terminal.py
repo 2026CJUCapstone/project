@@ -1,168 +1,152 @@
+"""WebSocket admission and Redis relay only; Docker is worker-owned."""
 import asyncio
 import contextlib
 import json
-import shutil
-import socket
-import tempfile
 import uuid
-from pathlib import Path
-from typing import Any
+from typing import get_args
 
-from docker.errors import APIError, DockerException
-from docker.types import Ulimit
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from app.core.config import settings
-from app.services.compiler import SUPPORTED_LANGUAGES, DockerCompilerRunner, SandboxExecutionError
+from app.core.database import SessionLocal
+from app.models.schemas import CompilerLanguage
+from app.services.execution_admission import admit_execution, admit_execution_user, execution_ip
+from app.services.execution_runtime import execution_queue
+from app.services.durable_queue import QueueFull
+from app.services.terminal_broker import TerminalBroker, TerminalClosed, TerminalLimit, TerminalUnavailable
 
 router = APIRouter()
 
 
-async def _receive_start_payload(websocket: WebSocket) -> dict[str, Any]:
+async def _receive_start_payload(websocket):
+    raw = await asyncio.wait_for(websocket.receive_text(), timeout=settings.TERMINAL_START_TIMEOUT)
+    if len(raw.encode('utf-8')) > settings.SUBMISSION_CODE_MAX_BYTES + 4096:
+        raise ValueError('터미널 시작 메시지가 너무 큽니다.')
     try:
-        raw_payload = await websocket.receive_text()
-        payload = json.loads(raw_payload)
-    except WebSocketDisconnect:
-        raise
+        payload = json.loads(raw)
     except json.JSONDecodeError:
-        raise ValueError("터미널 시작 메시지가 올바르지 않습니다.")
-
-    if payload.get("type") != "start":
-        raise ValueError("터미널 시작 메시지가 필요합니다.")
-
-    code = payload.get("code", "")
-    language = payload.get("language", "bpp")
-
-    if not isinstance(code, str) or not code.strip():
-        raise ValueError("실행할 코드가 없습니다.")
-    if language not in SUPPORTED_LANGUAGES:
-        raise ValueError(f"지원하지 않는 언어입니다: {language}")
-
+        raise ValueError('터미널 시작 메시지가 올바르지 않습니다.') from None
+    if not isinstance(payload,dict) or payload.get('type') != 'start':
+        raise ValueError('터미널 시작 메시지가 필요합니다.')
+    code, language = payload.get('code',''), payload.get('language','bpp')
+    if not isinstance(code,str) or not code.strip():
+        raise ValueError('실행할 코드가 없습니다.')
+    if len(code.encode('utf-8')) > settings.SUBMISSION_CODE_MAX_BYTES:
+        raise ValueError('실행할 코드가 너무 큽니다.')
+    if language not in get_args(CompilerLanguage):
+        raise ValueError('지원하지 않는 언어입니다.')
+    token = payload.get('token')
+    if token is not None and (not isinstance(token,str) or len(token)>2048):
+        raise ValueError('로그인 토큰이 올바르지 않습니다.')
     return payload
 
 
-@router.websocket("/terminal")
+def accept_terminal(sid, payload, ip, broker):
+    from app.api.routes.auth import get_current_user
+    with SessionLocal() as db:
+        user = get_current_user(payload['token'], db) if payload.get('token') else None
+        if user:
+            admit_execution_user(user.id)
+            broker.bind_user(sid,user.id)
+        owner = f'account:{user.id}' if user else 'terminal:'+sid
+        quota = f'account:{user.id}' if user else 'ip:'+ip
+        job = execution_queue().enqueue_in_session(db, owner_key=owner, quota_key=quota, request_id='terminal:'+sid,
+            kind='terminal', payload={'terminal_session':sid, 'code':payload['code'],
+                'language':payload.get('language','bpp'), 'optimize':bool(payload.get('optimize',False))})
+        db.commit()
+        return job.id, owner
+
+
+@router.websocket('/terminal')
 async def terminal_endpoint(websocket: WebSocket):
-    await websocket.accept()
-
-    runner = DockerCompilerRunner()
-    temp_dir: Path | None = None
-    container = None
-    raw_sock = None
-
+    if websocket.headers.get('origin') not in settings.CORS_ORIGINS:
+        await websocket.close(code=1008)
+        return
+    sid, broker = uuid.uuid4().hex, None
     try:
+        await asyncio.to_thread(admit_execution, websocket)
+        broker = await asyncio.to_thread(TerminalBroker)
+        await asyncio.to_thread(broker.reserve,sid,execution_ip(websocket))
+    except (HTTPException,TerminalUnavailable,TerminalLimit):
+        await websocket.close(code=1013)
+        return
+    tasks, close_code = [], 1011
+    async def send(value):
+        await asyncio.wait_for(websocket.send_text(value), timeout=3)
+    try:
+        await websocket.accept()
         payload = await _receive_start_payload(websocket)
-        language = payload.get("language", "bpp")
-        source_code = payload["code"]
-        optimize = bool(payload.get("optimize", False))
+        job_id, owner = await asyncio.to_thread(accept_terminal,sid,payload,execution_ip(websocket),broker)
+        await send('> 실행 대기열에 등록되었습니다.\n')
 
-        sandbox_root = Path(settings.SANDBOX_WORKDIR_ROOT)
-        sandbox_root.mkdir(parents=True, exist_ok=True)
-        temp_dir = Path(tempfile.mkdtemp(prefix="terminal-", dir=sandbox_root))
-        temp_dir.chmod(0o755)
-
-        source_path = temp_dir / runner._resolve_filename(language, source_code)
-        source_path.write_text(source_code, encoding="utf-8")
-        source_path.chmod(0o644)
-
-        await websocket.send_text(f"> {language.upper()} 컴파일 및 실행을 시작합니다.\n")
-
-        client = runner._get_client()
-        container = await asyncio.to_thread(
-            client.containers.create,
-            image=settings.SANDBOX_IMAGE,
-            command=["run", language, f"/workspace/{source_path.name}"],
-            detach=True,
-            name=f"compiler-terminal-{uuid.uuid4().hex[:12]}",
-            stdin_open=True,
-            tty=True,
-            network_disabled=True,
-            read_only=True,
-            tmpfs={"/tmp": f"rw,exec,nosuid,size={settings.SANDBOX_MEMORY_MB}m"},
-            mem_limit=f"{settings.SANDBOX_MEMORY_MB}m",
-            nano_cpus=max(1, int(settings.SANDBOX_CPU_LIMIT * 1_000_000_000)),
-            pids_limit=settings.SANDBOX_PIDS_LIMIT,
-            ulimits=[Ulimit(name="nofile", soft=settings.SANDBOX_NOFILE_LIMIT, hard=settings.SANDBOX_NOFILE_LIMIT)],
-            cap_drop=["ALL"],
-            security_opt=["no-new-privileges"],
-            volumes={str(temp_dir): {"bind": "/workspace", "mode": "ro"}},
-            environment={
-                "COMPILER_OPTIMIZE": "1" if optimize else "0",
-                "HOME": "/tmp",
-            },
-        )
-
-        sock = await asyncio.to_thread(
-            container.attach_socket,
-            params={"stdin": 1, "stdout": 1, "stderr": 1, "stream": 1},
-        )
-        raw_sock = getattr(sock, "_sock", sock)
-        raw_sock.settimeout(0.5)
-        await asyncio.to_thread(container.start)
-
-        async def side_reader() -> None:
+        async def incoming():
             while True:
-                try:
-                    data = await asyncio.to_thread(raw_sock.recv, 4096)
-                except (TimeoutError, socket.timeout):
-                    continue
-                except OSError:
-                    break
-                if not data:
-                    break
-                await websocket.send_text(data.decode("utf-8", errors="replace"))
+                value = await websocket.receive_text()
+                await asyncio.to_thread(broker.send_input,sid,value)
 
-        async def side_writer() -> None:
-            try:
-                while True:
-                    user_input = await websocket.receive_text()
-                    await asyncio.to_thread(raw_sock.sendall, user_input.encode("utf-8"))
-            except WebSocketDisconnect:
-                pass
-            except OSError:
-                pass
+        async def outgoing():
+            cursor = '0-0'
+            queue = execution_queue()
+            while True:
+                rows = await asyncio.to_thread(broker.read_output,sid,cursor)
+                for cursor, fields in rows:
+                    await send(fields['text'])
+                state = await asyncio.to_thread(queue.read,job_id,owner_key=owner)
+                if state and state['status'] in ('completed','failed'):
+                    # Completion follows publication. Drain the last output first.
+                    while True:
+                        tail = await asyncio.to_thread(broker.read_output,sid,cursor)
+                        if not tail:
+                            break
+                        for cursor, fields in tail:
+                            await send(fields['text'])
+                    result = state['result'] or {}
+                    code = (result.get('value') or {}).get('exit_code')
+                    if code is not None:
+                        await send(f'\n> 프로그램이 종료되었습니다. (exit code {code})\n')
+                    else:
+                        await send('\n> '+result.get('message','터미널 실행이 중단되었습니다. 자동으로 다시 실행하지 않습니다.')+'\n')
+                    return 1000 if code is not None else 1011
+                await asyncio.sleep(.15)
 
-        async def exit_watcher() -> None:
-            result = await asyncio.to_thread(container.wait)
-            exit_code = int(result.get("StatusCode", 1) if isinstance(result, dict) else result)
-            await asyncio.sleep(0.2)
-            await websocket.send_text(f"\n> 프로그램이 종료되었습니다. (exit code {exit_code})\n")
+        async def heartbeat():
+            while True:
+                await asyncio.sleep(max(.05,settings.TERMINAL_CONNECTION_LEASE_SECONDS/3))
+                if not await asyncio.to_thread(broker.renew,sid):
+                    raise TerminalClosed()
 
-        async def timeout_watcher() -> None:
-            await asyncio.sleep(max(1, settings.TERMINAL_SESSION_TIMEOUT))
-            await websocket.send_text("\n> 터미널 세션 시간이 초과되었습니다.\n")
-            with contextlib.suppress(DockerException, APIError):
-                await asyncio.to_thread(container.kill)
-
-        reader_task = asyncio.create_task(side_reader())
-        session_tasks = {
-            asyncio.create_task(side_writer()),
-            asyncio.create_task(exit_watcher()),
-            asyncio.create_task(timeout_watcher()),
-        }
-        _, pending = await asyncio.wait(session_tasks, return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
-        reader_task.cancel()
-    except (ValueError, SandboxExecutionError) as exc:
-        await websocket.send_text(f"> {exc}\n")
+        reader, writer, pulse = [asyncio.create_task(coro) for coro in (incoming(),outgoing(),heartbeat())]
+        tasks = [reader,writer,pulse]
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED,
+                                     timeout=settings.TERMINAL_SESSION_TIMEOUT)
+        if not done:
+            raise TimeoutError()
+        if writer in done:
+            close_code = writer.result()
+        else:
+            next(iter(done)).result()
     except WebSocketDisconnect:
-        pass
-    except (DockerException, APIError) as exc:
-        await websocket.send_text(f"> Docker 샌드박스 실행 중 오류가 발생했습니다: {exc}\n")
-    except Exception as exc:
-        await websocket.send_text(f"> 터미널 실행 중 오류가 발생했습니다: {exc}\n")
+        close_code = 1001
+    except TimeoutError:
+        with contextlib.suppress(Exception):
+            await send('> 터미널 시작 대기 시간 또는 세션 시간이 초과되었습니다.\n')
+    except (ValueError,TerminalLimit) as exc:
+        close_code = 1008
+        with contextlib.suppress(Exception):
+            await send('> '+str(exc)+'\n')
+    except (QueueFull,TerminalUnavailable,TerminalClosed,HTTPException):
+        with contextlib.suppress(Exception):
+            await send('> 터미널 연결을 계속할 수 없습니다. 자동으로 다시 실행하지 않습니다.\n')
+    except Exception:
+        with contextlib.suppress(Exception):
+            await send('> 터미널 서비스를 사용할 수 없습니다.\n')
     finally:
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks,return_exceptions=True)
+        # A crashed API is detected by Redis lease expiry. Releasing a socket
+        # never releases the independent SQL execution capacity.
         with contextlib.suppress(Exception):
-            if raw_sock is not None:
-                raw_sock.close()
+            await asyncio.to_thread(broker.close,sid)
         with contextlib.suppress(Exception):
-            if container is not None:
-                await asyncio.to_thread(container.kill)
-        with contextlib.suppress(Exception):
-            if container is not None:
-                await asyncio.to_thread(container.remove, force=True)
-        if temp_dir is not None:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        with contextlib.suppress(Exception):
-            await websocket.close()
+            await websocket.close(code=close_code)

@@ -1,4 +1,6 @@
 from typing import List
+from datetime import timezone
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,6 +10,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
+from app.services.contest_access import now_utc
 
 router = APIRouter()
 
@@ -33,8 +36,9 @@ def _serialize_project(project: db_models.CodeProject) -> schemas.CodeProjectRea
         title=project.title,
         language=project.language,
         code=project.code,
-        created_at=project.created_at,
-        updated_at=project.updated_at,
+        revision=project.revision,
+        created_at=project.created_at.replace(tzinfo=timezone.utc) if project.created_at.tzinfo is None else project.created_at,
+        updated_at=project.updated_at.replace(tzinfo=timezone.utc) if project.updated_at.tzinfo is None else project.updated_at,
     )
 
 
@@ -78,6 +82,8 @@ def upsert_project(
 ):
     normalized_scope = _validate_scope(scope)
     _validate_code_size(payload.code)
+    # Serialize this owner's project creation/count checks across API replicas.
+    db.query(db_models.User).filter_by(id=current_user.id).update({"id": current_user.id}, synchronize_session=False)
     project = (
         db.query(db_models.CodeProject)
         .filter(
@@ -88,6 +94,8 @@ def upsert_project(
     )
 
     if project is None:
+        if payload.expected_revision is not None:
+            raise HTTPException(409, "서버 코드가 변경되거나 삭제되었습니다. 코드를 비교한 뒤 다시 저장하세요.")
         project_count = (
             db.query(db_models.CodeProject)
             .filter(db_models.CodeProject.user_id == current_user.id)
@@ -104,10 +112,16 @@ def upsert_project(
         )
         db.add(project)
     else:
-        project.title = payload.title.strip() or project.title
-        project.language = payload.language
-        project.code = payload.code
-        db.add(project)
+        updated = db.query(db_models.CodeProject).filter(
+            db_models.CodeProject.id == project.id,
+            db_models.CodeProject.revision == payload.expected_revision,
+        ).update({
+            "title": payload.title.strip() or project.title, "language": payload.language, "code": payload.code,
+            "revision": uuid.uuid4().hex, "updated_at": now_utc(),
+        }, synchronize_session=False)
+        if not updated:
+            db.rollback()
+            raise HTTPException(409, "다른 창에서 코드가 변경되었습니다. 코드를 비교한 뒤 다시 저장하세요.")
 
     db.commit()
     db.refresh(project)

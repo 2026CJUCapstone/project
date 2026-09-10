@@ -1,0 +1,45 @@
+# Production-only: the stateful endpoints outlive every deployment color.
+# Local/deploy-like development continues to use the base + deploy overlays.
+services:
+  postgres:
+    profiles: [legacy-color-infra]
+  redis:
+    profiles: [legacy-color-infra]
+
+  initialize:
+    depends_on: !reset {}
+    environment:
+      RUNTIME_INSTANCE_ID: ${WEBCOMPILER_RUNTIME_INSTANCE_ID:?Set the reserved runtime instance}
+      REDIS_URL: ${WEBCOMPILER_REDIS_URL:?Set the shared Redis URL}
+      REDIS_KEY_PREFIX: ${WEBCOMPILER_REDIS_KEY_PREFIX:?Set a color-independent Redis namespace}
+      # Production never inherits the development `compiler` password from the
+      # base file. The deploy path rejects external URL overrides as well.
+      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:?Set an explicit shared PostgreSQL credential}@${WEBCOMPILER_POSTGRES_HOST:-postgres}:${WEBCOMPILER_POSTGRES_PORT:-5432}/${WEBCOMPILER_POSTGRES_DB:-compiler}
+  pgbouncer:
+    depends_on: !reset {}
+    environment:
+      DB_PASSWORD: ${WEBCOMPILER_POSTGRES_PASSWORD:?Set an explicit shared PostgreSQL credential}
+  backend:
+    depends_on: !override
+      initialize: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+      worker: { condition: service_started }
+    environment:
+      RUNTIME_POOL_ID: ${COMPOSE_PROJECT_NAME:?Set the color project}
+      # The deployment adapter reserves this before Compose can start a candidate.
+      # Do not accept a caller-provided RUNTIME_INSTANCE_ID here.
+      RUNTIME_INSTANCE_ID: ${WEBCOMPILER_RUNTIME_INSTANCE_ID:?Set the reserved runtime instance}
+      REDIS_URL: ${WEBCOMPILER_REDIS_URL:?Set the shared Redis URL}
+      REDIS_KEY_PREFIX: ${WEBCOMPILER_REDIS_KEY_PREFIX:?Set a color-independent Redis namespace}
+      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:?Set an explicit shared PostgreSQL credential}@pgbouncer:5432/${WEBCOMPILER_POSTGRES_DB:-compiler}
+  worker:
+    depends_on: !override
+      initialize: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+    environment:
+      RUNTIME_POOL_ID: ${COMPOSE_PROJECT_NAME:?Set the color project}
+      # Keep the worker's durable lane identity bound to this exact candidate.
+      RUNTIME_INSTANCE_ID: ${WEBCOMPILER_RUNTIME_INSTANCE_ID:?Set the reserved runtime instance}
+      REDIS_URL: ${WEBCOMPILER_REDIS_URL:?Set the shared Redis URL}
+      REDIS_KEY_PREFIX: ${WEBCOMPILER_REDIS_KEY_PREFIX:?Set a color-independent Redis namespace}
+      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:?Set an explicit shared PostgreSQL credential}@pgbouncer:5432/${WEBCOMPILER_POSTGRES_DB:-compiler}

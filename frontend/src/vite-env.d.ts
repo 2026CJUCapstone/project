@@ -2,6 +2,14 @@
 
 declare module 'dagre';
 
+declare module 'virtual:local-monaco' {
+  const distribution: {
+    vs: string;
+    workers: Record<'editor' | 'css' | 'html' | 'json' | 'ts', string>;
+  };
+  export default distribution;
+}
+
 interface ImportMetaEnv {
 	readonly VITE_API_URL?: string;
 	readonly VITE_API_TIMEOUT?: string;

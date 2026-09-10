@@ -21,7 +21,6 @@ DEPLOY_DIR="${WEBCOMPILER_DEPLOY_STATE_DIR:-$PROJECT_ROOT/.deploy}"
 LOCK_FILE="$DEPLOY_DIR/sandbox-updater.lock"
 TEST_SKIP_LLVM_BUILD="${TEST_SKIP_LLVM_BUILD:-1}"
 TEST_FAST_IO="${TEST_FAST_IO:-0}"
-RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE:-$(runtime_build_signature)}"
 
 log() {
   printf '[sandbox-updater] %s\n' "$*"
@@ -69,13 +68,33 @@ BPP
   [[ "$output" == *"sandbox updater ok"* ]]
 }
 
+refuse_symlinked_state_paths() {
+  if [[ -L "$DEPLOY_DIR" || -L "$DEPLOY_DIR/deploy.lock" || -L "$LOCK_FILE" ]]; then
+    log "refusing symlinked updater state path"
+    exit 1
+  fi
+}
+
+refuse_symlinked_state_paths
 mkdir -p "$DEPLOY_DIR" "$PROJECT_ROOT/.sandbox-work"
+refuse_symlinked_state_paths
+
+# Serialize against repository sync and deployment first, then serialize
+# multiple updater invocations. Keep this lock order everywhere to avoid a
+# deployment/updater lock inversion.
+exec 8>"$DEPLOY_DIR/deploy.lock"
+if ! flock -n 8; then
+  log "another deployment is already running; skipping update"
+  exit 0
+fi
 
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
-  log "another update is already running"
+  log "another sandbox update is already running; skipping update"
   exit 0
 fi
+
+RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE:-$(runtime_build_signature)}"
 
 if ! latest_ref="$(latest_remote_ref)" || [[ -z "$latest_ref" ]]; then
   log "failed to resolve $BPP_REPO $BPP_BRANCH"
@@ -90,6 +109,7 @@ if [[ "$current_key" == "$desired_key" ]]; then
 fi
 
 log "updating sandbox image: ${current_key:-none} -> $desired_key"
+SANDBOX_IMAGE="$CANDIDATE_IMAGE" \
 SANDBOX_IMAGE_TAG="$CANDIDATE_IMAGE" \
 BPP_REPO="$BPP_REPO" \
 BPP_BRANCH="$BPP_BRANCH" \

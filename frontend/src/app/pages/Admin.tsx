@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { ChevronLeft, ChevronRight, Home, ListChecks, Users, LogOut, Plus, Pencil, Search, Trash2, ShieldCheck } from "lucide-react";
 import { ProblemFormModal } from "../components/ProblemFormModal";
 import { getProblems, createProblem, deleteProblem, updateProblem } from "../services/problemApi";
 import type { Problem, ProblemCreateRequest } from "../services/problemApi";
-import { getCurrentUser, login, type AuthUser } from "../services/authApi";
+import { getCurrentUser, type AuthUser } from "../services/authApi";
 import { getAdminUsers, updateAdminUser, type AdminUser } from "../services/adminApi";
 import { DIFFICULTY_LABELS } from "../constants/difficulty";
 import { getProblemTagLabel } from "../constants/problemTags";
@@ -15,8 +16,6 @@ const difficultyLabel: Record<string, string> = {
 const USER_PAGE_SIZE = 50;
 
 export function Admin() {
-  const [id, setId] = useState("");
-  const [password, setPassword] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState("");
@@ -123,24 +122,6 @@ export function Admin() {
   const handleEditProblem = (problem: Problem) => {
     setEditingProblem(problem);
     setShowForm(true);
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    try {
-      const token = await login(id.trim(), password);
-      localStorage.setItem('authToken', token.accessToken);
-      const me = await getCurrentUser();
-      if (me.role !== 'admin') {
-        localStorage.removeItem('authToken');
-        throw new Error('관리자 권한이 필요합니다.');
-      }
-      setCurrentUser(me);
-      setLoggedIn(true);
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "로그인에 실패했습니다.");
-    }
   };
 
   const handleLogout = () => {
@@ -521,31 +502,17 @@ export function Admin() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#0d0d0d] text-gray-100">
-      <form onSubmit={handleLogin} className="flex flex-col gap-4 w-80">
-        <h1 className="text-2xl font-bold text-center text-white">관리자 로그인</h1>
-        <input
-          type="text"
-          placeholder="아이디"
-          value={id}
-          onChange={(e) => setId(e.target.value)}
-          className="bg-[#1e1e1e] border border-[#333] text-gray-100 rounded px-3 py-2 outline-none focus:border-blue-500 placeholder-gray-500"
-        />
-        <input
-          type="password"
-          placeholder="비밀번호"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="bg-[#1e1e1e] border border-[#333] text-gray-100 rounded px-3 py-2 outline-none focus:border-blue-500 placeholder-gray-500"
-        />
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-        <button
-          type="submit"
-          className="bg-blue-500 text-white rounded px-3 py-2 hover:bg-blue-600"
-        >
-          로그인
-        </button>
-      </form>
-    </div>
+    <main className="flex min-h-screen items-center justify-center bg-[#0d0d0d] px-4 text-gray-100">
+      <section className="w-full max-w-md rounded-lg border border-[#333] bg-[#161616] p-8 text-center shadow-xl" aria-labelledby="admin-access-title">
+        <ShieldCheck className="mx-auto mb-4 text-blue-400" size={32} aria-hidden="true" />
+        <h1 id="admin-access-title" className="text-2xl font-bold text-white">관리자 로그인이 필요합니다</h1>
+        <p className="mt-3 text-sm leading-6 text-gray-400">
+          {error || '문제 생성과 수정은 관리자 계정으로 로그인한 뒤 사용할 수 있습니다.'}
+        </p>
+        <Link to="/" className="mt-6 inline-flex rounded bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600">
+          홈에서 로그인하기
+        </Link>
+      </section>
+    </main>
   );
 }

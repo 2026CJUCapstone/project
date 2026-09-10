@@ -1,4 +1,5 @@
 import smtplib
+import ssl
 from email.message import EmailMessage
 from urllib.parse import quote
 
@@ -40,7 +41,9 @@ def send_password_reset_email(to_email: str, token: str) -> None:
 
     with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
         if settings.SMTP_STARTTLS:
-            smtp.starttls()
+            # smtplib's implicit compatibility context does not verify the
+            # peer certificate. Authenticate the server before sending creds.
+            smtp.starttls(context=ssl.create_default_context())
         if settings.SMTP_USERNAME:
             smtp.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD or "")
         smtp.send_message(message)

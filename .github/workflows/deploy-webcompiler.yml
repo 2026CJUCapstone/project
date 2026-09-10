@@ -12,15 +12,23 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: deploy-webcompiler
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Gate before checkout: workflow_run is privileged. A fork PR whose branch
+    # happens to be named main must never supply the verifier/SSH script.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout
@@ -28,38 +36,26 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Verify Exact Revision Passed CI
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          DEPLOY_CI_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/verify_deploy_ci.py
+
       - name: Start SSH Agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.WEBCOMPILER_DEPLOY_SSH_KEY }}
 
-      - name: Trust Deploy Host
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p "${{ secrets.WEBCOMPILER_DEPLOY_PORT }}" -H "${{ secrets.WEBCOMPILER_DEPLOY_HOST }}" >> ~/.ssh/known_hosts
-
-      - name: Update Remote Repository
+      - name: Deploy Verified Revision Under One Remote Lock
         env:
-          DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           DEPLOY_HOST: ${{ secrets.WEBCOMPILER_DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
           DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
           DEPLOY_REPO: ${{ github.server_url }}/${{ github.repository }}.git
           DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
-        run: |
-          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
-            -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "DEPLOY_BRANCH='${DEPLOY_BRANCH}' DEPLOY_PATH='${DEPLOY_PATH}' DEPLOY_REPO='${DEPLOY_REPO}' RUN_DEPLOY_SCRIPT=0 bash -s" \
-            < scripts/sync_remote_repo.sh
-
-      - name: Run Remote Deploy
-        env:
-          DEPLOY_HOST: ${{ secrets.WEBCOMPILER_DEPLOY_HOST }}
-          DEPLOY_PATH: ${{ secrets.WEBCOMPILER_DEPLOY_PATH }}
-          DEPLOY_PORT: ${{ secrets.WEBCOMPILER_DEPLOY_PORT }}
-          DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.WEBCOMPILER_DEPLOY_KNOWN_HOSTS }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
-            -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && GITHUB_TOKEN='${GITHUB_TOKEN}' bash scripts/deploy_server.sh"
+        run: python3 scripts/dispatch_deploy.py

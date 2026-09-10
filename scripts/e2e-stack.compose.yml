@@ -1,0 +1,66 @@
+# Test-only overlay for a bounded, non-restarting base-stack integration run.
+# It intentionally does not add production overlays, networks, or identities.
+x-e2e-logging: &e2e-logging
+  driver: json-file
+  options:
+    max-size: "2m"
+    max-file: "2"
+
+services:
+  postgres:
+    restart: "no"
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.25
+    pids_limit: 128
+    logging: *e2e-logging
+
+  pgbouncer:
+    restart: "no"
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.125
+    pids_limit: 64
+    logging: *e2e-logging
+
+  redis:
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction"]
+    restart: "no"
+    mem_limit: 96m
+    memswap_limit: 96m
+    cpus: 0.125
+    pids_limit: 64
+    logging: *e2e-logging
+
+  initialize:
+    restart: "no"
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.25
+    pids_limit: 128
+    logging: *e2e-logging
+
+  backend:
+    restart: "no"
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    pids_limit: 128
+    logging: *e2e-logging
+
+  worker:
+    restart: "no"
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
+    logging: *e2e-logging
+
+  frontend:
+    image: ${E2E_FRONTEND_IMAGE:?E2E frontend image must be scoped to this run}
+    restart: "no"
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.125
+    pids_limit: 64
+    logging: *e2e-logging

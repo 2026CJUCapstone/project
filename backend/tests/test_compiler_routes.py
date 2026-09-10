@@ -3,10 +3,11 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.services import compiler as compiler_service
+from tests.execution_helpers import finish_receipt
 
 
 @pytest.mark.asyncio
-async def test_compile_route_returns_400_for_unsupported_language(monkeypatch: pytest.MonkeyPatch):
+async def test_compile_route_accepts_runner_value_error_then_returns_generic_worker_error(monkeypatch: pytest.MonkeyPatch):
     async def fake_compile(source_code: str, language: str, optimize: bool = False, target: str = "all"):
         raise ValueError(f"지원하지 않는 언어입니다: {language}")
 
@@ -21,13 +22,16 @@ async def test_compile_route_returns_400_for_unsupported_language(monkeypatch: p
                 "options": {"optimize": False, "target": "all"},
             },
         )
+        result = await finish_receipt(client, response)
 
-    assert response.status_code == 400
-    assert "지원하지 않는 언어" in response.json()["detail"]
+    assert result["ok"] is False
+    assert result["value"] is None
+    assert result["verdict"] == "system_error"
+    assert result["error"] == "실행 서비스를 사용할 수 없습니다."
 
 
 @pytest.mark.asyncio
-async def test_compile_route_returns_500_for_sandbox_failure(monkeypatch: pytest.MonkeyPatch):
+async def test_compile_route_accepts_sandbox_failure_then_returns_generic_worker_error(monkeypatch: pytest.MonkeyPatch):
     async def fake_compile(source_code: str, language: str, optimize: bool = False, target: str = "all"):
         raise compiler_service.SandboxExecutionError("docker unavailable")
 
@@ -42,13 +46,16 @@ async def test_compile_route_returns_500_for_sandbox_failure(monkeypatch: pytest
                 "options": {"optimize": False, "target": "all"},
             },
         )
+        result = await finish_receipt(client, response)
 
-    assert response.status_code == 500
-    assert response.json()["detail"] == "docker unavailable"
+    assert result["ok"] is False
+    assert result["value"] is None
+    assert result["verdict"] == "system_error"
+    assert result["error"] == "실행 서비스를 사용할 수 없습니다."
 
 
 @pytest.mark.asyncio
-async def test_run_route_returns_500_for_sandbox_failure(monkeypatch: pytest.MonkeyPatch):
+async def test_run_route_accepts_sandbox_failure_then_returns_generic_worker_error(monkeypatch: pytest.MonkeyPatch):
     async def fake_run(source_code: str, language: str, stdin: str = "", optimize: bool = False):
         raise compiler_service.SandboxExecutionError("sandbox failed")
 
@@ -62,6 +69,9 @@ async def test_run_route_returns_500_for_sandbox_failure(monkeypatch: pytest.Mon
                 "language": "bpp",
             },
         )
+        result = await finish_receipt(client, response)
 
-    assert response.status_code == 500
-    assert response.json()["detail"] == "sandbox failed"
+    assert result["ok"] is False
+    assert result["value"] is None
+    assert result["verdict"] == "system_error"
+    assert result["error"] == "실행 서비스를 사용할 수 없습니다."

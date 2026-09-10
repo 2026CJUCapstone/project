@@ -56,8 +56,8 @@ export function OutputConsole() {
       data-testid="output-console"
       className="flex flex-col h-full bg-gray-50 dark:bg-[#0d0d0d] font-mono text-sm shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] dark:shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] transition-colors duration-200"
     >
-      <div className="flex items-center justify-between bg-white dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shrink-0 sticky top-0 z-10 transition-colors duration-200">
-        <div className="flex items-center">
+      <div className="flex flex-wrap items-center justify-between bg-white dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shrink-0 sticky top-0 z-10 transition-colors duration-200">
+        <div className="flex min-w-0 flex-1 items-center overflow-x-auto">
           <button
             type="button"
             data-testid="output-tab"
@@ -88,20 +88,23 @@ export function OutputConsole() {
 
           {!isGraphViewerOpen && (
             <button
+              type="button"
               onClick={() => setGraphViewerOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 border-b-2 border-transparent hover:bg-gray-100 dark:hover:bg-[#252525] transition-colors group"
+              className="flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-2.5 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 dark:hover:bg-[#252525] sm:px-4"
+              aria-label="파이프라인 그래프 열기"
             >
               <Network size={16} className="text-purple-600 dark:text-purple-400 group-hover:text-purple-500 dark:group-hover:text-purple-300" />
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-200 uppercase tracking-widest">파이프라인 뷰어</span>
+              <span className="hidden text-xs font-semibold uppercase tracking-widest text-gray-500 dark:text-gray-400 sm:inline">파이프라인 뷰어</span>
               <Maximize2 size={12} className="text-gray-400 dark:text-gray-500 group-hover:text-blue-500 dark:group-hover:text-blue-400 ml-1" />
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-3 px-4">
+        <div className="flex w-full items-center justify-end gap-3 border-t border-gray-100 px-4 py-2 dark:border-[#2a2a2a] sm:w-auto sm:border-t-0 sm:py-0">
           {activeConsoleTab === "output" ? (
             <>
               <button
+                type="button"
                 onClick={restartConsole}
                 className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                 title="콘솔 재시작"
@@ -110,6 +113,7 @@ export function OutputConsole() {
               </button>
               <div className="w-[1px] h-3.5 bg-gray-300 dark:bg-[#444]" />
               <button
+                type="button"
                 onClick={clearOutput}
                 className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                 title="콘솔 지우기"
@@ -120,6 +124,7 @@ export function OutputConsole() {
           ) : (
             <>
               <button
+                type="button"
                 onClick={clearTerminal}
                 className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                 title="터미널 지우기"
@@ -209,6 +214,7 @@ export function OutputConsole() {
               placeholder={terminalStatus === "connected" ? "프로그램 stdin으로 보낼 값을 입력하세요" : "실행 버튼으로 터미널 세션을 시작하세요"}
               autoComplete="off"
               spellCheck={false}
+              aria-label="터미널 표준 입력"
             />
           </form>
         </div>

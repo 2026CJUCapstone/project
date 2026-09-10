@@ -2,9 +2,10 @@ import path from "path";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
+import { localMonacoAssets } from './build/localMonacoAssets';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), localMonacoAssets()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

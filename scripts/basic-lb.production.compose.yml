@@ -1,0 +1,18 @@
+# Explicit legacy PostgreSQL handoff for the approved basic rollout only.
+# Start only after backup/restore rehearsal and stopping both legacy writers.
+# It neither adopts nor recreates the existing PostgreSQL container/volume.
+services:
+  postgres:
+    profiles: [isolated-clone]
+  initialize:
+    depends_on: !reset {}
+    environment:
+      DATABASE_URL: ${BASIC_LB_PRODUCTION_DATABASE_URL:?Existing production database URL required}
+    networks: [default, legacy_postgres]
+  pgbouncer:
+    depends_on: !reset {}
+    networks: [default, legacy_postgres]
+networks:
+  legacy_postgres:
+    external: true
+    name: webcompiler-shared

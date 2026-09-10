@@ -694,15 +694,15 @@ export function CompilerGraphViewer({ code }: { code: string }) {
   }, [activeGraphTab, canRender, compileState, isCompiling, language]);
 
   return (
-    <div className="flex h-full flex-col border-l border-slate-200 bg-white dark:border-[#333] dark:bg-[#0d0d0d]">
-      <div className="shrink-0 border-b border-slate-200 bg-white px-3 pt-2 dark:border-[#333] dark:bg-[#1e1e1e]">
-        <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-[#333]">
-          <div className="flex items-center gap-1">
+    <div className="flex h-full min-w-0 flex-col border-l border-slate-200 bg-white dark:border-[#333] dark:bg-[#0d0d0d]">
+      <div className="min-w-0 shrink-0 border-b border-slate-200 bg-white px-3 pt-2 dark:border-[#333] dark:bg-[#1e1e1e]">
+        <div className="flex min-w-0 items-center justify-between gap-2 border-b border-slate-200 dark:border-[#333]">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveGraphTab(tab.id)}
-                className={`flex items-center gap-2 border-b-2 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition-all ${
+                className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition-all ${
                   activeGraphTab === tab.id
                     ? `${tab.accent}`
                     : 'border-transparent text-slate-400 hover:text-slate-600 dark:text-gray-400 dark:hover:bg-[#252525] dark:hover:text-gray-200'
@@ -716,7 +716,7 @@ export function CompilerGraphViewer({ code }: { code: string }) {
           </div>
           <button
             onClick={() => setGraphViewerOpen(false)}
-            className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 dark:text-gray-400 dark:hover:bg-[#252525] dark:hover:text-white"
+            className="shrink-0 rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 dark:text-gray-400 dark:hover:bg-[#252525] dark:hover:text-white"
             title="최소화"
           >
             <Minus size={16} />

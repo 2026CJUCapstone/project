@@ -4,33 +4,53 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PROJECT_ROOT="$ROOT_DIR"
+export WEBCOMPILER_PROJECT_PREFIX="${WEBCOMPILER_PROJECT_PREFIX:-webcompiler}"
+export SANDBOX_POOL_ID="${SANDBOX_POOL_ID:-$WEBCOMPILER_PROJECT_PREFIX}"
 
-mkdir -p "$PROJECT_ROOT/.sandbox-work" "$PROJECT_ROOT/.deploy"
-exec 9>"$PROJECT_ROOT/.deploy/deploy.lock"
-if ! flock -n 9; then
-  printf '[webcompiler-deploy] %s\n' "another deployment is already running"
-  exit 1
+# The optional updater owns global systemd units and stable compiler tags.
+# A separate deployment namespace must never install or alter those resources.
+if [[ "$WEBCOMPILER_PROJECT_PREFIX" != webcompiler && "${WEBCOMPILER_ENABLE_SANDBOX_UPDATER:-0}" != 0 ]]; then
+  echo 'Sandbox updater is unsupported for a custom deployment namespace' >&2
+  exit 2
 fi
 
-RUNTIME_SECRETS_FILE="$PROJECT_ROOT/.deploy/runtime-secrets.env"
+source "$PROJECT_ROOT/scripts/deploy_guard.sh"
+python3 "$PROJECT_ROOT/scripts/validate_ingress.py"
+python3 "$PROJECT_ROOT/scripts/runtime_secrets.py" validate --deployment --allow-missing --file "$PROJECT_ROOT/.deploy/runtime-secrets.env"
+# Image builds have a separate budget from running API/worker containers.
+WEBCOMPILER_BUILD_CONTAINER_ID="$(python3 "$PROJECT_ROOT/scripts/verify_build_builder.py")"
+export WEBCOMPILER_BUILD_CONTAINER_ID
+# Read-only legacy/port/owner checks before archive, secret, DB or runtime changes.
+# A legacy edge handoff needs explicit approval; never free ports by stopping it.
+if [[ "${WEBCOMPILER_STOP_OLD_AFTER_DEPLOY:-0}" != "0" ]]; then
+  echo 'Automatic legacy stop is disabled; use verified drain/retirement' >&2
+  exit 2
+fi
+python3 "$PROJECT_ROOT/scripts/edge_deploy.py" preflight
+# Capture the exact validated mapping, never re-read the pathname after prepare.
+runtime_secret_exports="$(python3 "$PROJECT_ROOT/scripts/runtime_secrets.py" ensure --emit-exports --file "$PROJECT_ROOT/.deploy/runtime-secrets.env")"
+eval "$runtime_secret_exports"
+unset runtime_secret_exports
+active_color="$(python3 "$PROJECT_ROOT/scripts/edge_deploy.py" prepare)"
+# Never build/re-tag the other color's currently running application image.
+export WEBCOMPILER_BACKEND_IMAGE="$WEBCOMPILER_PROJECT_PREFIX-backend:$DEPLOY_SHA"
+# A clean tracked tree is not sufficient: ignored/untracked files can enter
+# Docker COPY or Compose .env. Build from the committed archive only; retain
+# this exact source context for rollback/audit, outside all Docker mounts.
+SOURCE_ROOT="$(bash "$PROJECT_ROOT/scripts/materialize_deploy_source.sh")"
 
-ensure_runtime_secret() {
-  local key="$1"
-  local bytes="$2"
-  if [[ -f "$RUNTIME_SECRETS_FILE" ]] && grep -q "^${key}=" "$RUNTIME_SECRETS_FILE"; then
-    return
-  fi
-  umask 077
-  printf '%s=%s\n' "$key" "$(python3 -c "import secrets; print(secrets.token_urlsafe(${bytes}))")" >> "$RUNTIME_SECRETS_FILE"
-}
+compose_version="$(docker compose version --short)"
+if [[ ! "$compose_version" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+) ]] ||
+   (( BASH_REMATCH[1] < 2 || (BASH_REMATCH[1] == 2 && (BASH_REMATCH[2] < 24 || (BASH_REMATCH[2] == 24 && BASH_REMATCH[3] < 4))) )); then
+  printf 'Docker Compose >= 2.24.4 is required for shared-runtime overrides\n' >&2
+  exit 2
+fi
 
-ensure_runtime_secret WEBCOMPILER_SECRET_KEY 48
-ensure_runtime_secret WEBCOMPILER_ADMIN_PASSWORD 32
-chmod 600 "$RUNTIME_SECRETS_FILE"
+mkdir -p "$PROJECT_ROOT/.sandbox-work"
+export WEBCOMPILER_WORKER_UID="$(stat -c %u "$PROJECT_ROOT/.sandbox-work")"
+export WEBCOMPILER_WORKER_GID="$(stat -c %g "$PROJECT_ROOT/.sandbox-work")"
+export WEBCOMPILER_DOCKER_GID="$(stat -c %g /var/run/docker.sock)"
 
-set -a
-source "$RUNTIME_SECRETS_FILE"
-set +a
 export SECRET_KEY="${SECRET_KEY:-$WEBCOMPILER_SECRET_KEY}"
 export ADMIN_PASSWORD="${ADMIN_PASSWORD:-$WEBCOMPILER_ADMIN_PASSWORD}"
 export ENVIRONMENT="${ENVIRONMENT:-production}"
@@ -59,15 +79,24 @@ export WEBCOMPILER_API_BASE="${WEBCOMPILER_API_BASE:-/webcompiler}"
 export WEBCOMPILER_CORS_ORIGINS="${WEBCOMPILER_CORS_ORIGINS:-https://cuha.cju.ac.kr}"
 export WEBCOMPILER_POSTGRES_DB="${WEBCOMPILER_POSTGRES_DB:-compiler}"
 export WEBCOMPILER_POSTGRES_USER="${WEBCOMPILER_POSTGRES_USER:-compiler}"
-export WEBCOMPILER_POSTGRES_PASSWORD="${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}"
+# Never provision a production database with the development password. Existing
+# credentials must be supplied by the operator; changing this does not rotate data.
+export WEBCOMPILER_POSTGRES_PASSWORD="${WEBCOMPILER_POSTGRES_PASSWORD:?Set the existing or explicitly approved PostgreSQL credential}"
 
-export WEBCOMPILER_SHARED_POSTGRES_NETWORK="${WEBCOMPILER_SHARED_POSTGRES_NETWORK:-webcompiler-shared}"
-SHARED_POSTGRES_NAME="${WEBCOMPILER_SHARED_POSTGRES_NAME:-webcompiler-postgres}"
-SHARED_POSTGRES_VOLUME="${WEBCOMPILER_SHARED_POSTGRES_VOLUME:-webcompiler-postgres-data}"
+export WEBCOMPILER_SHARED_POSTGRES_NETWORK="${WEBCOMPILER_SHARED_POSTGRES_NETWORK:-$WEBCOMPILER_PROJECT_PREFIX-shared}"
+export WEBCOMPILER_SHARED_POSTGRES_NAME="${WEBCOMPILER_SHARED_POSTGRES_NAME:-$WEBCOMPILER_PROJECT_PREFIX-postgres}"
+export WEBCOMPILER_SHARED_POSTGRES_VOLUME="${WEBCOMPILER_SHARED_POSTGRES_VOLUME:-$WEBCOMPILER_PROJECT_PREFIX-postgres-data}"
+SHARED_POSTGRES_NAME="$WEBCOMPILER_SHARED_POSTGRES_NAME"
+SHARED_POSTGRES_VOLUME="$WEBCOMPILER_SHARED_POSTGRES_VOLUME"
 SHARED_POSTGRES_NETWORK="$WEBCOMPILER_SHARED_POSTGRES_NETWORK"
-SHARED_POSTGRES_IMAGE="${WEBCOMPILER_SHARED_POSTGRES_IMAGE:-postgres:16-alpine}"
+SHARED_POSTGRES_IMAGE="${WEBCOMPILER_SHARED_POSTGRES_IMAGE:-postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685}"
 export WEBCOMPILER_POSTGRES_HOST="${WEBCOMPILER_POSTGRES_HOST:-$SHARED_POSTGRES_NAME}"
 export WEBCOMPILER_POSTGRES_PORT="${WEBCOMPILER_POSTGRES_PORT:-5432}"
+export WEBCOMPILER_SHARED_REDIS_NAME="${WEBCOMPILER_SHARED_REDIS_NAME:-$WEBCOMPILER_PROJECT_PREFIX-redis}"
+export WEBCOMPILER_SHARED_REDIS_VOLUME="${WEBCOMPILER_SHARED_REDIS_VOLUME:-$WEBCOMPILER_PROJECT_PREFIX-redis-data}"
+managed_redis_url="redis://${WEBCOMPILER_SHARED_REDIS_NAME}:6379/0"
+export WEBCOMPILER_REDIS_URL="${WEBCOMPILER_REDIS_URL:-$managed_redis_url}"
+export WEBCOMPILER_REDIS_KEY_PREFIX="${WEBCOMPILER_REDIS_KEY_PREFIX:-$WEBCOMPILER_PROJECT_PREFIX}"
 
 BLUE_BACKEND_PORT="${WEBCOMPILER_BLUE_BACKEND_PORT:-18001}"
 BLUE_FRONTEND_PORT="${WEBCOMPILER_BLUE_FRONTEND_PORT:-15174}"
@@ -75,13 +104,6 @@ GREEN_BACKEND_PORT="${WEBCOMPILER_GREEN_BACKEND_PORT:-18002}"
 GREEN_FRONTEND_PORT="${WEBCOMPILER_GREEN_FRONTEND_PORT:-15175}"
 EDGE_BACKEND_PORT="${WEBCOMPILER_EDGE_BACKEND_PORT:-18000}"
 EDGE_FRONTEND_PORT="${WEBCOMPILER_EDGE_FRONTEND_PORT:-15173}"
-STATE_FILE="${WEBCOMPILER_ACTIVE_COLOR_FILE:-$PROJECT_ROOT/.deploy/active-color}"
-LEGACY_PROJECT_NAME="${WEBCOMPILER_LEGACY_PROJECT_NAME:-webcompiler}"
-
-FRONTEND_EDGE_NAME="${WEBCOMPILER_FRONTEND_EDGE_NAME:-webcompiler-edge-frontend}"
-BACKEND_EDGE_NAME="${WEBCOMPILER_BACKEND_EDGE_NAME:-webcompiler-edge-backend}"
-FRONTEND_EDGE_CONF="$PROJECT_ROOT/.deploy/frontend-edge.conf"
-BACKEND_EDGE_CONF="$PROJECT_ROOT/.deploy/backend-edge.conf"
 
 log() {
   printf '[webcompiler-deploy] %s\n' "$*"
@@ -118,7 +140,7 @@ wait_for_url() {
   local deadline
   deadline=$((SECONDS + timeout))
 
-  until curl -fsS "$url" >/dev/null; do
+  until curl --connect-timeout 2 --max-time 5 -fsS "$url" >/dev/null; do
     if (( SECONDS >= deadline )); then
       log "health check failed for $label: $url"
       return 1
@@ -134,358 +156,124 @@ compose_for_color() {
   backend_port="$(color_backend_port "$color")"
   frontend_port="$(color_frontend_port "$color")"
 
-  COMPOSE_PROJECT_NAME="webcompiler-$color" \
-  WEBCOMPILER_BACKEND_PORT_MAPPING="127.0.0.1:${backend_port}:8000" \
-  WEBCOMPILER_FRONTEND_PORT_MAPPING="127.0.0.1:${frontend_port}:80" \
+  COMPOSE_PROFILES="" \
+  COMPOSE_PROJECT_NAME="$WEBCOMPILER_PROJECT_PREFIX-$color" \
+  WEBCOMPILER_API_PROXY_PORT_MAPPING="127.0.0.1:${backend_port}:8080" \
+  WEBCOMPILER_FRONTEND_PORT_MAPPING="127.0.0.1:${frontend_port}:8080" \
   PROJECT_ROOT="$PROJECT_ROOT" \
   docker compose \
-    -p "webcompiler-$color" \
-    -f "$PROJECT_ROOT/docker-compose.yml" \
-    -f "$PROJECT_ROOT/docker-compose.deploy.yml" \
+    -p "$WEBCOMPILER_PROJECT_PREFIX-$color" \
+    --project-directory "$SOURCE_ROOT" \
+    --env-file /dev/null \
+    -f "$SOURCE_ROOT/docker-compose.yml" \
+    -f "$SOURCE_ROOT/docker-compose.deploy.yml" \
+    -f "$SOURCE_ROOT/docker-compose.shared-runtime.yml" \
+    -f "$SOURCE_ROOT/docker-compose.lb.yml" \
+    -f "$SOURCE_ROOT/docker-compose.ready-lb.yml" \
     "${@:2}"
 }
 
-postgres_container_name() {
-  printf 'webcompiler-%s-postgres-1\n' "$1"
-}
-
-backend_container_name() {
-  printf 'webcompiler-%s-backend-1\n' "$1"
-}
-
-container_is_on_network() {
-  local container="$1"
-  local network="$2"
-  docker inspect "$container" --format '{{json .NetworkSettings.Networks}}' 2>/dev/null \
-    | grep -q "\"$network\""
-}
-
-wait_for_shared_postgres() {
-  local timeout="${1:-60}"
-  local deadline
-  deadline=$((SECONDS + timeout))
-
-  until docker exec "$SHARED_POSTGRES_NAME" \
-    pg_isready \
-      -U "$WEBCOMPILER_POSTGRES_USER" \
-      -d "$WEBCOMPILER_POSTGRES_DB" \
-      >/dev/null 2>&1; do
-    if (( SECONDS >= deadline )); then
-      log "shared postgres did not become ready"
-      return 1
-    fi
-    sleep 1
-  done
+wait_for_color_pool() {
+  local color="$1"
+  compose_for_color "$color" exec -T proxy-controller \
+    python -m app.proxy_promotion --release "$DEPLOY_SHA" --pool "$WEBCOMPILER_PROJECT_PREFIX-$color" --runtime "$WEBCOMPILER_RUNTIME_INSTANCE_ID"
 }
 
 ensure_shared_postgres() {
-  if ! docker network inspect "$SHARED_POSTGRES_NETWORK" >/dev/null 2>&1; then
-    log "creating shared postgres network $SHARED_POSTGRES_NETWORK"
-    docker network create "$SHARED_POSTGRES_NETWORK" >/dev/null
-  fi
-
-  if docker ps -a --format '{{.Names}}' | grep -Fxq "$SHARED_POSTGRES_NAME"; then
-    if ! docker ps --format '{{.Names}}' | grep -Fxq "$SHARED_POSTGRES_NAME"; then
-      log "starting shared postgres $SHARED_POSTGRES_NAME"
-      docker start "$SHARED_POSTGRES_NAME" >/dev/null
-    fi
-    if ! container_is_on_network "$SHARED_POSTGRES_NAME" "$SHARED_POSTGRES_NETWORK"; then
-      docker network connect "$SHARED_POSTGRES_NETWORK" "$SHARED_POSTGRES_NAME"
-    fi
-  else
-    log "creating shared postgres $SHARED_POSTGRES_NAME"
-    docker run -d \
-      --name "$SHARED_POSTGRES_NAME" \
-      --restart unless-stopped \
-      --network "$SHARED_POSTGRES_NETWORK" \
-      -e "POSTGRES_DB=$WEBCOMPILER_POSTGRES_DB" \
-      -e "POSTGRES_USER=$WEBCOMPILER_POSTGRES_USER" \
-      -e "POSTGRES_PASSWORD=$WEBCOMPILER_POSTGRES_PASSWORD" \
-      -v "$SHARED_POSTGRES_VOLUME:/var/lib/postgresql/data" \
-      "$SHARED_POSTGRES_IMAGE" >/dev/null
-  fi
-
-  wait_for_shared_postgres
+  # Read the app-table gate in the same identity-bound readiness operation;
+  # a second name lookup must not silently switch to a replacement database.
+  SHARED_DATABASE_HAS_APP_TABLES="$(python3 "$SOURCE_ROOT/scripts/ensure_shared_postgres.py" --has-app-tables)"
+  [[ "$SHARED_DATABASE_HAS_APP_TABLES" == "yes" || "$SHARED_DATABASE_HAS_APP_TABLES" == "no" ]]
 }
 
 shared_database_has_app_tables() {
-  local table_count
-  table_count="$(
-    docker exec "$SHARED_POSTGRES_NAME" \
-      psql \
-        -U "$WEBCOMPILER_POSTGRES_USER" \
-        -d "$WEBCOMPILER_POSTGRES_DB" \
-        -tAc "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('problems', 'users', 'user_problem_scores');"
-  )"
-  [[ "${table_count//[[:space:]]/}" != "0" ]]
+  [[ "$SHARED_DATABASE_HAS_APP_TABLES" == "yes" ]]
 }
 
 bootstrap_shared_database_from_color() {
   local source_color="$1"
-
   if [[ -z "$source_color" ]]; then
     return
   fi
-
   if shared_database_has_app_tables; then
-    log "shared postgres already has application tables; skipping bootstrap"
+    log "shared postgres already has application tables"
     return
   fi
-
-  local source_container
-  source_container="$(postgres_container_name "$source_color")"
-
-  if ! docker ps --format '{{.Names}}' | grep -Fxq "$source_container"; then
-    log "active postgres $source_container is not running; skipping shared database bootstrap"
-    return
-  fi
-
-  log "bootstrapping shared postgres from $source_color database"
-  docker exec "$source_container" \
-    pg_dump \
-      -U "$WEBCOMPILER_POSTGRES_USER" \
-      -d "$WEBCOMPILER_POSTGRES_DB" \
-      --clean \
-      --if-exists \
-      --no-owner \
-      --no-privileges \
-    | docker exec -i "$SHARED_POSTGRES_NAME" \
-        psql \
-          -v ON_ERROR_STOP=1 \
-          -U "$WEBCOMPILER_POSTGRES_USER" \
-          -d "$WEBCOMPILER_POSTGRES_DB" \
-          >/dev/null
+  # An online snapshot loses writes accepted after the snapshot. Refuse an
+  # automatic cutover; an explicit offline backup/restore rehearsal is required.
+  log "shared database is empty while a previous color exists; complete verified offline migration before deployment"
+  return 1
 }
-
-connect_backend_to_shared_postgres() {
-  local color="$1"
-  local backend_container
-  backend_container="$(backend_container_name "$color")"
-
-  if ! docker ps -a --format '{{.Names}}' | grep -Fxq "$backend_container"; then
-    log "backend $backend_container does not exist; skipping shared postgres network attach"
-    return
-  fi
-
-  if ! container_is_on_network "$backend_container" "$SHARED_POSTGRES_NETWORK"; then
-    log "attaching $backend_container to shared postgres network"
-    docker network connect "$SHARED_POSTGRES_NETWORK" "$backend_container"
-  fi
-
-  compose_for_color "$color" restart backend
-}
-
-write_edge_configs() {
-  local backend_port="$1"
-  local frontend_port="$2"
-  local edge_backend_port="$3"
-  local edge_frontend_port="$4"
-
-  cat > "$BACKEND_EDGE_CONF" <<EOF
-server {
-    listen 127.0.0.1:${edge_backend_port};
-    server_name _;
-
-    location /ws/terminal {
-        proxy_pass http://127.0.0.1:${backend_port}/ws/terminal;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:${backend_port}/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:${backend_port};
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-
-  cat > "$FRONTEND_EDGE_CONF" <<EOF
-server {
-    listen 127.0.0.1:${edge_frontend_port};
-    server_name _;
-
-    location /webcompiler/ws/terminal {
-        proxy_pass http://127.0.0.1:${backend_port}/ws/terminal;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-
-    location /ws/terminal {
-        proxy_pass http://127.0.0.1:${backend_port}/ws/terminal;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-
-    location /webcompiler/api/ {
-        proxy_pass http://127.0.0.1:${backend_port}/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:${backend_port}/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location = /webcompiler/health {
-        proxy_pass http://127.0.0.1:${backend_port}/health;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location = /health {
-        proxy_pass http://127.0.0.1:${backend_port}/health;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:${frontend_port};
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-}
-
-ensure_edge_container() {
-  local name="$1"
-  local conf_path="$2"
-
-  if docker ps --format '{{.Names}}' | grep -Fxq "$name"; then
-    local network_mode
-    network_mode="$(docker inspect "$name" --format '{{.HostConfig.NetworkMode}}')"
-    if [[ "$network_mode" == "host" ]]; then
-      docker exec "$name" nginx -s reload
-      return
-    fi
-  fi
-
-  if docker ps -a --format '{{.Names}}' | grep -Fxq "$name"; then
-    docker rm -f "$name" >/dev/null
-  fi
-
-  docker run -d \
-    --name "$name" \
-    --restart unless-stopped \
-    --network host \
-    -v "$conf_path:/etc/nginx/conf.d/default.conf:ro" \
-    nginx:1.27-alpine >/dev/null
-}
-
-stop_legacy_stack_if_present() {
-  if docker ps --format '{{.Names}}' | grep -Eq "^${LEGACY_PROJECT_NAME}-(backend|frontend)-1$"; then
-    log "stopping legacy single-stack deployment to free edge ports"
-    COMPOSE_PROJECT_NAME="$LEGACY_PROJECT_NAME" \
-    PROJECT_ROOT="$PROJECT_ROOT" \
-    docker compose \
-      -p "$LEGACY_PROJECT_NAME" \
-      -f "$PROJECT_ROOT/docker-compose.yml" \
-      -f "$PROJECT_ROOT/docker-compose.deploy.yml" \
-      down --remove-orphans
-  fi
-}
-
-active_color=""
-if [[ -f "$STATE_FILE" ]]; then
-  active_color="$(tr -d '[:space:]' < "$STATE_FILE")"
-fi
-
-ensure_shared_postgres
-bootstrap_shared_database_from_color "$active_color"
 
 target_color="${WEBCOMPILER_TARGET_COLOR:-$(next_color "$active_color")}"
+if [[ "$target_color" == "$active_color" ]]; then
+  log "refusing to rebuild the active color in place"
+  exit 2
+fi
 target_backend_port="$(color_backend_port "$target_color")"
 target_frontend_port="$(color_frontend_port "$target_color")"
+# Refuse rebuilding either a committed color or an unresolved drain target.
+WEBCOMPILER_RUNTIME_INSTANCE_ID="$(python3 "$SOURCE_ROOT/scripts/edge_deploy.py" candidate --color "$target_color")"
+[[ "$WEBCOMPILER_RUNTIME_INSTANCE_ID" =~ ^[0-9a-f]{32}$ && "$WEBCOMPILER_RUNTIME_INSTANCE_ID" != 00000000000000000000000000000000 ]] || exit 2
+export WEBCOMPILER_RUNTIME_INSTANCE_ID
+
+# A legacy @pgbouncer override is ambiguous on the shared blue/green network.
+# Do not silently rewrite an operator's external DB URL or migrate its data.
+if [[ -n "${WEBCOMPILER_DATABASE_URL:-}" || -n "${WEBCOMPILER_MIGRATION_DATABASE_URL:-}" ]]; then
+  log "explicit database URL overrides require a verified shared-target configuration before managed deployment"
+  exit 2
+fi
+
+WEBCOMPILER_DEPLOY_ACTIVE_COLOR="$active_color" python3 "$SOURCE_ROOT/scripts/verify_shared_redis_cutover.py"
+ensure_shared_postgres
+bootstrap_shared_database_from_color "$active_color"
+if [[ "$WEBCOMPILER_REDIS_URL" == "$managed_redis_url" ]]; then
+  python3 "$SOURCE_ROOT/scripts/ensure_shared_redis.py"
+else
+  log "using explicitly configured shared Redis; runtime readiness must pass"
+fi
+
+# Derive the discovery allowlist from an owned private bridge, not a guessed
+# subnet or an operator-supplied broad CIDR. Never attach the worker/frontend.
+WEBCOMPILER_API_NETWORK_CIDRS="$(COMPOSE_PROJECT_NAME="$WEBCOMPILER_PROJECT_PREFIX-$target_color" \
+  python3 "$SOURCE_ROOT/scripts/ensure_api_network.py")"
+export WEBCOMPILER_API_NETWORK_CIDRS
 
 log "building sandbox compiler image"
-bash "$PROJECT_ROOT/scripts/build_sandbox_image.sh"
+if [[ "$WEBCOMPILER_PROJECT_PREFIX" == webcompiler ]]; then
+  export SANDBOX_IMAGE="compiler-sandbox:$DEPLOY_SHA"
+else
+  export SANDBOX_IMAGE="$WEBCOMPILER_PROJECT_PREFIX-sandbox:$DEPLOY_SHA"
+fi
+pinned_bpp_ref="$(tr -d '\r\n' < "$SOURCE_ROOT/runtime/bpp-ref.txt")"
+[[ "$pinned_bpp_ref" =~ ^[0-9a-f]{40}$ ]] || exit 2
+BPP_REPO="https://github.com/Creeper0809/Bpp" BPP_REF="$pinned_bpp_ref" \
+  bash "$SOURCE_ROOT/scripts/build_sandbox_image.sh"
 
 log "deploying $target_color stack on frontend:$target_frontend_port backend:$target_backend_port"
-compose_for_color "$target_color" up --build -d --remove-orphans
+# Do not remove color-local legacy database/Redis containers as orphans. Their
+# data migration/retirement needs a separate verified offline procedure.
+python3 "$SOURCE_ROOT/scripts/verify_build_builder.py" >/dev/null
+compose_for_color "$target_color" build --builder "$WEBCOMPILER_BUILD_BUILDER"
+python3 "$SOURCE_ROOT/scripts/verify_build_builder.py" >/dev/null
+compose_for_color "$target_color" up --no-build -d
 
-connect_backend_to_shared_postgres "$target_color"
-
-log "checking $target_color stack health"
-wait_for_url "http://127.0.0.1:${target_backend_port}/health" "$target_color backend"
+log "checking $target_color stack readiness"
+wait_for_color_pool "$target_color"
+wait_for_url "http://127.0.0.1:${target_backend_port}/ready" "$target_color backend"
 wait_for_url "http://127.0.0.1:${target_frontend_port}/health" "$target_color frontend"
 
-stop_legacy_stack_if_present
+log "transactionally switching edge to $target_color"
+actual_active_color="$(python3 "$SOURCE_ROOT/scripts/edge_deploy.py" switch --color "$target_color")"
+[[ "$actual_active_color" == "$target_color" ]] || exit 1
+log "committed color is now $target_color; prior runtimes retained until verified drain"
 
-log "switching edge proxies to $target_color"
-write_edge_configs "$target_backend_port" "$target_frontend_port" "$EDGE_BACKEND_PORT" "$EDGE_FRONTEND_PORT"
-ensure_edge_container "$BACKEND_EDGE_NAME" "$BACKEND_EDGE_CONF"
-ensure_edge_container "$FRONTEND_EDGE_NAME" "$FRONTEND_EDGE_CONF"
-
-wait_for_url "http://127.0.0.1:${EDGE_BACKEND_PORT}/health" "edge backend"
-wait_for_url "http://127.0.0.1:${EDGE_FRONTEND_PORT}/health" "edge frontend"
-
-printf '%s\n' "$target_color" > "$STATE_FILE"
-actual_active_color="$(tr -d '[:space:]' < "$STATE_FILE")"
-if [[ "$actual_active_color" != "$target_color" ]]; then
-  log "active color file mismatch: expected $target_color, got $actual_active_color"
-  exit 1
-fi
-log "active color is now $target_color"
-
-if [[ "${WEBCOMPILER_ENABLE_SANDBOX_UPDATER:-1}" == "1" ]]; then
+if [[ "${WEBCOMPILER_ENABLE_SANDBOX_UPDATER:-0}" == "1" ]]; then
   log "installing sandbox updater timer"
   if ! bash "$PROJECT_ROOT/scripts/install_sandbox_updater_timer.sh"; then
     log "sandbox updater timer install failed; continuing deployment"
   fi
 fi
 
-if [[ "${WEBCOMPILER_STOP_OLD_AFTER_DEPLOY:-0}" == "1" && -n "$active_color" && "$active_color" != "$target_color" ]]; then
-  log "stopping previous $active_color stack"
-  compose_for_color "$active_color" down --remove-orphans
-fi
+# Runtime retirement is a separate verified operation. Never stop a color
+# merely because edge HUP/postflight succeeded; held HTTP/WS/jobs may remain.

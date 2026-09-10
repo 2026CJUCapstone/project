@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { getCurrentUser } from '../services/authApi';
 import { DIFFICULTY_LEVELS } from '../services/problemApi';
-import { contestRequest, type Contest, type ContestWrite, type NewContestProblem } from '../services/contestApi';
+import { contestPageRequest, contestRequest, type Contest, type ContestWrite, type NewContestProblem } from '../services/contestApi';
 
 const inputClass = 'w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white';
 const kstInput = (value: string) => new Date(Date.parse(value) + 9 * 3600000).toISOString().slice(0, 16);
@@ -20,6 +20,7 @@ export function ContestEditor() {
   const { contestId } = useParams(); const navigate = useNavigate();
   const [form,setForm] = useState<ContestWrite>(() => ({title:'',description:'',startsAt:new Date(Date.now()+3600000).toISOString(),endsAt:new Date(Date.now()+10800000).toISOString(),published:false,problems:[]}));
   const [library,setLibrary] = useState<{id:string;title:string;points:number}[]>([]);
+  const [libraryTotal,setLibraryTotal] = useState(0);
   const [selected,setSelected] = useState('');
   const [ready,setReady] = useState(false); const [error,setError] = useState(''); const [saving,setSaving] = useState(false);
   useEffect(() => {
@@ -28,8 +29,8 @@ export function ContestEditor() {
       try {
         const user = await getCurrentUser();
         if (user.role !== 'admin') throw new Error('관리자만 대회를 만들 수 있습니다.');
-        const items = await contestRequest<typeof library>('/library');
-        if (cancelled) return; setLibrary(items);
+        const page = await contestPageRequest<{id:string;title:string;points:number}>('/library', 50, 0);
+        if (cancelled) return; setLibrary(page.items); setLibraryTotal(page.total);
         if (contestId) {
           const data = await contestRequest<ContestWrite & Contest>(`/${contestId}/manage`);
           if (!['draft','upcoming'].includes(data.state)) throw new Error('시작한 대회는 수정할 수 없습니다.');
@@ -79,7 +80,7 @@ export function ContestEditor() {
             <CaseEditor label="숨겨진 테스트" cases={p.newProblem.hiddenTestCases} onChange={hiddenTestCases=>patchProblem(index,{hiddenTestCases})} />
           </>}
         </article>)}
-        <div className="flex flex-wrap gap-2"><select aria-label="기존 문제 선택" className={`${inputClass} max-w-md`} value={selected} onChange={e=>setSelected(e.target.value)}><option value="">기존 공개 문제 선택</option>{library.filter(p=>!form.problems.some(cp=>cp.problemId===p.id)).map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><button type="button" disabled={!selected || form.problems.length>=26} onClick={()=>{const p=library.find(p=>p.id===selected)!;setForm({...form,problems:[...form.problems,{problemId:p.id,points:Math.max(1,p.points)}]});setSelected('');}} className="rounded border px-3 py-2">기존 문제 추가</button><button type="button" disabled={form.problems.length>=26} className="rounded border px-3 py-2" onClick={()=>setForm({...form,problems:[...form.problems,{points:100,newProblem:newProblem()}]})}>신규 문제 추가</button></div>
+        <div className="flex flex-wrap gap-2"><select aria-label="기존 문제 선택" className={`${inputClass} max-w-md`} value={selected} onChange={e=>setSelected(e.target.value)}><option value="">기존 공개 문제 선택</option>{library.filter(p=>!form.problems.some(cp=>cp.problemId===p.id)).map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><button type="button" disabled={!selected || form.problems.length>=26} onClick={()=>{const p=library.find(p=>p.id===selected)!;setForm({...form,problems:[...form.problems,{problemId:p.id,points:Math.max(1,p.points)}]});setSelected('');}} className="rounded border px-3 py-2">기존 문제 추가</button>{library.length < libraryTotal && <button type="button" className="rounded border px-3 py-2" onClick={async()=>{try{const page=await contestPageRequest<{id:string;title:string;points:number}>('/library',50,library.length);setLibrary(items=>[...items,...page.items]);setLibraryTotal(page.total);}catch(e){setError((e as Error).message);}}}>문제 더 보기 ({library.length}/{libraryTotal})</button>}<button type="button" disabled={form.problems.length>=26} className="rounded border px-3 py-2" onClick={()=>setForm({...form,problems:[...form.problems,{points:100,newProblem:newProblem()}]})}>신규 문제 추가</button></div>
       </section>
       <label className="flex items-center gap-2"><input type="checkbox" checked={form.published} onChange={e=>setForm({...form,published:e.target.checked})} />대회 공개 및 참가 신청 받기</label>
       <button disabled={saving} className="rounded bg-blue-600 px-6 py-3 font-semibold text-white">{saving?'저장 중…':'대회 저장'}</button>

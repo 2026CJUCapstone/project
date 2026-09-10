@@ -1,7 +1,26 @@
 services:
+  initialize:
+    environment:
+      # The runtime pooler points at shared PostgreSQL. Schema initialization
+      # must use that same database directly, never a color-local postgres.
+      DATABASE_URL: ${WEBCOMPILER_MIGRATION_DATABASE_URL:-postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}@${WEBCOMPILER_POSTGRES_HOST:-postgres}:${WEBCOMPILER_POSTGRES_PORT:-5432}/${WEBCOMPILER_POSTGRES_DB:-compiler}}
+    networks:
+      - default
+      - shared_postgres
+
+  pgbouncer:
+    networks:
+      - default
+      - shared_postgres
+
   backend:
     environment:
       CORS_ORIGINS: ${WEBCOMPILER_CORS_ORIGINS:-https://cuha.cju.ac.kr}
+    networks:
+      - default
+      - shared_postgres
+
+  worker:
     networks:
       - default
       - shared_postgres

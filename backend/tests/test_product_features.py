@@ -10,6 +10,7 @@ from app.main import app
 from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, Submission, User, UserProblemScore
 from app.services import auth
 from app.services import compiler as compiler_service
+from tests.execution_helpers import finish_receipt
 
 
 def _token_for(username: str) -> str:
@@ -235,7 +236,11 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
     async def fake_run(source_code: str, language: str, stdin: str = "", optimize: bool = False):
         return {"stdout": "ok\n", "stderr": "", "exit_code": 0, "execution_time": 1.0}
 
+    async def fake_execute(**_kwargs):
+        return {"stdout": "", "stderr": "", "exit_code": 0, "execution_time": 1.0}
+
     monkeypatch.setattr(compiler_service.compiler_instance, "run", fake_run)
+    monkeypatch.setattr(compiler_service.compiler_instance, "_execute", fake_execute)
 
     db = SessionLocal()
     try:
@@ -257,16 +262,19 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
 
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = _auth_headers(solver.username)
             response = await client.post(
                 f"/api/v1/problems/{problem_id}/submit",
-                headers=_auth_headers(solver.username),
+                headers=headers,
                 json={"code": "func main() -> u64 { return 0; }", "language": "bpp"},
             )
+            assert response.status_code == 202
+            completed = await finish_receipt(client, response, headers=headers)
 
-        assert response.status_code == 200
-        assert response.json()["status"] == "Accepted"
-        assert response.json()["verdict"] == "accepted"
-        assert response.json()["totalScore"] == 250
+        body = completed["value"]
+        assert body["status"] == "Accepted"
+        assert body["verdict"] == "accepted"
+        assert body["totalScore"] == 250
 
         db = SessionLocal()
         try:
@@ -383,7 +391,11 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
     async def fake_run(source_code: str, language: str, stdin: str = "", optimize: bool = False):
         return {"stdout": "ok\n", "stderr": "", "exit_code": 0, "execution_time": 1.0}
 
+    async def fake_execute(**_kwargs):
+        return {"stdout": "", "stderr": "", "exit_code": 0, "execution_time": 1.0}
+
     monkeypatch.setattr(compiler_service.compiler_instance, "run", fake_run)
+    monkeypatch.setattr(compiler_service.compiler_instance, "_execute", fake_execute)
 
     db = SessionLocal()
     try:
@@ -405,16 +417,18 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
 
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = _auth_headers(solver.username)
             submitted = await client.post(
                 f"/api/v1/problems/{problem_id}/submit",
-                headers=_auth_headers(solver.username),
+                headers=headers,
                 json={"code": "func main() -> u64 { return 0; }", "language": "bpp"},
             )
+            assert submitted.status_code == 202
+            await finish_receipt(client, submitted, headers=headers)
             history = await client.get(
                 f"/api/v1/problems/submissions?problemId={problem_id}&verdict=accepted"
             )
 
-        assert submitted.status_code == 200
         assert history.status_code == 200
         body = history.json()
         assert body["filteredTotal"] >= 1

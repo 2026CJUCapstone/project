@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import require_admin
@@ -56,8 +57,8 @@ def update_user(
             raise HTTPException(status_code=400, detail="본인의 관리자 권한은 해제할 수 없습니다.")
         user.role = payload.role
 
-    if payload.nickname is not None:
-        nickname = payload.nickname.strip() or None
+    if 'nickname' in payload.model_fields_set:
+        nickname = (payload.nickname or '').strip() or None
         if nickname:
             existing = (
                 db.query(db_models.User)
@@ -68,20 +69,24 @@ def update_user(
                 raise HTTPException(status_code=400, detail="이미 사용 중인 닉네임입니다.")
         user.nickname = nickname
 
-    if payload.email is not None:
+    if 'email' in payload.model_fields_set:
         existing = (
             db.query(db_models.User)
             .filter(db_models.User.email == payload.email, db_models.User.id != user.id)
             .first()
-        )
+        ) if payload.email is not None else None
         if existing:
             raise HTTPException(status_code=400, detail="이미 사용 중인 이메일입니다.")
         user.email = payload.email
 
-    if payload.avatar_url is not None:
-        user.avatar_url = payload.avatar_url.strip() or None
+    if 'avatar_url' in payload.model_fields_set:
+        user.avatar_url = (payload.avatar_url or '').strip() or None
 
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "이미 사용 중인 이메일 또는 닉네임입니다.") from exc
     db.refresh(user)
     return user

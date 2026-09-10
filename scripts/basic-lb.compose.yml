@@ -1,0 +1,61 @@
+# Deliberately small single-host pool. Not the managed blue/green lifecycle.
+# Merge after base and docker-compose.lb.yml. Generate the explicit proxy config first.
+x-runtime: &runtime
+  RUNTIME_POOL_ID: ${COMPOSE_PROJECT_NAME:?}
+  RUNTIME_INSTANCE_ID: ${BASIC_LB_RUNTIME_ID:?}
+  ANONYMOUS_SUBMISSION_RETENTION_DAYS: '0'
+services:
+  initialize:
+    environment: *runtime
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.25
+  backend:
+    environment:
+      <<: *runtime
+      TRUSTED_PROXY_CIDRS: ${BASIC_LB_TRUSTED_CIDRS:?}
+      CORS_ORIGINS: https://cuha.cju.ac.kr,http://127.0.0.1:15176
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 0.5
+    pids_limit: 128
+  worker:
+    environment: *runtime
+    healthcheck:
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
+  frontend:
+    image: ${BASIC_LB_FRONTEND_IMAGE:?}
+    build:
+      args:
+        FRONTEND_API_UPSTREAM: api-proxy:8080
+        VITE_API_URL: /webcompiler
+        VITE_APP_BASE_PATH: /webcompiler/
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.125
+  postgres:
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.25
+    pids_limit: 128
+  pgbouncer:
+    mem_limit: 64m
+    memswap_limit: 64m
+    cpus: 0.125
+    pids_limit: 64
+  redis:
+    command: [redis-server, --appendonly, 'yes', --save, '60', '1000', --maxmemory, 64mb, --maxmemory-policy, noeviction]
+    mem_limit: 96m
+    memswap_limit: 96m
+    cpus: 0.125
+    pids_limit: 64
+networks:
+  default:
+    external: true
+    name: ${BASIC_LB_NETWORK:?}

@@ -1,54 +1,169 @@
+x-backend-environment: &backend-environment
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  DEPLOYMENT_SHA: ${DEPLOY_SHA:-}
+  SECRET_KEY: ${SECRET_KEY:-}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+  PASSWORD_RESET_BASE_URL: ${PASSWORD_RESET_BASE_URL:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+  SANDBOX_IMAGE: ${SANDBOX_IMAGE:-compiler-sandbox}
+  SANDBOX_POOL_ID: ${SANDBOX_POOL_ID:-webcompiler}
+  EXECUTION_TIMEOUT: ${EXECUTION_TIMEOUT:-30}
+  EXECUTION_CONTENT_RETENTION_DAYS: ${EXECUTION_CONTENT_RETENTION_DAYS:-0}
+  SANDBOX_WORKDIR_ROOT: ${PROJECT_ROOT:?Set PROJECT_ROOT to the absolute project path}/.sandbox-work
+  SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-256}
+  SANDBOX_CPU_LIMIT: ${SANDBOX_CPU_LIMIT:-1.0}
+  SANDBOX_PIDS_LIMIT: ${SANDBOX_PIDS_LIMIT:-64}
+  SANDBOX_NOFILE_LIMIT: ${SANDBOX_NOFILE_LIMIT:-1024}
+  DB_POOL_SIZE: ${WEBCOMPILER_DB_POOL_SIZE:-5}
+  DB_MAX_OVERFLOW: ${WEBCOMPILER_DB_MAX_OVERFLOW:-10}
+  DB_POOL_RECYCLE_SECONDS: ${WEBCOMPILER_DB_POOL_RECYCLE_SECONDS:-1800}
+  REDIS_URL: ${WEBCOMPILER_REDIS_URL:-redis://redis:6379/0}
+  REDIS_KEY_PREFIX: ${WEBCOMPILER_REDIS_KEY_PREFIX:-webcompiler}
+  REDIS_CACHE_TTL_SECONDS: ${WEBCOMPILER_REDIS_CACHE_TTL_SECONDS:-30}
+  REDIS_QUEUE_POLL_INTERVAL_SECONDS: ${WEBCOMPILER_REDIS_QUEUE_POLL_INTERVAL_SECONDS:-0.05}
+  REDIS_QUEUE_HEARTBEAT_SECONDS: ${WEBCOMPILER_REDIS_QUEUE_HEARTBEAT_SECONDS:-120}
+  DATABASE_URL: ${WEBCOMPILER_DATABASE_URL:-postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}@${WEBCOMPILER_DATABASE_HOST:-pgbouncer}:${WEBCOMPILER_DATABASE_PORT:-5432}/${WEBCOMPILER_POSTGRES_DB:-compiler}}
+  AUTO_INITIALIZE_DB: "false"
+  EMBEDDED_EXECUTION_WORKER: "false"
+  WORKER_DRAIN_SECONDS: ${WORKER_DRAIN_SECONDS:-135}
+
+x-backend-image: &backend-image
+  image: ${WEBCOMPILER_BACKEND_IMAGE:-webcompiler-backend:local}
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:size=64m,mode=1777"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
     environment:
       POSTGRES_DB: ${WEBCOMPILER_POSTGRES_DB:-compiler}
       POSTGRES_USER: ${WEBCOMPILER_POSTGRES_USER:-compiler}
       POSTGRES_PASSWORD: ${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${WEBCOMPILER_POSTGRES_USER:-compiler} -d ${WEBCOMPILER_POSTGRES_DB:-compiler}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1@sha256:3db3d7223e93af52b4116f642951a1a5fa44702a88c2a59cf7562cac19320c9e
+    environment:
+      DB_HOST: ${WEBCOMPILER_POSTGRES_HOST:-postgres}
+      DB_PORT: ${WEBCOMPILER_POSTGRES_PORT:-5432}
+      DB_NAME: ${WEBCOMPILER_POSTGRES_DB:-compiler}
+      DB_USER: ${WEBCOMPILER_POSTGRES_USER:-compiler}
+      DB_PASSWORD: ${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: ${WEBCOMPILER_PGBOUNCER_MAX_CLIENT_CONN:-200}
+      DEFAULT_POOL_SIZE: ${WEBCOMPILER_PGBOUNCER_DEFAULT_POOL_SIZE:-20}
+      ADMIN_USERS: ${WEBCOMPILER_POSTGRES_USER:-compiler}
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U ${WEBCOMPILER_POSTGRES_USER:-compiler}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1000", "--maxmemory", "${WEBCOMPILER_REDIS_MAXMEMORY:-256mb}", "--maxmemory-policy", "noeviction"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 320m
+    memswap_limit: 320m
+    cpus: 0.5
+    pids_limit: 128
+    restart: unless-stopped
+
+  initialize:
+    <<: *backend-image
+    user: "10001:10001"
+    build: { context: ./backend }
+    environment:
+      <<: *backend-environment
+      DATABASE_URL: ${WEBCOMPILER_MIGRATION_DATABASE_URL:-postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}@postgres:5432/${WEBCOMPILER_POSTGRES_DB:-compiler}}
+    depends_on:
+      postgres: { condition: service_healthy }
+    command: ["python", "-m", "app.initialize"]
+    restart: "no"
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
 
   backend:
-    build:
-      context: ./backend
+    <<: *backend-image
+    user: "10001:10001"
+    build: { context: ./backend }
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-development}
+      <<: *backend-environment
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://127.0.0.1
-      SECRET_KEY: ${SECRET_KEY:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      PASSWORD_RESET_BASE_URL: ${PASSWORD_RESET_BASE_URL:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USERNAME: ${SMTP_USERNAME:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
-      SANDBOX_IMAGE: compiler-sandbox
-      EXECUTION_TIMEOUT: 30
-      SANDBOX_WORKDIR_ROOT: ${PROJECT_ROOT}/.sandbox-work
-      SANDBOX_MEMORY_MB: 256
-      SANDBOX_CPU_LIMIT: 1.0
-      SANDBOX_PIDS_LIMIT: 64
-      SANDBOX_NOFILE_LIMIT: 1024
-      DATABASE_URL: postgresql+psycopg2://${WEBCOMPILER_POSTGRES_USER:-compiler}:${WEBCOMPILER_POSTGRES_PASSWORD:-compiler}@${WEBCOMPILER_POSTGRES_HOST:-postgres}:${WEBCOMPILER_POSTGRES_PORT:-5432}/${WEBCOMPILER_POSTGRES_DB:-compiler}
     depends_on:
-      postgres:
-        condition: service_healthy
-    working_dir: ${PROJECT_ROOT}/backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+      initialize: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      worker: { condition: service_started }
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers", "--ws-max-size", "262144", "--ws-max-queue", "8"]
+    ports: ["${WEBCOMPILER_BACKEND_PORT_MAPPING:-8000:8000}"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 0.75
+    pids_limit: 256
+    restart: unless-stopped
+
+  worker:
+    <<: *backend-image
+    user: "${WEBCOMPILER_WORKER_UID:?Set sandbox directory owner UID}:${WEBCOMPILER_WORKER_GID:?Set sandbox directory owner GID}"
+    group_add: ["${WEBCOMPILER_DOCKER_GID:?Set Docker socket group GID}"]
+    environment: *backend-environment
+    depends_on:
+      initialize: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    command: ["python", "-m", "app.worker"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${PROJECT_ROOT}:${PROJECT_ROOT}
-      - ${WEBCOMPILER_DATA_DIR:-./.data/webcompiler}:/data
-    ports:
-      - "${WEBCOMPILER_BACKEND_PORT_MAPPING:-8000:8000}"
+      - type: bind
+        source: ${PROJECT_ROOT:?Set PROJECT_ROOT to the absolute project path}/.sandbox-work
+        target: ${PROJECT_ROOT:?Set PROJECT_ROOT to the absolute project path}/.sandbox-work
+    stop_grace_period: 150s
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.readiness"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    mem_limit: 1024m
+    memswap_limit: 1024m
+    cpus: 1.0
+    pids_limit: 256
+    restart: unless-stopped
 
   frontend:
     build:
@@ -56,10 +171,30 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-}
         VITE_APP_BASE_PATH: ${VITE_APP_BASE_PATH:-/}
+        DEPLOY_SHA: ${DEPLOY_SHA:-}
+        ENVIRONMENT: ${ENVIRONMENT:-development}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=32m,mode=1777,noexec,nosuid"]
     depends_on:
-      - backend
-    ports:
-      - "${WEBCOMPILER_FRONTEND_PORT_MAPPING:-5173:80}"
+      backend: { condition: service_healthy }
+    ports: ["${WEBCOMPILER_FRONTEND_PORT_MAPPING:-5173:8080}"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:

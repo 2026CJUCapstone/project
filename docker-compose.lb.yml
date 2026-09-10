@@ -1,0 +1,40 @@
+# Compose >= 2.24.4. Backend has no published port; only this proxy is published.
+# Generate WEBCOMPILER_API_PROXY_CONFIG with scripts/render_api_proxy.py first.
+# This is a single-color API pool, not the outer TLS/blue-green switch.
+services:
+  backend:
+    ports: !reset []
+    deploy:
+      replicas: ${WEBCOMPILER_API_REPLICAS:-2}
+
+  api-proxy:
+    image: ${WEBCOMPILER_NGINX_IMAGE:-nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6}
+    user: "10001:10001"
+    entrypoint: ["nginx"]
+    command: ["-c", "/etc/nginx/audit-api.conf", "-g", "daemon off;"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=32m,mode=1777,noexec,nosuid"]
+    volumes:
+      - type: bind
+        source: ${WEBCOMPILER_API_PROXY_CONFIG:-${PROJECT_ROOT:?Set PROJECT_ROOT}/.deploy/api-proxy.conf}
+        target: /etc/nginx/audit-api.conf
+        read_only: true
+        bind: { create_host_path: false }
+    ports: ["${WEBCOMPILER_API_PROXY_PORT_MAPPING:-127.0.0.1:18000:8080}"]
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    mem_limit: 96m
+    memswap_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    restart: unless-stopped

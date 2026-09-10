@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, or_
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import String, cast, desc, or_
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from app.core.database import get_db
 from app.core.config import settings
@@ -9,13 +8,24 @@ from app.models import database as db_models
 from app.models import schemas
 from app.api.routes.auth import get_current_user, get_optional_current_user, require_admin
 from app.core.bootstrap import SYSTEM_BOARD_IDS
-from app.services.compiler import compiler_instance
-from app.services.compile_queue import classify_grading_result, compile_queue
 from app.services.rating import RatingStats, calculate_rating_stats, invalidate_rating_cache, rating_stats_for_users
 from app.services.redis_client import cache_get_json, cache_set_json, redis_key
 from app.services.contest_access import private_problem_ids, require_public_problem, now_utc
 
 router = APIRouter()
+
+PROBLEM_DIFFICULTIES = [
+    f"{tier}{level}"
+    for tier in ("iron", "bronze", "silver", "gold", "platinum", "diamond")
+    for level in range(5, 0, -1)
+]
+
+
+def _validate_problem_tests(problem: schemas.ProblemCreate) -> None:
+    # Contest drafts may still be empty; only public practice writes require tests.
+    count = len(problem.test_cases) + len(problem.hidden_test_cases)
+    if not 1 <= count <= 200:
+        raise HTTPException(422, "문제에는 테스트를 1개 이상 200개 이하로 등록하세요.")
 
 
 def _validate_submission_code_size(code: str) -> None:
@@ -24,12 +34,16 @@ def _validate_submission_code_size(code: str) -> None:
 
 
 def _prune_old_submissions(db: Session, user_id: str) -> None:
+    # SessionLocal disables autoflush. Include the just-finished submission in
+    # the retention window, but never remove a queued/running submission.
+    db.flush()
     stale_ids = [
         submission_id
         for (submission_id,) in (
             db.query(db_models.Submission.id)
             .filter(db_models.Submission.user_id == user_id)
-            .order_by(db_models.Submission.created_at.desc())
+            .filter(~db_models.Submission.status.in_(["queued", "running"]))
+            .order_by(db_models.Submission.created_at.desc(), db_models.Submission.id.desc())
             .offset(settings.SUBMISSION_RETENTION_PER_USER)
             .all()
         )
@@ -204,6 +218,7 @@ def create_problem(
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(require_admin)
 ):
+    _validate_problem_tests(problem)
     db_problem = db_models.Problem(
         creator_id=current_user.id,
         title=problem.title,
@@ -224,21 +239,40 @@ def create_problem(
 
 @router.get("/", response_model=List[schemas.ProblemRead])
 def list_problems(
+    response: Response,
     difficulty: Optional[str] = Query(None),
-    tag: Optional[str] = Query(None),
+    tag: List[str] = Query(default=[]),
+    difficulty_min: Optional[str] = Query(None, alias="difficultyMin"),
+    difficulty_max: Optional[str] = Query(None, alias="difficultyMax"),
+    search: Optional[str] = Query(None, max_length=100),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
-    query = db.query(db_models.Problem).filter(~db_models.Problem.id.in_(SYSTEM_BOARD_IDS))
+    query = db.query(db_models.Problem).filter(~db_models.Problem.id.in_(SYSTEM_BOARD_IDS), db_models.Problem.deleted_at.is_(None))
     if current_user is None or current_user.role != "admin":
         query = query.filter(~db_models.Problem.id.in_(private_problem_ids()))
     if difficulty:
         query = query.filter(db_models.Problem.difficulty == difficulty)
-    
-    problems = query.order_by(db_models.Problem.created_at.asc()).all()
-    
+    if difficulty_min or difficulty_max:
+        low = PROBLEM_DIFFICULTIES.index(difficulty_min) if difficulty_min in PROBLEM_DIFFICULTIES else 0
+        high = PROBLEM_DIFFICULTIES.index(difficulty_max) if difficulty_max in PROBLEM_DIFFICULTIES else len(PROBLEM_DIFFICULTIES) - 1
+        if low > high:
+            low, high = high, low
+        query = query.filter(db_models.Problem.difficulty.in_(PROBLEM_DIFFICULTIES[low:high + 1]))
+    if search and search.strip():
+        keyword = search.strip()
+        query = query.filter(or_(db_models.Problem.title.contains(keyword, autoescape=True), db_models.Problem.description.contains(keyword, autoescape=True)))
     if tag:
-        problems = [p for p in problems if tag in p.tags]
+        tag_filters = []
+        for value in tag:
+            escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_").replace('"', '\\"')
+            tag_filters.append(cast(db_models.Problem.tags, String).like(f'%"{escaped}"%', escape="\\"))
+        query = query.filter(or_(*tag_filters))
+
+    response.headers["X-Total-Count"] = str(query.count())
+    problems = query.order_by(db_models.Problem.created_at.asc()).offset(offset).limit(limit).all()
     progress_by_problem = _problem_progress_map(
         db,
         current_user.id if current_user else None,
@@ -257,6 +291,8 @@ def list_problems(
 
 @router.put("/{id}", response_model=schemas.ProblemRead)
 def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
+    require_public_problem(db, id, current_user)
+    _validate_problem_tests(problem)
     if db.query(db_models.ContestProblem.id).join(db_models.Contest).filter(
         db_models.ContestProblem.problem_id == id, db_models.ContestProblem.is_new.is_(True),
         or_(db_models.Contest.published.is_(False), db_models.Contest.ends_at > now_utc()),
@@ -291,11 +327,10 @@ def delete_problem(id: str, db: Session = Depends(get_db), current_user: db_mode
     if id in SYSTEM_BOARD_IDS:
         raise HTTPException(status_code=400, detail="System board cannot be deleted")
     
-    db.query(db_models.Comment).filter(db_models.Comment.problem_id == id).delete(synchronize_session=False)
-    db.query(db_models.Submission).filter(db_models.Submission.problem_id == id).delete(synchronize_session=False)
-    db.query(db_models.CompileQueueRecord).filter(db_models.CompileQueueRecord.problem_id == id).delete(synchronize_session=False)
-    db.query(db_models.UserProblemScore).filter(db_models.UserProblemScore.challenge_id == id).delete(synchronize_session=False)
-    db.delete(db_problem)
+    # Preserve solved history, its difficulty and score ledger. Deletion must
+    # not leave total_score without the ledger rows that explain it.
+    if db_problem.deleted_at is None:
+        db_problem.deleted_at = now_utc()
     db.commit()
     invalidate_rating_cache()
     return {"message": "Successfully deleted"}
@@ -495,149 +530,14 @@ def get_problem(
         progress=progress_by_problem.get(problem.id),
     )
 
-@router.post("/{id}/submit", response_model=schemas.SubmissionResponse, tags=["Grading"])
-async def submit_problem(
+@router.post("/{id}/submit", status_code=202, tags=["Grading"])
+def submit_problem(
     id: str, 
     request: schemas.SubmissionRequest, 
+    http_request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user)
 ):
-    require_public_problem(db, id)
-    _validate_submission_code_size(request.code)
-    problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
-    if not problem:
-        raise HTTPException(status_code=404, detail="Problem not found")
-
-    already_solved = False
-    if current_user is not None:
-        already_solved = db.query(db_models.UserProblemScore).filter_by(
-            user_id=current_user.id, challenge_id=id
-        ).first() is not None
-
-    sample_cases, hidden_cases = _normalize_problem_test_cases(problem.test_cases)
-    details: list[schemas.TestCaseResult] = []
-    sample_passed_count = 0
-    hidden_passed_count = 0
-    first_failed_verdict: schemas.CompileQueueVerdict | None = None
-
-    async def run_case(tc: dict, case_number: int, phase: str, visible: bool) -> schemas.TestCaseResult:
-        expected_output = tc.get("expected_output", "").strip()
-        result = await compile_queue.run(
-            kind="grading",
-            language=request.language,
-            source_code=request.code,
-            user_id=current_user.id if current_user else None,
-            username=current_user.username if current_user else None,
-            problem_id=problem.id,
-            problem_title=problem.title,
-            result_classifier=lambda case_result: classify_grading_result(case_result, expected_output),
-            task=lambda: compiler_instance.run(
-                source_code=request.code,
-                language=request.language,
-                stdin=tc.get("input", ""),
-            ),
-        )
-
-        actual_output = result.get("stdout", "").strip()
-        verdict = classify_grading_result(result, expected_output)
-        status = "Correct" if verdict == "accepted" else ("Wrong" if verdict == "wrong_answer" else "Error")
-        return schemas.TestCaseResult(
-            case_number=case_number,
-            phase=phase,
-            is_visible=visible,
-            status=status,
-            verdict=verdict,
-            input=tc.get("input", "") if visible else "",
-            expected=expected_output if visible else "",
-            actual=(actual_output if status != "Error" else result.get("stderr", "Error")) if visible else "",
-        )
-
-    for index, tc in enumerate(sample_cases, start=1):
-        case_result = await run_case(tc, index, "sample", True)
-        details.append(case_result)
-        if case_result.status == "Correct":
-            sample_passed_count += 1
-        elif first_failed_verdict is None:
-            first_failed_verdict = case_result.verdict
-
-    grading_completed = sample_passed_count == len(sample_cases)
-
-    if grading_completed:
-        for index, tc in enumerate(hidden_cases, start=1):
-            case_result = await run_case(tc, index, "grading", False)
-            if case_result.status == "Correct":
-                hidden_passed_count += 1
-            elif first_failed_verdict is None:
-                first_failed_verdict = case_result.verdict
-
-    grading_passed = grading_completed and hidden_passed_count == len(hidden_cases)
-
-    if sample_passed_count != len(sample_cases):
-        final_status = "SampleFailed"
-    elif grading_passed:
-        final_status = "Accepted"
-    else:
-        final_status = "Rejected"
-    final_verdict = "accepted" if final_status == "Accepted" else (first_failed_verdict or "wrong_answer")
-    final_message = _submission_message(final_verdict)
-
-    total_score = current_user.total_score if current_user is not None else 0
-    awarded_points = 0
-    should_invalidate_rating = False
-    if final_status == "Accepted" and current_user is not None and not already_solved:
-        # A contest finalizer or another practice submission can award this
-        # problem while judging is in flight. The unique key is authoritative.
-        # This write also starts SQLite's outer transaction before SAVEPOINT.
-        db.query(db_models.User).filter_by(id=current_user.id).update({"id": current_user.id}, synchronize_session=False)
-        try:
-            with db.begin_nested():
-                db.add(db_models.UserProblemScore(user_id=current_user.id, challenge_id=id,
-                                                  points_awarded=problem.points))
-                db.flush()
-        except IntegrityError:
-            already_solved = True
-        else:
-            awarded_points = problem.points
-            db.query(db_models.User).filter_by(id=current_user.id).update({
-                db_models.User.total_score: db_models.User.total_score + awarded_points,
-            }, synchronize_session=False)
-            should_invalidate_rating = True
-        db.refresh(current_user)
-        total_score = current_user.total_score
-    elif current_user is not None:
-        total_score = current_user.total_score
-
-    db.add(
-        db_models.Submission(
-            user_id=current_user.id if current_user is not None else None,
-            problem_id=id,
-            language=request.language,
-            code=request.code,
-            status=final_status,
-            verdict=final_verdict,
-            sample_total_cases=len(sample_cases),
-            sample_passed_cases=sample_passed_count,
-            grading_completed=grading_completed,
-            grading_passed=grading_passed,
-            awarded_points=awarded_points,
-        )
-    )
-    if current_user is not None:
-        _prune_old_submissions(db, current_user.id)
-    db.commit()
-    if should_invalidate_rating and current_user is not None:
-        invalidate_rating_cache(current_user.id)
-
-    return schemas.SubmissionResponse(
-        status=final_status,
-        verdict=final_verdict,
-        total_cases=len(sample_cases),
-        passed_cases=sample_passed_count,
-        sample_total_cases=len(sample_cases),
-        sample_passed_cases=sample_passed_count,
-        grading_completed=grading_completed,
-        grading_passed=grading_passed,
-        total_score=total_score,
-        details=[detail for detail in details if detail.is_visible],
-        message=final_message,
-    )
+    from app.services.submission_acceptance import accept_practice
+    return accept_practice(id, request, http_request, response, db, current_user)

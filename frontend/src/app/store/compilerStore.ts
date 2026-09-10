@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { CODE_TEMPLATES } from './codeTemplates';
+import { getAuthOwner } from '../services/authIdentity';
 import { checkHealth, compileCode, executeCode, type CompileResponse, type CompilerLanguage, type ExecuteResponse } from '../services/compilerApi';
 
 export type OutputLine = {
@@ -24,6 +25,8 @@ export type SourceSelectionRange = {
 };
 
 interface CompilerState {
+  isEditorReady: boolean;
+  setEditorReady: (ready: boolean) => void;
   code: string;
   setCode: (code: string) => void;
   output: OutputLine[];
@@ -67,6 +70,8 @@ interface CompilerState {
   autoSaveEnabled: boolean;
   setAutoSaveEnabled: (enabled: boolean) => void;
   codeStorageScope: string;
+  codeStorageOwner: string;
+  setCodeStorageOwner: (owner: string) => void;
   setCodeStorageScope: (scope: string) => void;
   saveCode: (code: string, scope?: string | null) => void;
   loadCode: (scope?: string | null) => string | null;
@@ -129,12 +134,12 @@ function normalizeStorageScope(scope?: string | null): string {
   return normalized || MAIN_STORAGE_SCOPE;
 }
 
-function codeStorageKey(scope?: string | null): string {
-  return `${STORAGE_KEY_PREFIX}:${normalizeStorageScope(scope)}`;
+function codeStorageKey(scope: string, owner: string): string {
+  return `${STORAGE_KEY_PREFIX}:v2:${owner}:${normalizeStorageScope(scope)}`;
 }
 
-function codeStorageMetaKey(scope?: string | null): string {
-  return `${STORAGE_META_KEY_PREFIX}:${normalizeStorageScope(scope)}`;
+function codeStorageMetaKey(scope: string, owner: string): string {
+  return `${STORAGE_META_KEY_PREFIX}:v2:${owner}:${normalizeStorageScope(scope)}`;
 }
 
 function problemIdFromScope(scope?: string | null): string | null {
@@ -190,6 +195,8 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   backendStatus: 'idle',
   lastExecution: null,
   lastError: null,
+  isEditorReady: false,
+  setEditorReady: (ready) => set({ isEditorReady: ready }),
   language: 'bpp',
   setLanguage: (language) => set({ language }),
   selectLanguage: (language) => {
@@ -391,7 +398,10 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
     }
 
     await new Promise<void>((resolve) => {
-      const socket = new WebSocket(getTerminalWebSocketUrl());
+      const terminalUrl = getTerminalWebSocketUrl();
+      const storedToken = localStorage.getItem('authToken');
+      const connectionToken = storedToken && storedToken !== 'undefined' && storedToken !== 'null' ? storedToken : undefined;
+      const socket = new WebSocket(terminalUrl);
       let settled = false;
 
       const finish = () => {
@@ -410,13 +420,13 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
           return;
         }
 
-        socket.send(JSON.stringify({ type: 'start', code, language, optimize: false }));
+        socket.send(JSON.stringify({ type: 'start', code, language, optimize: false, ...(connectionToken ? { token: connectionToken } : {}) }));
         set((state) => ({
           terminalStatus: 'connected',
-          terminalLines: [...state.terminalLines, { type: 'system', text: `${language.toUpperCase()} 프로그램 stdin 연결됨` }],
+          terminalLines: [...state.terminalLines, { type: 'system', text: `${language.toUpperCase()} 터미널 연결 준비됨 · 실행 작업 대기 중` }],
           output: appendPrompt([
             ...state.output.filter((line) => line.type !== 'input'),
-            { type: 'success', text: `> ${language.toUpperCase()} 실행 세션이 시작되었습니다.` },
+            { type: 'success', text: `> ${language.toUpperCase()} 터미널 연결이 준비되었습니다. 실행 시작을 기다리는 중입니다.` },
           ]),
         }));
         finish();
@@ -449,25 +459,33 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
         }));
       };
 
-      socket.onclose = () => {
-        if (activeTerminalSocket === socket) {
-          activeTerminalSocket = null;
+      socket.onclose = (event) => {
+        if (activeTerminalSocket !== socket) {
+          // cancelRun/replacement already owns the visible state. A delayed
+          // close from that old socket must never clear a newer session.
+          finish();
+          return;
         }
+        activeTerminalSocket = null;
 
         const stoppedByUser = terminalStopRequested;
+        const normalExit = event.code === 1000;
         terminalStopRequested = false;
+        const closeMessage = normalExit
+          ? '터미널 실행이 정상 종료되었습니다.'
+          : '터미널 연결이 끊어졌습니다. 기존 실행은 자동으로 재개되지 않으며 다시 실행하려면 직접 시작하세요.';
 
         set((state) => ({
           isRunning: false,
           terminalStatus: 'disconnected',
           terminalLines: stoppedByUser
             ? state.terminalLines
-            : [...state.terminalLines, { type: 'system', text: '터미널 세션이 종료되었습니다.' }],
+            : [...state.terminalLines, { type: normalExit ? 'system' : 'error', text: closeMessage }],
           output: stoppedByUser
             ? state.output
             : appendPrompt([
                 ...state.output.filter((line) => line.type !== 'input'),
-                { type: 'info', text: '> 터미널 세션이 종료되었습니다.' },
+                { type: normalExit ? 'info' : 'error', text: `> ${closeMessage}` },
               ]),
         }));
         finish();
@@ -480,14 +498,16 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   autoSaveEnabled: true,
   setAutoSaveEnabled: (enabled) => set({ autoSaveEnabled: enabled }),
   codeStorageScope: MAIN_STORAGE_SCOPE,
+  codeStorageOwner: getAuthOwner(),
+  setCodeStorageOwner: (owner) => set({ codeStorageOwner: owner, lastSavedTime: null }),
   setCodeStorageScope: (scope) => set({ codeStorageScope: normalizeStorageScope(scope) }),
   
   saveCode: (code, scope) => {
     try {
       const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
       const savedAt = Date.now();
-      localStorage.setItem(codeStorageKey(targetScope), code);
-      localStorage.setItem(codeStorageMetaKey(targetScope), JSON.stringify({ updatedAt: savedAt, language: get().language }));
+      localStorage.setItem(codeStorageKey(targetScope, get().codeStorageOwner), code);
+      localStorage.setItem(codeStorageMetaKey(targetScope, get().codeStorageOwner), JSON.stringify({ updatedAt: savedAt, language: get().language }));
       set({ lastSavedTime: savedAt });
     } catch (error) {
       console.error('코드 저장 실패:', error);
@@ -497,11 +517,14 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   loadCode: (scope) => {
     try {
       const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
-      const scopedCode = localStorage.getItem(codeStorageKey(targetScope));
+      const scopedCode = localStorage.getItem(codeStorageKey(targetScope, get().codeStorageOwner));
       if (scopedCode !== null) return scopedCode;
 
-      if (targetScope === MAIN_STORAGE_SCOPE) {
-        return localStorage.getItem(LEGACY_STORAGE_KEY);
+      // Legacy drafts have no proven account owner. Keep them on this device
+      // as guest drafts, never silently copy them into a signed-in account.
+      if (get().codeStorageOwner === 'guest') {
+        return localStorage.getItem(`${STORAGE_KEY_PREFIX}:${targetScope}`)
+          ?? (targetScope === MAIN_STORAGE_SCOPE ? localStorage.getItem(LEGACY_STORAGE_KEY) : null);
       }
 
       return null;
@@ -514,7 +537,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   loadCodeLanguage: (scope) => {
     try {
       const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
-      const raw = localStorage.getItem(codeStorageMetaKey(targetScope));
+      const raw = localStorage.getItem(codeStorageMetaKey(targetScope, get().codeStorageOwner));
       const language: unknown = raw ? JSON.parse(raw).language : null;
       return typeof language === 'string' && Object.prototype.hasOwnProperty.call(CODE_TEMPLATES, language)
         ? language as CompilerLanguage
@@ -527,7 +550,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   loadCodeSavedAt: (scope) => {
     try {
       const targetScope = normalizeStorageScope(scope ?? get().codeStorageScope);
-      const raw = localStorage.getItem(codeStorageMetaKey(targetScope));
+      const raw = localStorage.getItem(codeStorageMetaKey(targetScope, get().codeStorageOwner));
       if (!raw) return null;
       const parsed = JSON.parse(raw) as { updatedAt?: unknown };
       return typeof parsed.updatedAt === 'number' ? parsed.updatedAt : null;

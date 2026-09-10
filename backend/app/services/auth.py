@@ -2,7 +2,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 import bcrypt
-from jose import jwt
+import jwt
 from app.core.config import settings
 
 ALGORITHM = settings.ALGORITHM
@@ -21,6 +21,8 @@ def get_secret_key() -> str:
 def validate_runtime_security() -> None:
     if settings.ENVIRONMENT != "production":
         return
+    from app.services.runtime_identity import validate_runtime_id
+    validate_runtime_id(settings.RUNTIME_INSTANCE_ID)
     if not settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
         raise RuntimeError("SECRET_KEY must be set to at least 32 characters in production.")
     if not settings.ADMIN_PASSWORD or len(settings.ADMIN_PASSWORD) < 16:

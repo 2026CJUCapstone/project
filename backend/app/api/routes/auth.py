@@ -7,7 +7,9 @@ from fastapi import Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
+from sqlalchemy.exc import IntegrityError
+import jwt
+from jwt import InvalidTokenError
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import check_rate_limit
@@ -25,6 +27,15 @@ optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", aut
 def _client_key(request: Request, purpose: str, identity: str = "") -> str:
     host = request.client.host if request.client else "unknown"
     return f"{purpose}:{host}:{identity.lower().strip()}"
+
+
+def _check_auth_rate_limit(request: Request, purpose: str, identity: str):
+    check_rate_limit(_client_key(request, purpose), settings.AUTH_IP_RATE_LIMIT_MAX_ATTEMPTS,
+                     settings.AUTH_RATE_LIMIT_WINDOW_SECONDS)
+    # Independent IP and identity budgets: rotating either cannot reset both.
+    identity_digest = hashlib.sha256(identity.lower().strip().encode('utf-8')).hexdigest()
+    check_rate_limit(f"{purpose}:identity:{identity_digest}", settings.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
+                     settings.AUTH_RATE_LIMIT_WINDOW_SECONDS)
 
 
 def _hash_reset_token(token: str) -> str:
@@ -67,11 +78,7 @@ def _serialize_user(user: db_models.User, db: Session) -> dict:
 
 @router.post("/register")
 def register(user: schemas.UserCreate, request: Request, db: Session = Depends(get_db)):
-    check_rate_limit(
-        _client_key(request, "register", user.username),
-        settings.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
-        settings.AUTH_RATE_LIMIT_WINDOW_SECONDS,
-    )
+    _check_auth_rate_limit(request, "register", user.username)
     if db.query(db_models.User).filter(db_models.User.username == user.username).first():
         raise HTTPException(status_code=400, detail="이미 사용 중인 아이디입니다.")
     if db.query(db_models.User).filter(db_models.User.email == user.email).first():
@@ -87,17 +94,17 @@ def register(user: schemas.UserCreate, request: Request, db: Session = Depends(g
         hashed_password=hashed_pw,
     )
     db.add(db_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "이미 사용 중인 아이디, 이메일 또는 닉네임입니다.") from exc
     db.refresh(db_user)
     return {"message": "User created successfully"}
 
 @router.post("/login", response_model=schemas.Token)
 def login(user_data: schemas.UserLogin, request: Request, db: Session = Depends(get_db)):
-    check_rate_limit(
-        _client_key(request, "login", user_data.username),
-        settings.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
-        settings.AUTH_RATE_LIMIT_WINDOW_SECONDS,
-    )
+    _check_auth_rate_limit(request, "login", user_data.username)
     identity = user_data.username.strip()
     normalized_identity = identity.lower()
     # username, nickname 또는 email로 로그인 허용
@@ -109,22 +116,26 @@ def login(user_data: schemas.UserLogin, request: Request, db: Session = Depends(
     if not user or not auth.verify_password(user_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="아이디/닉네임/이메일 또는 비밀번호가 올바르지 않습니다.")
 
-    access_token = auth.create_access_token(data={"sub": user.username})
+    access_token = auth.create_access_token(data={"sub": user.username, "ver": user.auth_version})
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
-        payload = jwt.decode(token, auth.get_secret_key(), algorithms=[auth.ALGORITHM])
+        payload = jwt.decode(token, auth.get_secret_key(), algorithms=[auth.ALGORITHM], options={"require": ["sub", "exp"]})
         username: str = payload.get("sub")
-        if username is None:
+        if not isinstance(username, str) or not username:
             raise HTTPException(status_code=401, detail="Invalid token")
-    except JWTError:
+    except InvalidTokenError:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
     user = db.query(db_models.User).filter(db_models.User.username == username).first()
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
+    # Pre-migration tokens represent version zero only; any reset revokes them.
+    version = payload.get("ver", 0)
+    if type(version) is not int or version != user.auth_version:
+        raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인하세요.")
     return user
 
 
@@ -150,8 +161,8 @@ def update_profile(
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(get_current_user),
 ):
-    if payload.nickname is not None:
-        nickname = payload.nickname.strip() or None
+    if 'nickname' in payload.model_fields_set:
+        nickname = (payload.nickname or '').strip() or None
         if nickname:
             existing = (
                 db.query(db_models.User)
@@ -162,21 +173,25 @@ def update_profile(
                 raise HTTPException(status_code=400, detail="이미 사용 중인 닉네임입니다.")
         current_user.nickname = nickname
 
-    if payload.email is not None:
+    if 'email' in payload.model_fields_set:
         existing = (
             db.query(db_models.User)
             .filter(db_models.User.email == payload.email, db_models.User.id != current_user.id)
             .first()
-        )
+        ) if payload.email is not None else None
         if existing:
             raise HTTPException(status_code=400, detail="이미 사용 중인 이메일입니다.")
         current_user.email = payload.email
 
-    if payload.avatar_url is not None:
-        current_user.avatar_url = payload.avatar_url.strip() or None
+    if 'avatar_url' in payload.model_fields_set:
+        current_user.avatar_url = (payload.avatar_url or '').strip() or None
 
     db.add(current_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "이미 사용 중인 이메일 또는 닉네임입니다.") from exc
     db.refresh(current_user)
     return _serialize_user(current_user, db)
 
@@ -189,11 +204,7 @@ def request_password_reset(
 ):
     identity = payload.username_or_email.strip()
     normalized_identity = identity.lower()
-    check_rate_limit(
-        _client_key(request, "password-reset", normalized_identity),
-        settings.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
-        settings.AUTH_RATE_LIMIT_WINDOW_SECONDS,
-    )
+    _check_auth_rate_limit(request, "password-reset", normalized_identity)
 
     if settings.ENVIRONMENT == "production" and not email_service.is_email_configured():
         raise HTTPException(status_code=503, detail="비밀번호 재설정 메일 설정이 필요합니다.")
@@ -252,7 +263,7 @@ def confirm_password_reset(payload: schemas.PasswordResetConfirm, db: Session = 
     now = _utc_now()
     if reset_token is None:
         raise HTTPException(status_code=400, detail="재설정 토큰이 올바르지 않거나 이미 사용되었습니다.")
-    if _as_utc(reset_token.expires_at) < now:
+    if _as_utc(reset_token.expires_at) <= now:
         reset_token.used_at = now
         db.add(reset_token)
         db.commit()
@@ -265,10 +276,25 @@ def confirm_password_reset(payload: schemas.PasswordResetConfirm, db: Session = 
         db.commit()
         raise HTTPException(status_code=400, detail="재설정 토큰이 올바르지 않거나 이미 사용되었습니다.")
 
-    user.hashed_password = auth.get_password_hash(payload.new_password)
-    reset_token.used_at = now
-    db.add(user)
-    db.add(reset_token)
+    # Hash before taking write locks. The conditional write, not the earlier
+    # read, is the authority for single use across API instances.
+    hashed_password = auth.get_password_hash(payload.new_password)
+    claimed = db.query(db_models.PasswordResetToken).filter(
+        db_models.PasswordResetToken.id == reset_token.id,
+        db_models.PasswordResetToken.used_at.is_(None),
+        db_models.PasswordResetToken.expires_at > _utc_now(),
+    ).update({"used_at": now}, synchronize_session=False)
+    if claimed != 1:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="재설정 토큰이 만료되었거나 이미 사용되었습니다.")
+    db.query(db_models.User).filter_by(id=user.id).update({
+        db_models.User.hashed_password: hashed_password,
+        db_models.User.auth_version: db_models.User.auth_version + 1,
+    }, synchronize_session=False)
+    db.query(db_models.PasswordResetToken).filter(
+        db_models.PasswordResetToken.user_id == user.id,
+        db_models.PasswordResetToken.used_at.is_(None),
+    ).update({"used_at": now}, synchronize_session=False)
     db.commit()
     return schemas.PasswordResetResponse(message="비밀번호가 변경되었습니다.")
 
@@ -276,6 +302,8 @@ def confirm_password_reset(payload: schemas.PasswordResetConfirm, db: Session = 
 def require_admin(current_user: db_models.User = Depends(get_current_user)):
     if current_user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 권한이 필요합니다.")
+    from app.services.admin_audit import mark_admin
+    mark_admin(current_user.id)
     return current_user
 
 
@@ -284,11 +312,8 @@ def get_optional_current_user(token: str | None = Depends(optional_oauth2_scheme
         return None
 
     try:
-        payload = jwt.decode(token, auth.get_secret_key(), algorithms=[auth.ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            return None
-    except JWTError:
+        return get_current_user(token, db)
+    except HTTPException as exc:
+        if exc.status_code not in (401, 403):
+            raise
         return None
-
-    return db.query(db_models.User).filter(db_models.User.username == username).first()

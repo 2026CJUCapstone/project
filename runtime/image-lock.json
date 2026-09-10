@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "registry": "https://registry-1.docker.io",
+  "observedOn": "2026-09-10",
+  "scope": "upstream-image-indexes-not-built-application-images",
+  "images": {
+    "python": {
+      "repository": "library/python",
+      "tag": "3.12-slim",
+      "digest": "sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+      "linuxAmd64": "sha256:2fe5997d249a808b8eeea52c58a1dbffbba28754dc11699ef5c029f2d818ce79"
+    },
+    "node": {
+      "repository": "library/node",
+      "tag": "24-alpine",
+      "digest": "sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81",
+      "linuxAmd64": "sha256:333f6b3eca25980d5682c26207665b93c9417786b21760b2764d5821d9704c8a",
+      "nodeVersion": "24.21.0"
+    },
+    "nodeRuntime": {
+      "repository": "library/node",
+      "tag": "24-bookworm-slim",
+      "digest": "sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553",
+      "linuxAmd64": "sha256:713cfbf4a0ac19f40e1bb9919893e126b74a5c8cf5d0623c9f89515c8f74c6fa",
+      "nodeVersion": "24.21.0"
+    },
+    "nginx": {
+      "repository": "library/nginx",
+      "tag": "1.30.4-alpine-slim",
+      "digest": "sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6",
+      "linuxAmd64": "sha256:d6d5b2985faade9971eb1bec34c3f778b800f872f236969b3fd1ba65f4692b54"
+    },
+    "ubuntu": {
+      "repository": "library/ubuntu",
+      "tag": "24.04",
+      "digest": "sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254",
+      "linuxAmd64": "sha256:a61567bd31828687156d735ea8eb01ba4e37636e225dd6a48ba94136a70d9d61"
+    },
+    "postgres": {
+      "repository": "library/postgres",
+      "tag": "16-alpine",
+      "digest": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+      "linuxAmd64": "sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571"
+    },
+    "redis": {
+      "repository": "library/redis",
+      "tag": "7-alpine",
+      "digest": "sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf",
+      "linuxAmd64": "sha256:1db42ccef14898aa29bae778452d567534b59c107129cbc1163fb552de184d3c"
+    },
+    "pgbouncer": {
+      "repository": "edoburu/pgbouncer",
+      "tag": "v1.24.1-p1",
+      "digest": "sha256:3db3d7223e93af52b4116f642951a1a5fa44702a88c2a59cf7562cac19320c9e",
+      "linuxAmd64": "sha256:027f7d14132166813b442ae6be1c6ed7327085e40287979fac5d8b463df13ce3"
+    }
+  }
+}

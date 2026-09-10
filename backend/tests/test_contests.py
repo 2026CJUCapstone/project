@@ -13,6 +13,9 @@ from app.models import database as m
 from app.api.routes import contests as routes
 from app.services import contests as service, contest_access as access
 from app.services.auth import create_access_token
+from app.services import execution_runtime, durable_queue, compiler as compiler_service
+from app.services.execution_worker import ExecutionWorker
+from tests.execution_helpers import finish_receipt
 
 
 @pytest.fixture
@@ -26,26 +29,29 @@ def env(tmp_path, monkeypatch):
     bob = m.User(id="bob", username="bob", hashed_password="unused", role="user")
     db.add_all([admin, alice, bob]); db.commit()
     clock = [datetime(2030, 1, 1, 0, 0)]
-    for module in (routes, service, access):
+    for module in (routes, service, access, durable_queue):
         monkeypatch.setattr(module, "now_utc", lambda: clock[0])
     monkeypatch.setattr(service, "SessionLocal", factory)
+    monkeypatch.setattr(execution_runtime, 'SessionLocal', factory)
     monkeypatch.setattr(service, "invalidate_rating_cache", lambda *args: None)
 
-    async def queued(**kwargs):
-        assert not any(kwargs.get(k) for k in ('user_id', 'username', 'problem_id', 'problem_title'))
-        return await kwargs["task"]()
-    monkeypatch.setattr(service, "compile_queue", SimpleNamespace(run=queued))
     async def compile_ok(**kwargs):
         return {"exit_code": 0, "stdout": "", "stderr": "", "execution_time": 1}
     async def run_ok(**kwargs):
         return {"exit_code": 0, "stdout": "42", "stderr": "", "execution_time": 1}
-    monkeypatch.setattr(service.compiler_service.compiler_instance, "_execute", compile_ok)
-    monkeypatch.setattr(service.compiler_service.compiler_instance, "run", run_ok)
+    monkeypatch.setattr(compiler_service.compiler_instance, "_execute", compile_ok)
+    monkeypatch.setattr(compiler_service.compiler_instance, "run", run_ok)
+    def worker():
+        return ExecutionWorker(execution_runtime.execution_queue(),
+            pool=SimpleNamespace(labels=lambda *args:{}, reap=lambda *args:None),
+            runner_factory=lambda **kwargs:compiler_service.compiler_instance)
+    import app.main as main
+    monkeypatch.setattr(main, 'build_worker', worker)
     def session_override():
         with factory() as session:
             yield session
     app.dependency_overrides[get_db] = session_override
-    yield SimpleNamespace(db=db, factory=factory, clock=clock, admin=admin, alice=alice, bob=bob)
+    yield SimpleNamespace(db=db, factory=factory, clock=clock, admin=admin, alice=alice, bob=bob, worker=worker)
     app.dependency_overrides.clear()
     db.close(); engine.dispose()
 
@@ -114,7 +120,7 @@ async def test_deadline_idempotency_and_late_judging(env):
         assert (await c.post(url, headers=headers(env.alice), json={**body,"code":"different"})).status_code == 409
         service.finalize_contests()
         assert (await c.get(root)).json()['state'] == 'finalizing'
-        await service.judge_submission(*service.claim_submission())
+        assert await env.worker().run_once()
         service.finalize_contests(); service.finalize_contests()
         assert (await c.get(root)).json()['state'] == 'finished'
         env.db.expire_all()
@@ -184,18 +190,20 @@ async def test_expired_lease_recovery_and_compile_error(env, monkeypatch):
         r=await c.post(f"/api/v1/contests/{contest['id']}/problems/{p['id']}/submit",headers=headers(env.alice),
                        json={'language':'java','code':'invalid','requestId':'a'})
         assert r.status_code==202
-        original=service.claim_submission()
-        assert service.claim_submission() is None
+        queue = env.worker().queue
+        original=queue.claim()
+        assert queue.claim() is None
         env.clock[0] += timedelta(seconds=121)
-        recovered=service.claim_submission()
-        assert recovered[0]==original[0] and recovered[1]!=original[1]
+        recovered=queue.claim()
+        assert recovered.id==original.id and recovered.token!=original.token
         async def broken(**kwargs):
             return {'exit_code':1,'stderr':'syntax error','stdout':'','execution_time':1}
-        monkeypatch.setattr(service.compiler_service.compiler_instance,'_execute',broken)
-        await service.judge_submission(*original)  # stale worker must not write
-        await service.judge_submission(*recovered)
+        monkeypatch.setattr(compiler_service.compiler_instance,'_execute',broken)
+        assert not queue.finish(original.id, original.token, {'verdict':'accepted'})
+        result = await env.worker()._execute(recovered)
+        assert queue.finish(recovered.id, recovered.token, result)
         env.db.expire_all()
-        record=env.db.get(m.ContestSubmission,original[0])
+        record=env.db.get(m.ContestSubmission,r.json()['id'])
         assert record.status=='completed' and record.verdict=='compile_error'
         assert service.scoreboard(env.db,env.db.get(m.Contest,contest['id']))['rows'][0]['penaltySeconds']==0
 
@@ -218,9 +226,9 @@ async def test_exact_start_late_join_and_language_routing(env, monkeypatch, lang
         async def execute(**kwargs):
             calls.append(kwargs)
             return {'exit_code':0, 'stdout':'42', 'stderr':'', 'execution_time':1}
-        monkeypatch.setattr(service.compiler_service.compiler_instance, '_execute', execute)
-        monkeypatch.setattr(service.compiler_service.compiler_instance, 'run', execute)
-        await service.judge_submission(*service.claim_submission())
+        monkeypatch.setattr(compiler_service.compiler_instance, '_execute', execute)
+        monkeypatch.setattr(compiler_service.compiler_instance, 'run', execute)
+        assert await env.worker().run_once()
         assert len(calls) == 3 and all(call['language'] == language for call in calls)
         board = (await c.get(root+'/scoreboard')).json()
         assert board['rows'][0]['penaltySeconds'] == 0
@@ -241,20 +249,23 @@ async def test_system_retry_and_shutdown_recovery(env, monkeypatch):
         async def blocked(**kwargs):
             started.set()
             await asyncio.Event().wait()
-        monkeypatch.setattr(service.compiler_service.compiler_instance, '_execute', blocked)
-        task = asyncio.create_task(service.judge_submission(*service.claim_submission()))
+        monkeypatch.setattr(compiler_service.compiler_instance, '_execute', blocked)
+        task = asyncio.create_task(env.worker().run_once())
         await started.wait(); task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
         env.db.expire_all()
-        assert env.db.get(m.ContestSubmission, response.json()['id']).status == 'queued'
+        assert env.db.get(m.ContestSubmission, response.json()['id']).status == 'running'
+        # Cancellation never releases capacity by assumption. The next worker
+        # first reaps this expired claim, then retries the persisted receipt.
+        env.clock[0] += timedelta(seconds=121)
         async def unavailable(**kwargs):
             raise RuntimeError('sandbox unavailable')
-        monkeypatch.setattr(service.compiler_service.compiler_instance, '_execute', unavailable)
-        await service.judge_submission(*service.claim_submission())
+        monkeypatch.setattr(compiler_service.compiler_instance, '_execute', unavailable)
+        assert await env.worker().run_once()
         env.db.expire_all()
         assert env.db.get(m.ContestSubmission, response.json()['id']).status == 'queued'
-        await service.judge_submission(*service.claim_submission())
+        assert await env.worker().run_once()
         env.db.expire_all()
         record = env.db.get(m.ContestSubmission, response.json()['id'])
         assert record.status == 'completed' and record.verdict == 'system_error'
@@ -291,16 +302,17 @@ async def test_practice_judging_racing_contest_award(env, monkeypatch):
         env.clock[0] += timedelta(seconds=10)
         await c.post(f"/api/v1/contests/{contest['id']}/problems/{p['id']}/submit",headers=headers(env.alice),
                      json={'code':'print(42)','language':'python','requestId':'a'})
-        await service.judge_submission(*service.claim_submission())
+        assert await env.worker().run_once()
         env.clock[0] += timedelta(seconds=90)
         async def practice_case(**kwargs):
             # Another DB session finalizes after practice checked already_solved.
             service.finalize_contests()
             return {'exit_code':0,'stdout':'42','stderr':'','execution_time':1}
-        monkeypatch.setattr(practice, 'compile_queue', SimpleNamespace(run=practice_case))
+        monkeypatch.setattr(compiler_service.compiler_instance, 'run', practice_case)
         response = await c.post(f"/api/v1/problems/{p['problemId']}/submit", headers=headers(env.alice),
                                 json={'code':'print(42)','language':'python'})
-        assert response.status_code == 200, response.text
+        result = await finish_receipt(c, response, headers=headers(env.alice))
+        assert result['value']['status'] == 'Accepted'
         env.db.expire_all()
         assert env.db.get(m.User,'alice').total_score == 120
         assert env.db.query(m.UserProblemScore).count() == 1
@@ -344,7 +356,7 @@ async def test_predeadline_receipt_waiting_on_finalizer(env, monkeypatch):
                              json={'code':'print(42)','language':'python','requestId':'delayed-admission'})
         assert result.status_code == 202
         assert (await c.get(f"/api/v1/contests/{contest['id']}")).json()['state'] == 'finalizing'
-        await service.judge_submission(*service.claim_submission())
+        assert await env.worker().run_once()
         service.finalize_contests(); service.finalize_contests()
         env.db.expire_all()
         assert env.db.get(m.User,'alice').total_score == 120

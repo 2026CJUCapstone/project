@@ -46,6 +46,10 @@ test.describe("webcompiler browser e2e", () => {
   });
 
   test("runs B++ code through the browser at /webcompiler", async ({ page }) => {
+    // This is a real public compiler lifecycle, not a mocked UI transition.
+    // Keep a finite end-to-end budget while retaining the queue, stdout, and
+    // terminal-exit assertions below.
+    test.setTimeout(60_000);
     await page.goto("/webcompiler/ide");
     await page.evaluate((code) => {
       window.localStorage.setItem("b-compiler-editor-code", code);
@@ -56,7 +60,7 @@ test.describe("webcompiler browser e2e", () => {
     await page.getByTestId("compile-run-button").click();
 
     const outputConsole = page.getByTestId("output-console");
-    await expect(outputConsole).toContainText("BPP 컴파일 및 실행을 시작합니다.", { timeout: 30000 });
+    await expect(outputConsole).toContainText("> 실행 대기열에 등록되었습니다.", { timeout: 30000 });
     await expect(outputConsole).toContainText("Hello from Playwright", { timeout: 30000 });
     await expect(outputConsole).toContainText("프로그램이 종료되었습니다. (exit code 0)", { timeout: 30000 });
   });
@@ -68,13 +72,18 @@ test.describe("webcompiler browser e2e", () => {
     await expect(page.getByText("전체 랭킹")).toBeVisible();
     await expect(page.getByText("순위", { exact: true })).toBeVisible();
     await expect(page.getByText("사용자", { exact: true })).toBeVisible();
-    await expect(page.locator("div.text-right").filter({ hasText: /^점수$/ })).toBeVisible();
+    await expect(page.getByText("레이팅", { exact: true })).toBeVisible();
+    await expect(page.getByText("XP", { exact: true })).toBeVisible();
   });
 
   test("accepts terminal input and renders terminal output at /webcompiler", async ({ page }) => {
     await page.goto("/webcompiler/ide");
     await expect(page.locator(".view-lines").first()).toBeVisible();
-    await page.getByRole("combobox", { name: "실행 언어 선택" }).selectOption("python");
+    // Target the visible native select directly.  `getByText("Python")` can
+    // resolve the hidden option node and cannot drive a real public browser.
+    const languageSelect = page.locator('select[title="실행 언어 선택"]');
+    await expect(languageSelect).toBeVisible();
+    await languageSelect.selectOption("python");
     await page.locator(".view-lines").first().click();
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.insertText(interactivePythonProgram);

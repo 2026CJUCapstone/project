@@ -1,0 +1,6 @@
+# CI's dedicated docker-container builder receives this configuration through
+# `docker buildx create --buildkitd-config`.  HostConfig bounds the builder
+# process; limiting solver concurrency prevents it from opening parallel build
+# work inside that bounded container.
+[worker.oci]
+  max-parallelism = 1

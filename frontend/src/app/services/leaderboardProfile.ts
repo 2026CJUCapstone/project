@@ -3,6 +3,8 @@ import type { TagProficiency } from './authApi';
 export interface LeaderboardProfile {
   name: string;
   avatar: string;
+  // Raw persisted value for editing; avatar above may be a generated fallback.
+  avatarUrl?: string | null;
   id?: string;
   username?: string;
   email?: string | null;
@@ -51,6 +53,7 @@ function safeParseProfile(value: string | null): LeaderboardProfile | null {
     return {
       name: parsed.name,
       avatar: parsed.avatar,
+      avatarUrl: typeof parsed.avatarUrl === 'string' || parsed.avatarUrl === null ? parsed.avatarUrl : undefined,
       id: typeof parsed.id === 'string' ? parsed.id : undefined,
       username: typeof parsed.username === 'string' ? parsed.username : undefined,
       email: typeof parsed.email === 'string' ? parsed.email : null,
@@ -103,6 +106,7 @@ export function profileFromAuthUser(user: {
     nickname: user.nickname ?? null,
     name,
     avatar: user.avatarUrl || createAvatarUrl(name),
+    avatarUrl: user.avatarUrl ?? null,
     role: user.role ?? 'user',
     totalScore: user.totalScore,
     rating: user.rating,

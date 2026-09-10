@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy import or_, select
-from app.models.database import Contest, ContestProblem
+from app.models.database import Contest, ContestProblem, Problem
 
 
 def now_utc():
@@ -24,6 +24,9 @@ def private_problem_ids(at=None):
 
 
 def require_public_problem(db, problem_id, user=None):
+    # Archival is not an admin draft view: no new grading/discussion is allowed.
+    if db.query(Problem.id).filter(Problem.id == problem_id, Problem.deleted_at.is_not(None)).first():
+        raise HTTPException(status_code=404, detail="Problem not found")
     # Administrators may inspect drafts, but contest grading uses snapshots.
     if user is not None and user.role == "admin":
         return

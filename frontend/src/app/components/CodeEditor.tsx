@@ -1,9 +1,10 @@
 import Editor, { useMonaco } from "@monaco-editor/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FileCode2, Copy, Check, Loader2, Clock } from "lucide-react";
 import { useLocation, useParams } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
-import { getCodeProject, saveCodeProject } from "../services/projectApi";
+import { acceptProjectRevision, getProjectBaseRevision, getCodeProject, saveCodeProject, type CodeProject } from "../services/projectApi";
+import { getAuthOwner, subscribeAuthIdentity } from '../services/authIdentity';
 
 const utf8Encoder = new TextEncoder();
 
@@ -22,19 +23,22 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     lastSavedTime,
     saveCode,
     loadCode,
-    loadCodeSavedAt,
     loadCodeLanguage,
     code,
     setCode,
     setCodeStorageScope,
+    setCodeStorageOwner,
     compileAndStartTerminal,
     compile,
     language,
     setLanguage,
+    setEditorReady: setEditorControlsReady,
   } = useCompilerStore();
   const [copied, setCopied] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const [syncStatus, setSyncStatus] = useState<'server' | 'local' | 'error'>('local');
+  const [remoteConflict, setRemoteConflict] = useState<CodeProject | 'deleted' | null>(null);
+  const [resolvingConflict, setResolvingConflict] = useState(false);
   const editorRef = useRef<any>(null);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHydratingEditorRef = useRef(false);
@@ -43,6 +47,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const [editorReady, setEditorReady] = useState(false);
   const challengeId = location.state?.challenge?.id;
   const codeStorageScope = contestId && contestProblemId ? `contest:${contestId}:${contestProblemId}` : challengeId ? `problem:${challengeId}` : 'main';
+  const codeStorageOwner = useSyncExternalStore(subscribeAuthIdentity, getAuthOwner, () => 'guest');
 
   let defaultCode = `import std.io;
 
@@ -182,9 +187,11 @@ func main() -> u64 {
     if (!editorReady || !editorRef.current) return;
 
     setCodeStorageScope(codeStorageScope);
+    setCodeStorageOwner(codeStorageOwner);
+    setSyncStatus('local');
+    setRemoteConflict(null);
 
     const localCode = loadCode(codeStorageScope);
-    const localSavedAt = loadCodeSavedAt(codeStorageScope);
     const initialLanguage = loadCodeLanguage(codeStorageScope) ?? 'bpp';
     setLanguage(initialLanguage);
     const nextCode = localCode ?? defaultCode;
@@ -201,34 +208,38 @@ func main() -> u64 {
     setSaveStatus('saved');
     isHydratingEditorRef.current = false;
     setHasHydratedEditor(true);
+    setEditorControlsReady(true);
 
     let cancelled = false;
     if (localStorage.getItem('authToken')) {
       void (async () => {
         try {
-          const remote = await getCodeProject(codeStorageScope);
-          if (cancelled || !remote || !editorRef.current) return;
+          const remote = await getCodeProject(codeStorageScope, codeStorageOwner);
+          if (cancelled || !editorRef.current) return;
+          if (!remote) {
+            if (getAuthOwner() === codeStorageOwner && getProjectBaseRevision(codeStorageScope, codeStorageOwner) !== null) {
+              setRemoteConflict('deleted');
+            }
+            return;
+          }
           const current = useCompilerStore.getState();
           if (current.code !== nextCode || current.language !== initialLanguage) return;
-          const remoteSavedAt = Date.parse(remote.updatedAt);
-          const shouldUseRemote =
-            localCode === null ||
-            (localSavedAt !== null && Number.isFinite(remoteSavedAt) && remoteSavedAt > localSavedAt);
+          const sameContent = localCode === remote.code && initialLanguage === remote.language;
+          if (localCode !== null && !sameContent && getProjectBaseRevision(codeStorageScope, codeStorageOwner) !== remote.revision) {
+            setRemoteConflict(remote);
+            setSyncStatus('error');
+            return;
+          }
+          const shouldUseRemote = localCode === null || sameContent;
 
           if (!shouldUseRemote) {
-            if (localCode !== remote.code) {
-              void saveCodeProject(codeStorageScope, {
-                code: localCode,
-                language: initialLanguage,
-                title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
-              })
-                .then((saved) => setSyncStatus(saved ? 'server' : 'local'))
-                .catch(() => setSyncStatus('error'));
-            }
+            // Reading a project never uploads a local draft. An explicit edit
+            // or save is required; legacy/device drafts have no proven owner.
             return;
           }
 
           isHydratingEditorRef.current = true;
+          acceptProjectRevision(codeStorageScope, codeStorageOwner, remote.revision);
           if (editorRef.current.getValue() !== remote.code) {
             editorRef.current.setValue(remote.code);
           }
@@ -247,15 +258,36 @@ func main() -> u64 {
     }
     return () => {
       cancelled = true;
+      setEditorControlsReady(false);
     };
-  }, [codeStorageScope, defaultCode, editorReady, loadCode, loadCodeSavedAt, loadCodeLanguage, onCodeChange, saveCode, setCode, setCodeStorageScope, setLanguage, setSelectedSourceRange, setSelectedText]);
+  }, [codeStorageOwner, setCodeStorageOwner, codeStorageScope, defaultCode, editorReady, loadCode, loadCodeLanguage, onCodeChange, saveCode, setCode, setCodeStorageScope, setLanguage, setSelectedSourceRange, setSelectedText, setEditorControlsReady]);
+
+  useEffect(() => {
+    let canceled = false;
+    const showConflict = (event: Event) => {
+      const detail = (event as CustomEvent<{ scope: string; owner: string }>).detail;
+      if (detail.scope !== codeStorageScope || detail.owner !== codeStorageOwner) return;
+      void getCodeProject(codeStorageScope, codeStorageOwner).then(project => {
+        if (!canceled && getAuthOwner() === codeStorageOwner) setRemoteConflict(project ?? 'deleted');
+      }).catch(() => { if (!canceled) setSyncStatus('error'); });
+    };
+    window.addEventListener('project-save-conflict', showConflict);
+    return () => { canceled = true; window.removeEventListener('project-save-conflict', showConflict); };
+  }, [codeStorageScope, codeStorageOwner]);
 
   // 자동저장 - debounce 방식으로 코드 변경 후 2초 뒤 저장
   useEffect(() => {
     if (!hasHydratedEditor) return;
+    const current = useCompilerStore.getState();
+    // Hydration may have changed the store earlier in this effect cycle.
+    if (current.code !== code || current.codeStorageOwner !== codeStorageOwner || current.codeStorageScope !== codeStorageScope) return;
     if (savedContentRef.current.code === code && savedContentRef.current.language === language) return;
     setSaveStatus('unsaved');
     if (!autoSaveEnabled) return;
+    // Only remote I/O is debounced. Navigation before two seconds must not
+    // discard the local draft or its selected language.
+    saveCode(code, codeStorageScope);
+    if (remoteConflict) return;
     let cancelled = false;
 
     if (autoSaveTimerRef.current) {
@@ -271,7 +303,7 @@ func main() -> u64 {
           code,
           language,
           title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
-        })
+        }, codeStorageOwner)
           .then((saved) => { if (!cancelled) setSyncStatus(saved ? 'server' : 'local'); })
           .catch((error) => {
             console.warn('서버 코드 저장 실패:', error);
@@ -287,7 +319,39 @@ func main() -> u64 {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [autoSaveEnabled, code, codeStorageScope, language, saveCode, hasHydratedEditor]);
+  }, [autoSaveEnabled, code, codeStorageOwner, codeStorageScope, language, saveCode, hasHydratedEditor, remoteConflict]);
+
+  const resolveConflict = async (useRemote: boolean) => {
+    if (!remoteConflict || resolvingConflict || getAuthOwner() !== codeStorageOwner) return;
+    setResolvingConflict(true);
+    try {
+      acceptProjectRevision(codeStorageScope, codeStorageOwner, remoteConflict === 'deleted' ? null : remoteConflict.revision);
+      if (useRemote && remoteConflict !== 'deleted') {
+        isHydratingEditorRef.current = true;
+        editorRef.current?.setValue(remoteConflict.code);
+        setLanguage(remoteConflict.language);
+        setCode(remoteConflict.code);
+        onCodeChange?.(remoteConflict.code);
+        saveCode(remoteConflict.code, codeStorageScope);
+        savedContentRef.current = { code: remoteConflict.code, language: remoteConflict.language };
+        isHydratingEditorRef.current = false;
+      } else {
+        const current = useCompilerStore.getState();
+        await saveCodeProject(codeStorageScope, { code: current.code, language: current.language,
+          title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope }, codeStorageOwner);
+        if (getAuthOwner() === codeStorageOwner) savedContentRef.current = { code: current.code, language: current.language };
+      }
+      if (getAuthOwner() === codeStorageOwner) {
+        setRemoteConflict(null);
+        setSyncStatus('server');
+        setSaveStatus('saved');
+      }
+    } catch {
+      if (getAuthOwner() === codeStorageOwner) setSyncStatus('error');
+    } finally {
+      setResolvingConflict(false);
+    }
+  };
 
   // 마지막 저장 시간 포맷팅
   const getLastSavedText = () => {
@@ -316,7 +380,7 @@ func main() -> u64 {
             code,
             language,
             title: codeStorageScope === 'main' ? '메인 화면' : codeStorageScope,
-          })
+          }, codeStorageOwner)
             .then((saved) => setSyncStatus(saved ? 'server' : 'local'))
             .catch((error) => {
               console.warn('서버 코드 저장 실패:', error);
@@ -339,7 +403,7 @@ func main() -> u64 {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [codeStorageScope, compileAndStartTerminal, compile, language, saveStatus, saveCode]);
+  }, [codeStorageOwner, codeStorageScope, compileAndStartTerminal, compile, language, saveStatus, saveCode]);
 
   // 마지막 저장 시간 업데이트 (1초마다)
   const [, forceUpdate] = useState(0);
@@ -353,6 +417,14 @@ func main() -> u64 {
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#0d0d0d] relative group transition-colors duration-200">
+      {remoteConflict && <div role="alert" className="shrink-0 border-b border-amber-400 bg-amber-50 p-3 text-xs text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+        <p>{remoteConflict === 'deleted' ? '서버에서 삭제된 코드입니다. 이 기기의 코드는 보존되어 있으며 자동저장을 멈췄습니다.' : '서버 코드와 이 기기의 코드가 다릅니다. 자동저장을 멈췄으니 비교한 뒤 선택해 주세요.'}</p>
+        {remoteConflict !== 'deleted' && <details className="my-2"><summary>서버 코드 보기</summary><pre className="max-h-36 overflow-auto whitespace-pre-wrap">{remoteConflict.code}</pre></details>}
+        <div className="flex flex-wrap gap-3">
+          {remoteConflict !== 'deleted' && <button type="button" disabled={resolvingConflict} onClick={() => void resolveConflict(true)} className="underline">서버 코드 불러오기</button>}
+          <button type="button" disabled={resolvingConflict} onClick={() => void resolveConflict(false)} className="underline">{remoteConflict === 'deleted' ? '현재 코드를 서버에 다시 저장' : '현재 코드로 덮어쓰기'}</button>
+        </div>
+      </div>}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-[#1e1e1e] border-b border-gray-200 dark:border-[#333] shadow-sm shrink-0 transition-colors duration-200">
         <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
           <FileCode2 size={16} className="text-blue-500" />
@@ -418,6 +490,7 @@ func main() -> u64 {
             const nextCode = value || "";
             onCodeChange && onCodeChange(nextCode);
             setCode(nextCode);
+            if (autoSaveEnabled) saveCode(nextCode, codeStorageScope);
             setSaveStatus('unsaved');
           }}
           options={{
