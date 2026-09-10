@@ -90,10 +90,21 @@ def check_contracts(previous, candidate):
     paths = CONTRACTS + [str(p.relative_to(previous)) for p in (previous / 'runtime').rglob('*')
                          if p.is_file() and p.relative_to(previous).as_posix() != 'runtime/sandbox/run.sh']
     for relative in paths:
-        assert (candidate / relative).read_bytes() == (previous / relative).read_bytes(), 'Dependency/schema/topology change requires reviewed migration: ' + relative
+        assert contract_bytes(candidate / relative) == contract_bytes(previous / relative), 'Dependency/schema/topology change requires reviewed migration: ' + relative
     assert {str(p.relative_to(previous / 'backend/app')) for p in (previous / 'backend/app').rglob('*.py')} <= {str(p.relative_to(candidate / 'backend/app')) for p in (candidate / 'backend/app').rglob('*.py')}, 'Removed module requires clean image build'
     for path in (candidate / 'runtime').rglob('*.sh'):
         assert b'\r' not in path.read_bytes(), 'Shell archive must contain LF only'
+
+
+def contract_bytes(path):
+    data = path.read_bytes()
+    # The adopted release was exported by Windows Git. Compare recognized
+    # UTF-8 text contracts across CRLF/LF, but preserve every other byte.
+    # Binary/unknown files and runtime filename additions stay exact.
+    if path.suffix.lower() in {'.py', '.sh', '.yml', '.yaml', '.json', '.txt', '.md', '.conf', '.lock', '.toml', '.env'} or path.name == 'Dockerfile':
+        data.decode('utf-8')  # invalid text is an error, never lossy decoding
+        return data.replace(b'\r\n', b'\n')
+    return data
 
 
 def save(s):
