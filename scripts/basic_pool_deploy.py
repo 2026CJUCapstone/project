@@ -124,6 +124,16 @@ def extract(archive, prefix=None):
             assert member.size <= 128 * 1024**2
             if prefix: assert path.is_relative_to(ROOT / prefix)
         tar.extractall(ROOT, filter='data')
+        # SSH receives secrets with umask077. Tar's data filter intentionally
+        # drops directory modes, including implicit parents in frontend bundles.
+        # Only extracted asset/source directories become traversable by the
+        # non-root runtime. ROOT and its private journal/backups remain0700/0600.
+        for member in tar.getmembers():
+            path = ROOT / member.name
+            directory = path if path.is_dir() else path.parent
+            while directory != ROOT:
+                directory.chmod(0o755)
+                directory = directory.parent
 
 def prepare():
     assert not STATE.exists()

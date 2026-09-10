@@ -2,6 +2,7 @@
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import tarfile
 from types import SimpleNamespace
@@ -37,6 +38,29 @@ def test_bundle_exact_sha_and_replaces_stale_marker(tmp_path):
         name = 'frontend-dist/.well-known/webcompiler-release.json'
         assert tar.getnames().count(name) == 1
         assert json.load(tar.extractfile(name)) == {'deployment_sha': 'a' * 40}
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='POSIX non-root runtime permission contract')
+def test_private_umask_does_not_make_runtime_assets_private(deploy, tmp_path):
+    archive = tmp_path / 'assets.tar'
+    tmp_path.chmod(0o700)
+    private = tmp_path / 'release-state.json'
+    private.write_text('private')
+    private.chmod(0o600)
+    with tarfile.open(archive, 'w') as tar:
+        member = tarfile.TarInfo('frontend-dist/assets/file.js')
+        member.size, member.mode = 1, 0o644
+        tar.addfile(member, io.BytesIO(b'x'))
+    before = os.umask(0o077)
+    try:
+        deploy.extract(archive, 'frontend-dist')
+    finally:
+        os.umask(before)
+    assert tmp_path.stat().st_mode & 0o777 == 0o700
+    assert private.stat().st_mode & 0o777 == 0o600
+    assert (tmp_path / 'frontend-dist').stat().st_mode & 0o777 == 0o755
+    assert (tmp_path / 'frontend-dist/assets').stat().st_mode & 0o777 == 0o755
+    assert (tmp_path / 'frontend-dist/assets/file.js').stat().st_mode & 0o777 == 0o644
 
 
 @pytest.mark.parametrize('name,kind', [('../outside', 'file'), ('/outside', 'file'), ('frontend-dist/link', 'link'), ('other/index.html', 'file')])
