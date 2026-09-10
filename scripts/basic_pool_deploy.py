@@ -119,6 +119,7 @@ def extract(archive, prefix=None):
     with tarfile.open(archive) as tar:
         assert sum(m.size for m in tar.getmembers()) <= 256 * 1024**2
         for member in tar.getmembers():
+            assert '..' not in member.name.split('/'), 'Parent traversal is not a deployment archive path'
             path = (ROOT / member.name).resolve()
             assert path.is_relative_to(ROOT) and (member.isdir() or member.isfile())
             assert member.size <= 128 * 1024**2
@@ -129,6 +130,7 @@ def extract(archive, prefix=None):
         # Only extracted asset/source directories become traversable by the
         # non-root runtime. ROOT and its private journal/backups remain0700/0600.
         for member in tar.getmembers():
+            assert '..' not in member.name.split('/'), 'Parent traversal is not a deployment archive path'
             path = (ROOT / member.name).resolve()
             directory = path if path.is_dir() else path.parent
             while directory != ROOT:

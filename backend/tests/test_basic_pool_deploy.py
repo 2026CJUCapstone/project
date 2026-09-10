@@ -41,15 +41,14 @@ def test_bundle_exact_sha_and_replaces_stale_marker(tmp_path):
 
 
 @pytest.mark.skipif(os.name != 'posix', reason='POSIX non-root runtime permission contract')
-@pytest.mark.parametrize('member_name', ['frontend-dist/assets/file.js', 'frontend-dist/assets/sub/../file.js'])
-def test_private_umask_does_not_make_runtime_assets_private(deploy, tmp_path, member_name):
+def test_private_umask_does_not_make_runtime_assets_private(deploy, tmp_path):
     archive = tmp_path / 'assets.tar'
     tmp_path.chmod(0o700)
     private = tmp_path / 'release-state.json'
     private.write_text('private')
     private.chmod(0o600)
     with tarfile.open(archive, 'w') as tar:
-        member = tarfile.TarInfo(member_name)
+        member = tarfile.TarInfo('frontend-dist/assets/file.js')
         member.size, member.mode = 1, 0o644
         tar.addfile(member, io.BytesIO(b'x'))
     before = os.umask(0o077)
@@ -75,7 +74,7 @@ def test_private_umask_does_not_make_runtime_assets_private(deploy, tmp_path, me
     assert not (context / 'release.json').exists()
 
 
-@pytest.mark.parametrize('name,kind', [('../outside', 'file'), ('/outside', 'file'), ('frontend-dist/link', 'link'), ('other/index.html', 'file')])
+@pytest.mark.parametrize('name,kind', [('../outside', 'file'), ('/outside', 'file'), ('frontend-dist/link', 'link'), ('other/index.html', 'file'), ('frontend-dist/assets/sub/../file.js', 'file')])
 def test_archive_rejects_escape_link_or_wrong_prefix(deploy, tmp_path, name, kind):
     archive = tmp_path / 'bad.tar'
     with tarfile.open(archive, 'w') as tar:
