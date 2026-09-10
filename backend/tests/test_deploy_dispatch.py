@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -55,6 +57,59 @@ def test_missing_exact_host_key_blocks_ssh():
     with pytest.raises(dispatch.DeployConfigurationError,match='exact host and port'):
         dispatch.dispatch(environment(),run=run)
     assert len(calls) == 1 and calls[0][0] == 'ssh-keygen'
+
+
+def test_frontend_archive_is_exactly_decoded_after_remote_lock(tmp_path):
+    archive_bytes = b'frontend archive fixture\x00\xff\n'
+    archive = tmp_path/'frontend.tar.gz'
+    archive.write_bytes(archive_bytes)
+    env = environment()
+    env['DEPLOY_FRONTEND_ARCHIVE'] = str(archive)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        if command[0] == 'ssh-keygen':
+            return SimpleNamespace(returncode=0)
+        payload = kwargs['input']
+        marker = '# DEPLOY_FRONTEND_PAYLOAD'
+        assert payload.index('flock -n 9') < payload.index(marker)
+        assert payload.index(marker) < payload.index('git -C "$DEPLOY_PATH" init')
+        assert 'scp' not in payload and 'ssh ' not in payload
+        assert 'WEBCOMPILER_FRONTEND_ARCHIVE="$(mktemp "$DEPLOY_PATH/.deploy/frontend-$DEPLOY_SHA-XXXXXX.tar.gz")"' in payload
+        encoded_start = payload.index("<<'__DEPLOY_FRONTEND_PAYLOAD__'\n")
+        encoded_start += len("<<'__DEPLOY_FRONTEND_PAYLOAD__'\n")
+        encoded_end = payload.index('\n__DEPLOY_FRONTEND_PAYLOAD__\n', encoded_start)
+        assert base64.b64decode(payload[encoded_start:encoded_end]) == archive_bytes
+        assert f"export WEBCOMPILER_FRONTEND_SHA256='{hashlib.sha256(archive_bytes).hexdigest()}'" in payload
+        assert 'export WEBCOMPILER_FRONTEND_ARCHIVE' in payload
+        return SimpleNamespace(returncode=0)
+
+    dispatch.dispatch(env, run=run)
+    assert [command[0] for command, _ in calls] == ['ssh-keygen', 'ssh']
+
+
+@pytest.mark.parametrize('archive_factory, message', [
+    (lambda path: path/'missing.tar.gz', 'Frontend archive is missing'),
+    (lambda path: path/'directory', 'Frontend archive is unreadable'),
+])
+def test_frontend_archive_path_errors_are_fixed_configuration_errors(tmp_path, archive_factory, message):
+    archive = archive_factory(tmp_path)
+    if archive.name == 'directory':
+        archive.mkdir()
+    env = environment()
+    env['DEPLOY_FRONTEND_ARCHIVE'] = str(archive)
+    with pytest.raises(dispatch.DeployConfigurationError, match=message):
+        dispatch.dispatch(env, run=lambda *args, **kwargs: pytest.fail('Process must not start'))
+
+
+def test_frontend_archive_oversize_is_rejected_before_process_start(tmp_path):
+    archive = tmp_path/'oversize.tar.gz'
+    archive.write_bytes(b'x' * (dispatch.MAX_FRONTEND_ARCHIVE_BYTES + 1))
+    env = environment()
+    env['DEPLOY_FRONTEND_ARCHIVE'] = str(archive)
+    with pytest.raises(dispatch.DeployConfigurationError, match='Frontend archive is too large'):
+        dispatch.dispatch(env, run=lambda *args, **kwargs: pytest.fail('Process must not start'))
 
 
 @pytest.mark.parametrize('key,value',[

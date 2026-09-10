@@ -48,6 +48,28 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.WEBCOMPILER_DEPLOY_SSH_KEY }}
 
+      - name: Setup Node for Verified Frontend
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Exact Revision Frontend
+        working-directory: frontend
+        env:
+          VITE_APP_BASE_PATH: /webcompiler/
+          VITE_API_URL: /webcompiler
+          NODE_OPTIONS: --max-old-space-size=1536
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package Verified Frontend
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: python3 scripts/package_deploy_frontend.py frontend/dist "$RUNNER_TEMP/frontend-deploy.tar.gz" "$DEPLOY_SHA"
+
       - name: Deploy Verified Revision Under One Remote Lock
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -57,5 +79,6 @@ jobs:
           DEPLOY_REPO: ${{ github.server_url }}/${{ github.repository }}.git
           DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.WEBCOMPILER_DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_FRONTEND_ARCHIVE: ${{ runner.temp }}/frontend-deploy.tar.gz
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/dispatch_deploy.py

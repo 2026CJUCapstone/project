@@ -15,6 +15,12 @@ if [[ "$WEBCOMPILER_PROJECT_PREFIX" != webcompiler && "${WEBCOMPILER_ENABLE_SAND
 fi
 
 source "$PROJECT_ROOT/scripts/deploy_guard.sh"
+# The server explicitly selects an adopted basic pool. Never let this pool
+# fall through into managed blue/green ownership or migration logic.
+if [[ -e "$PROJECT_ROOT/.deploy/basic-pool.json" || -L "$PROJECT_ROOT/.deploy/basic-pool.json" ]]; then
+  export WEBCOMPILER_DEPLOY_LOCK_HELD=1
+  exec python3 -I "$PROJECT_ROOT/scripts/basic_pool_deploy.py"
+fi
 python3 "$PROJECT_ROOT/scripts/validate_ingress.py"
 python3 "$PROJECT_ROOT/scripts/runtime_secrets.py" validate --deployment --allow-missing --file "$PROJECT_ROOT/.deploy/runtime-secrets.env"
 # Image builds have a separate budget from running API/worker containers.

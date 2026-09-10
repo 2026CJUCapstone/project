@@ -4,6 +4,8 @@
 This helper does not choose a revision. verify_deploy_ci.py must first prove the
 provided full SHA passed CI. No host-key scan or branch fallback is allowed.
 """
+import base64
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -14,6 +16,11 @@ import tempfile
 
 class DeployConfigurationError(ValueError):
     pass
+
+
+MAX_FRONTEND_ARCHIVE_BYTES = 32 * 1024 * 1024
+FRONTEND_PAYLOAD_MARKER = '# DEPLOY_FRONTEND_PAYLOAD'
+FRONTEND_PAYLOAD_DELIMITER = '__DEPLOY_FRONTEND_PAYLOAD__'
 
 
 def configuration(env):
@@ -39,9 +46,47 @@ def configuration(env):
     return {key: env[key] for key in required}
 
 
+def _read_frontend_archive(path):
+    """Read a bounded local archive and return its bytes plus SHA-256 digest."""
+    try:
+        with Path(path).open('rb') as archive:
+            data = archive.read(MAX_FRONTEND_ARCHIVE_BYTES + 1)
+    except FileNotFoundError as exc:
+        raise DeployConfigurationError('Frontend archive is missing') from exc
+    except (OSError, ValueError) as exc:
+        raise DeployConfigurationError('Frontend archive is unreadable') from exc
+    if len(data) > MAX_FRONTEND_ARCHIVE_BYTES:
+        raise DeployConfigurationError('Frontend archive is too large')
+    return data, hashlib.sha256(data).hexdigest()
+
+
+def _inject_frontend_payload(script, archive):
+    data, digest = archive
+    encoded = base64.b64encode(data).decode('ascii')
+    payload = (
+        f'{FRONTEND_PAYLOAD_MARKER}\n'
+        'umask 077\n'
+        'WEBCOMPILER_FRONTEND_ARCHIVE="$(mktemp '
+        '"$DEPLOY_PATH/.deploy/frontend-$DEPLOY_SHA-XXXXXX.tar.gz")"\n'
+        'base64 --decode >"$WEBCOMPILER_FRONTEND_ARCHIVE" '
+        f'<<\'{FRONTEND_PAYLOAD_DELIMITER}\'\n'
+        f'{encoded}\n'
+        f'{FRONTEND_PAYLOAD_DELIMITER}\n'
+        'chmod 600 "$WEBCOMPILER_FRONTEND_ARCHIVE"\n'
+        'export WEBCOMPILER_FRONTEND_ARCHIVE\n'
+        f"export WEBCOMPILER_FRONTEND_SHA256='{digest}'"
+    )
+    if script.count(FRONTEND_PAYLOAD_MARKER) != 1:
+        raise DeployConfigurationError('Frontend payload marker is invalid')
+    return script.replace(FRONTEND_PAYLOAD_MARKER, payload, 1)
+
+
 def dispatch(env, *, run=subprocess.run):
     config = configuration(env)
     script = Path(__file__).with_name('sync_remote_repo.sh').read_text(encoding='utf-8')
+    archive_path = env.get('DEPLOY_FRONTEND_ARCHIVE')
+    if archive_path:
+        script = _inject_frontend_payload(script, _read_frontend_archive(archive_path))
     # Never put the token or secret fields in the SSH command line or a log.
     values = {key:config[key] for key in ('DEPLOY_SHA','DEPLOY_PATH','DEPLOY_REPO')}
     if env.get('GITHUB_TOKEN'):

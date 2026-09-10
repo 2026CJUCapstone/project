@@ -21,6 +21,7 @@ mkdir -p "$DEPLOY_PATH/.deploy"
 # second workflow/SSH process must never move HEAD while the first is building.
 exec 9>"$DEPLOY_PATH/.deploy/deploy.lock"
 flock -n 9 || { echo 'Another deployment is already running' >&2; exit 1; }
+# DEPLOY_FRONTEND_PAYLOAD
 
 if [ ! -d "$DEPLOY_PATH/.git" ]; then
   [[ ! -e "$DEPLOY_PATH/.git" ]] || exit 2
