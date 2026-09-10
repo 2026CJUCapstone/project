@@ -190,7 +190,7 @@ def run_scan(*, trivy, target, source, scope, commit, output, cache, role=None):
                 result = subprocess.run([str(trivy), *arguments], env=env, cwd=scratch,
                     stdout=log, stderr=log, timeout=timeout)
             if result.returncode:
-                raise ScanError('Scanner failed; no successful manifest was produced')
+                raise ScanError('Scanner ' + arguments[0] + ' failed (exit ' + str(result.returncode) + '); no successful manifest was produced')
         version = subprocess.run([str(trivy), 'version', '--format', 'json'], env=env,
             cwd=scratch, capture_output=True, text=True, timeout=15, check=True)
         if json.loads(version.stdout).get('Version') != VERSION:
