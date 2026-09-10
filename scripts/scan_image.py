@@ -15,7 +15,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from urllib.parse import unquote
+from urllib.parse import parse_qsl, unquote
 
 VERSION = '0.74.0'
 SHA = re.compile(r'sha256:[0-9a-f]{64}\Z')
@@ -129,6 +129,23 @@ def summarize(report, *, target, source, scope, commit=None, role=None):
     return safe, summary
 
 
+def package_version(purl):
+    """Recover Trivy's native version without dropping a Debian/RPM epoch."""
+    identity, _, query = purl.split('#', 1)[0].partition('?')
+    version = unquote(identity.rsplit('@', 1)[-1])
+    try:
+        qualifiers = parse_qsl(query, keep_blank_values=True, strict_parsing=True)
+    except ValueError as exc:
+        raise ScanError('Malformed package qualifiers') from exc
+    epochs = [value for key, value in qualifiers if key == 'epoch']
+    if epochs:
+        if (len(epochs) != 1 or not re.fullmatch(r'[1-9][0-9]*', epochs[0])
+                or not identity.startswith(('pkg:deb/', 'pkg:rpm/')) or ':' in version):
+            raise ScanError('Invalid package epoch qualifier')
+        version = epochs[0] + ':' + version
+    return version
+
+
 def verify_inventory(report, inventory):
     """Compare every detected package PURL, including version, after conversion.
 
@@ -158,7 +175,7 @@ def verify_inventory(report, inventory):
         if purl:
             if not isinstance(purl, str) or purl not in expected:
                 raise ScanError('Unexpected CycloneDX package identity')
-            version = unquote(purl.split('?', 1)[0].split('#', 1)[0].rsplit('@', 1)[-1])
+            version = package_version(purl)
             if component.get('version') != version:
                 raise ScanError('CycloneDX package version mismatch')
             observed.add(purl)
