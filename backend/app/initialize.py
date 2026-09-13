@@ -72,7 +72,7 @@ def recover_legacy(db, *, allowed=False):
     db.flush()
 
 
-def initialize(*, bind=None, allow_legacy_recovery=False):
+def initialize(*, bind=None, allow_legacy_recovery=False, skip_bootstrap=False):
     validate_runtime_security()
     with database.schema_transaction(bind) as connection:
         database.init_db(connection)
@@ -82,7 +82,13 @@ def initialize(*, bind=None, allow_legacy_recovery=False):
                               {"v": RUNTIME_SCHEMA_VERSION}).first():
                 from app.services.learning import backfill_progress
                 backfill_progress(db)
-            bootstrap_application_data(db)
+            if skip_bootstrap:
+                # Existing installations may have edited their admin/system
+                # content. An additive migration must not silently rewrite it.
+                if not db.query(m.User.id).filter(m.User.role == 'admin').first():
+                    raise RuntimeError('Skipping bootstrap requires an existing administrator')
+            else:
+                bootstrap_application_data(db)
             # Session.commit above cannot commit the enclosing connection.
             db.execute(text('INSERT INTO schema_migrations (version) VALUES (:version) ON CONFLICT (version) DO NOTHING'),
                 {'version':RUNTIME_SCHEMA_VERSION})
@@ -93,9 +99,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--allow-legacy-recovery', action='store_true',
         help='Operator confirms all old producers/workers stopped and old sandboxes removed.')
+    parser.add_argument('--skip-bootstrap', action='store_true',
+        help='Migrate an existing installation without changing administrator or system content.')
     args = parser.parse_args()
     try:
-        initialize(allow_legacy_recovery=args.allow_legacy_recovery)
+        initialize(allow_legacy_recovery=args.allow_legacy_recovery, skip_bootstrap=args.skip_bootstrap)
     except LegacyRecoveryRequired as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from None

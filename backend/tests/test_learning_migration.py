@@ -241,3 +241,40 @@ def test_parallel_initializers_backfill_once_under_the_database_lock(replicas, m
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM schema_migrations WHERE version=:v"),
                                  {"v": RUNTIME_SCHEMA_VERSION}) == 1
+
+
+def test_existing_installation_migration_does_not_reseed_admin_or_content(replicas, monkeypatch):
+    engine = replicas[0].kw["bind"]
+    m.ProblemLearningRecord.__table__.drop(engine)
+    with Session(engine) as db:
+        db.add(m.User(id="existing-admin", username="admin", nickname="Custom admin",
+                      role="admin", hashed_password="preserved-hash", total_score=900))
+        db.flush()
+        db.add(m.Problem(id="__notice__", creator_id="existing-admin", title="Custom board",
+                         description="Preserved description", difficulty="iron5", tags=[], test_cases=[]))
+        db.flush()
+        db.add(m.Comment(id="system-community-guide-v1", problem_id="__notice__", user_id="existing-admin",
+                         content="Administrator edited this guide"))
+        db.commit()
+    tables = [m.User.__table__, m.Problem.__table__, m.Comment.__table__]
+    with engine.connect() as connection:
+        before = [list(connection.execute(table.select())) for table in tables]
+
+    def forbidden(_db):
+        pytest.fail("Existing installation migration must not call bootstrap")
+
+    monkeypatch.setattr(initialize_module, "bootstrap_application_data", forbidden)
+    initialize(bind=engine, skip_bootstrap=True)
+    initialize(bind=engine, skip_bootstrap=True)
+    with engine.connect() as connection:
+        assert [list(connection.execute(table.select())) for table in tables] == before
+        assert connection.scalar(text("SELECT count(*) FROM schema_migrations WHERE version=:v"),
+                                 {"v": RUNTIME_SCHEMA_VERSION}) == 1
+
+
+def test_skip_bootstrap_on_empty_installation_rolls_back_readiness(replicas):
+    engine = replicas[0].kw["bind"]
+    m.ProblemLearningRecord.__table__.drop(engine)
+    with pytest.raises(RuntimeError, match="existing administrator"):
+        initialize(bind=engine, skip_bootstrap=True)
+    assert "problem_learning_records" not in inspect(engine).get_table_names()
