@@ -66,6 +66,20 @@ class UserProblemScore(Base):
     solved_at = Column(DateTime, default=utc_now)
 
 
+class ProblemLearningRecord(Base):
+    """Private study state, independent of bounded submission/code retention."""
+    __tablename__ = "problem_learning_records"
+    user_id = Column(String, ForeignKey("users.id"), primary_key=True)
+    problem_id = Column(String, ForeignKey("problems.id"), primary_key=True)
+    bookmarked = Column(Boolean, nullable=False, default=False, server_default="0")
+    note = Column(Text, nullable=False, default="", server_default="")
+    reviewed_at = Column(DateTime, nullable=True)
+    version = Column(Integer, nullable=False, default=0, server_default="0")
+    last_attempt_at = Column(DateTime, nullable=True)
+    last_submission_id = Column(String, nullable=True)
+    last_verdict = Column(String, nullable=True)
+
+
 class Submission(Base):
     __tablename__ = "submissions"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

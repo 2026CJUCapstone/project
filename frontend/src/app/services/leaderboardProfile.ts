@@ -22,6 +22,12 @@ export interface LeaderboardProfile {
 
 const USER_STORAGE_KEY = 'b-compiler-user';
 const GUEST_STORAGE_KEY = 'b-compiler-guest-profile';
+const PROFILE_CHANGE_EVENT = 'leaderboard-profile-change';
+
+export function subscribeLeaderboardProfile(listener: () => void) {
+  window.addEventListener(PROFILE_CHANGE_EVENT, listener);
+  return () => window.removeEventListener(PROFILE_CHANGE_EVENT, listener);
+}
 
 function canUseStorage() {
   return typeof window !== 'undefined' && Boolean(window.localStorage);
@@ -80,6 +86,7 @@ export function createAvatarUrl(seed: string) {
 export function saveLeaderboardProfile(profile: LeaderboardProfile) {
   if (!canUseStorage()) return;
   window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
+  window.dispatchEvent(new Event(PROFILE_CHANGE_EVENT));
 }
 
 export function profileFromAuthUser(user: {

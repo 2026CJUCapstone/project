@@ -86,6 +86,8 @@ def publish_result(db, job_id, result):
             'message':'모든 테스트를 통과했습니다.' if verdict == 'accepted' else '채점 결과를 확인하세요.'}
         if submission.user_id:
             from app.api.routes.problems import _prune_old_submissions
+            from app.services.learning import record_attempt
+            record_attempt(db, submission)
             _prune_old_submissions(db, submission.user_id)
     contest_submission = db.query(m.ContestSubmission).filter_by(execution_job_id=job_id).first()
     if contest_submission is not None:

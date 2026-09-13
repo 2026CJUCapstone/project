@@ -3,6 +3,115 @@ import { expect, test, type Page } from '@playwright/test';
 const apiOrigin = 'http://127.0.0.1:18001';
 const password = 'LocalContestTest!123';
 
+test('a delayed real Header read cannot restore the profile after saving on the page', async ({ page, request }) => {
+  const suffix = Date.now().toString(36);
+  const username = `page_race_${suffix}`;
+  const initialEmail = `page-race-${suffix}@example.test`;
+  expect((await request.post(`${apiOrigin}/api/v1/auth/register`, { data: { username, email: initialEmail, password } })).ok()).toBeTruthy();
+  const login = await request.post(`${apiOrigin}/api/v1/auth/login`, { data: { username, password } });
+  expect(login.ok()).toBeTruthy();
+  await page.addInitScript(token => localStorage.setItem('authToken', token), (await login.json()).accessToken);
+  let release!: () => void;
+  let fetched!: () => void;
+  let complete!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const firstRead = new Promise<void>(resolve => { fetched = resolve; });
+  const finished = new Promise<void>(resolve => { complete = resolve; });
+  let intercepted = false;
+  await page.route('**/api/v1/auth/me', async route => {
+    if (intercepted) return route.continue();
+    intercepted = true;
+    try {
+      const response = await route.fetch();
+      fetched();
+      await gate;
+      await route.fulfill({ response });
+    } finally { complete(); }
+  });
+  try {
+    await page.goto('/settings');
+    await firstRead;
+    await expect(page.getByLabel('이메일', { exact: true })).toHaveValue(initialEmail);
+    const newEmail = `saved-page-${suffix}@example.test`;
+    await page.getByLabel('이메일', { exact: true }).fill(newEmail);
+    await page.getByRole('button', { name: '저장', exact: true }).click();
+    await expect(page.getByText('프로필을 저장했습니다.', { exact: true })).toBeVisible();
+    const delivered = page.waitForResponse(response => response.url() === `${apiOrigin}/api/v1/auth/me`);
+    release();
+    await (await delivered).finished();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.getByLabel('이메일', { exact: true })).toHaveValue(newEmail);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('b-compiler-user')!).email)).toBe(newEmail);
+  } finally {
+    release();
+    await finished;
+    await page.unroute('**/api/v1/auth/me');
+  }
+});
+
+for (const width of [1440, 390]) {
+  test(`own profile is a navigable page at ${width}px with reload and browser history`, async ({ page, context, request }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const username = `profile_page_${width}_${Date.now().toString(36)}`;
+    const identity = { username, email: `${username}@example.test`, nickname: `프로필확인${width}${Date.now().toString(36)}`, password };
+    const updatedNickname = `변경확인${width}${Date.now().toString(36)}`;
+    expect((await request.post(`${apiOrigin}/api/v1/auth/register`, { data: identity })).ok()).toBeTruthy();
+    const login = await request.post(`${apiOrigin}/api/v1/auth/login`, { data: { username, password } });
+    expect(login.ok()).toBeTruthy();
+    await page.addInitScript(token => localStorage.setItem('authToken', token), (await login.json()).accessToken);
+    await page.goto('/');
+    await page.locator('header').getByRole('img', { name: identity.nickname }).click();
+    await page.getByRole('menuitem', { name: '내 프로필' }).click();
+    await expect(page).toHaveURL(/\/profile$/);
+    await expect(page.getByRole('heading', { level: 1, name: '내 프로필' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: identity.nickname, exact: true })).toBeVisible();
+    await expect(page.getByLabel('이메일', { exact: true })).toHaveCount(0);
+    expect(context.pages()).toHaveLength(1);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.goBack();
+    await expect(page.getByTestId('landing-page')).toBeVisible();
+    await page.goForward();
+    await expect(page.getByRole('heading', { name: identity.nickname, exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: identity.nickname, exact: true })).toBeVisible();
+    const region = page.getByRole('region', { name: '내 프로필', exact: true });
+    await region.evaluate(element => { element.scrollTop = 0; });
+    expect(await region.evaluate(element => element.scrollWidth <= element.clientWidth)).toBeTruthy();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    // Detect clipped fixed-width content inside the stats panel, too.
+    const stats = region.locator('section').first();
+    expect(await stats.evaluate(element => element.scrollWidth <= element.clientWidth)).toBeTruthy();
+    await page.screenshot({ path: testInfo.outputPath(`profile-page-${width}.png`) });
+    await page.getByRole('link', { name: '프로필 편집', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '에디터 설정', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '화면 설정', exact: true })).toBeVisible();
+    await expect(page.getByLabel('이메일', { exact: true })).toHaveValue(identity.email);
+    await page.getByLabel('자동저장', { exact: true }).uncheck();
+    await expect(page.getByLabel('자동저장', { exact: true })).not.toBeChecked();
+    await page.getByLabel('테마', { exact: true }).selectOption('light');
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
+    await page.getByLabel('테마', { exact: true }).selectOption('dark');
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    const settingsRegion = page.getByRole('region', { name: '설정', exact: true });
+    expect(await settingsRegion.evaluate(element => element.scrollWidth <= element.clientWidth)).toBeTruthy();
+    await settingsRegion.evaluate(element => { element.scrollTop = 0; });
+    await page.screenshot({ path: testInfo.outputPath('settings-page.png') });
+    await page.getByLabel('닉네임', { exact: true }).fill(updatedNickname);
+    await page.getByRole('button', { name: '저장', exact: true }).click();
+    await expect(page.getByText('프로필을 저장했습니다.', { exact: true })).toBeVisible();
+    await expect(page.locator('header').getByRole('img', { name: updatedNickname })).toBeVisible();
+    await expect(page).toHaveURL(/\/settings$/);
+    await page.getByRole('link', { name: '내 프로필로', exact: true }).click();
+    await expect(page.getByRole('heading', { name: updatedNickname, exact: true })).toBeVisible();
+    await expect(page.getByLabel('이메일', { exact: true })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}
+
 test('login supports a two-character nickname and an email longer than 64 characters', async ({ page, request }) => {
   const now = Date.now();
   const suffix = now.toString(36);
@@ -57,10 +166,10 @@ test('two real tabs switch account without carrying the previous profile draft i
     await page.getByLabel('이메일', { exact: true }).fill('old-account-draft@example.test');
     await second.locator(`img[alt="${identities[0].username}"]`).click();
     await second.getByRole('menuitem', { name: '로그아웃' }).click();
-    await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('이메일', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '로그인', exact: true })).toBeVisible();
     await loginUi(second, identities[1]);
-    await expect(page.locator(`img[alt="${identities[1].username}"]`)).toBeVisible();
+    await expect(page.locator('header').locator(`img[alt="${identities[1].username}"]`)).toBeVisible();
     await page.getByTitle('설정', { exact: true }).click();
     await expect(page.getByLabel('이메일', { exact: true })).toHaveValue(identities[1].email);
     for (let index = 0; index < identities.length; index++) {
@@ -94,7 +203,7 @@ test('regular user clears explicit profile fields after reload while omitted fie
   };
   const openProfile = async () => {
     await page.getByTitle('설정').click();
-    await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible();
   };
   const saveProfile = async () => {
     const saved = page.waitForResponse(response =>
@@ -102,12 +211,12 @@ test('regular user clears explicit profile fields after reload while omitted fie
     );
     await page.getByRole('button', { name: '저장', exact: true }).click();
     expect((await saved).ok()).toBeTruthy();
-    await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toHaveCount(0);
+    await expect(page.getByText('프로필을 저장했습니다.', { exact: true })).toBeVisible();
   };
 
   await page.addInitScript(accessToken => localStorage.setItem('authToken', accessToken), token);
   await page.goto('/');
-  await expect(page.locator('img[alt="contest_solver"]')).toBeVisible();
+  await expect(page.locator('header img[alt="contest_solver"]')).toBeVisible();
 
   // Exercise the user-facing editor first: all three fields receive concrete
   // values, so later blank fields must become explicit JSON null values.
@@ -144,7 +253,7 @@ test('regular user clears explicit profile fields after reload while omitted fie
   });
 
   await page.reload();
-  await expect(page.getByText('Partial Profile Solver', { exact: true })).toBeVisible();
+  await expect(page.locator('header').getByText('Partial Profile Solver', { exact: true })).toBeVisible();
   await openProfile();
   await expect(page.getByLabel('이메일', { exact: true })).toHaveValue('profile-solver@example.test');
   await expect(page.getByLabel('닉네임', { exact: true })).toHaveValue('Partial Profile Solver');
@@ -166,7 +275,7 @@ test('regular user clears explicit profile fields after reload while omitted fie
   );
   await page.reload();
   expect((await refreshed).ok()).toBeTruthy();
-  await expect(page.locator('img[alt="contest_solver"]')).toBeVisible();
+  await expect(page.locator('header img[alt="contest_solver"]')).toBeVisible();
   await openProfile();
   await expect(page.getByLabel('이메일', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('닉네임', { exact: true })).toHaveValue('');

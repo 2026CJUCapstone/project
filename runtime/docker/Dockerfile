@@ -1,5 +1,5 @@
 FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS node-runtime
-FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+FROM ubuntu:26.04@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d
 
 RUN set -eux; \
     if ! (apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
@@ -43,7 +43,15 @@ RUN set -eux; \
 
 # Use the pinned glibc build, not Alpine's musl binary or a mutable setup script.
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
-COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+# The Node24 image bundles npm12 with vulnerable transitive packages. Install
+# the compatible npm11 release whose complete bundled tree includes the fixes.
+# Verify the exact upstream artifact before extracting or executing anything.
+RUN curl --fail --silent --show-error --location --retry 3 \
+      https://registry.npmjs.org/npm/-/npm-11.19.1.tgz -o /tmp/npm.tgz \
+    && printf '%s  %s\n' 9f58bff01604cb1b14008fef14dceb14d836a49225e45c6c2e37de3be3e707f0 /tmp/npm.tgz | sha256sum --check --strict \
+    && mkdir -p /usr/local/lib/node_modules/npm \
+    && tar -xzf /tmp/npm.tgz --strip-components=1 -C /usr/local/lib/node_modules/npm \
+    && rm /tmp/npm.tgz
 RUN set -eux; \
     ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm; \
     ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx; \
@@ -52,7 +60,7 @@ RUN set -eux; \
     ldd /usr/local/bin/node > /tmp/node-libraries.txt; \
     ! grep -q 'not found' /tmp/node-libraries.txt; \
     rm /tmp/node-libraries.txt; \
-    npm --version; \
+    test "$(npm --version)" = 11.19.1; \
     printf '40 2\n' | node -e 'const fs=require("node:fs"); const values=fs.readFileSync(0,"utf8").trim().split(/\s+/).map(Number); if(values[0]+values[1]!==42) process.exit(1)'
 
 ARG BPP_REPO=https://github.com/Creeper0809/Bpp

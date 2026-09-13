@@ -4,7 +4,7 @@ import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import admin, community, compiler, problems, projects, terminal, auth, contests, executions
+from app.api.routes import admin, community, compiler, problems, projects, terminal, auth, contests, executions, learning
 from app.services.contests import contest_maintenance
 from app.services.execution_runtime import build_worker
 from app.services.housekeeping import retention_maintenance
@@ -103,6 +103,7 @@ app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"]
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(contests.router, prefix="/api/v1/contests", tags=["contests"])
 app.include_router(executions.router, prefix="/api/v1/executions", tags=["executions"])
+app.include_router(learning.router, prefix="/api/v1/learning", tags=["learning"])
 
 @app.get("/health")
 def health_check():

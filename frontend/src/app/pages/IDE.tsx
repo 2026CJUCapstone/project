@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useLocation } from "react-router";
 import { ChallengePanel } from "../components/ChallengePanel";
 import { CodeEditor } from "../components/CodeEditor";
-import { OutputConsole } from "../components/OutputConsole";
+import { RunOutputPanel } from "../components/RunOutputPanel";
 import { CompilerGraphViewer } from "../components/CompilerGraphViewer";
 import { useCompilerStore } from "../store/compilerStore";
 import type { ContestProblemDetail } from "../services/contestApi";
@@ -28,21 +28,27 @@ function useMobileLayout() {
 
 export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail } = {}) {
   const location = useLocation();
-  const { code, setCode, isGraphViewerOpen } = useCompilerStore();
+  const { code, setCode, language, isGraphViewerOpen } = useCompilerStore();
+  const supportsGraphs = language === "bpp";
+  const showGraph = supportsGraphs && isGraphViewerOpen;
   const challenge = contestProblem ?? location.state?.challenge;
+  const testScope = contestProblem ? `contest:${contestProblem.contest.id}:${contestProblem.id}` : challenge ? `problem:${challenge.id}` : 'main';
   const isMobile = useMobileLayout();
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("editor");
+  const wasGraphOpen = useRef(isGraphViewerOpen);
 
   useEffect(() => {
-    if (isMobile && isGraphViewerOpen) setMobilePanel("graph");
-  }, [isGraphViewerOpen, isMobile]);
+    if (isMobile && supportsGraphs && isGraphViewerOpen && !wasGraphOpen.current) setMobilePanel("graph");
+    if (!showGraph) setMobilePanel(panel => panel === "graph" ? "editor" : panel);
+    wasGraphOpen.current = isGraphViewerOpen;
+  }, [isGraphViewerOpen, isMobile, supportsGraphs, showGraph]);
 
   if (isMobile) {
     const tabs: { id: MobilePanel; label: string }[] = [
       ...(challenge ? [{ id: "problem" as const, label: "문제" }] : []),
       { id: "editor", label: "코드" },
       { id: "console", label: "실행 결과" },
-      { id: "graph", label: "그래프" },
+      ...(supportsGraphs ? [{ id: "graph" as const, label: "그래프" }] : []),
     ];
 
     const selectPanel = (panel: MobilePanel) => {
@@ -103,11 +109,11 @@ export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail 
             <CodeEditor onCodeChange={setCode} />
           </div>
           <div id="mobile-console-panel" role="tabpanel" aria-labelledby="mobile-console-tab" hidden={mobilePanel !== "console"} className="h-full">
-            <OutputConsole />
+            <RunOutputPanel samples={challenge?.testCases} scopeKey={testScope} />
           </div>
-          <div id="mobile-graph-panel" role="tabpanel" aria-labelledby="mobile-graph-tab" hidden={mobilePanel !== "graph"} className="h-full">
-            {isGraphViewerOpen ? <CompilerGraphViewer code={code} /> : null}
-          </div>
+          {supportsGraphs && <div id="mobile-graph-panel" role="tabpanel" aria-labelledby="mobile-graph-tab" hidden={mobilePanel !== "graph"} className="h-full">
+            {showGraph ? <CompilerGraphViewer code={code} /> : null}
+          </div>}
         </div>
       </div>
     );
@@ -129,7 +135,7 @@ export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail 
         )}
 
         {/* 메인 패널: 에디터 및 콘솔 */}
-        <Panel defaultSize={challenge ? (isGraphViewerOpen ? 43 : 68) : (isGraphViewerOpen ? 75 : 100)} minSize={30} id="editor-console-panel" order={challenge ? 2 : 1}>
+        <Panel defaultSize={challenge ? (showGraph ? 43 : 68) : (showGraph ? 75 : 100)} minSize={30} id="editor-console-panel" order={challenge ? 2 : 1}>
           <PanelGroup direction="vertical" className="w-full h-full" id="editor-vertical-group">
             <Panel defaultSize={70} minSize={20} id="editor-panel" order={1}>
               <CodeEditor onCodeChange={setCode} />
@@ -140,12 +146,12 @@ export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail 
             </PanelResizeHandle>
             
             <Panel defaultSize={30} minSize={10} id="console-panel" order={2}>
-              <OutputConsole />
+              <RunOutputPanel samples={challenge?.testCases} scopeKey={testScope} />
             </Panel>
           </PanelGroup>
         </Panel>
 
-        {isGraphViewerOpen && (
+        {showGraph && (
           <>
             <PanelResizeHandle className="w-2 bg-gray-100 dark:bg-[#1e1e1e] border-x border-gray-200 dark:border-[#333] hover:bg-blue-100 dark:hover:bg-blue-600/50 transition-colors cursor-col-resize flex flex-col items-center justify-center relative z-10" id="main-horizontal-resize">
               <div className="h-12 w-0.5 bg-gray-300 dark:bg-gray-500 rounded-full" />

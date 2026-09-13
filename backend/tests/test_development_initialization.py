@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-RUNTIME_SCHEMA_VERSION = "20260910_execution_retention_v10"
+RUNTIME_SCHEMA_VERSION = "20260911_learning_v11"
 
 # Keep these imports self-contained even when a developer or the CI host has a
 # deployment environment exported.  In particular, no inherited URL may point

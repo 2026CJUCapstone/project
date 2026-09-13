@@ -1,10 +1,12 @@
 import Editor, { useMonaco } from "@monaco-editor/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { FileCode2, Copy, Check, Loader2, Clock } from "lucide-react";
+import { FileCode2, Copy, Check, Loader2, Clock, Network, RotateCcw } from "lucide-react";
 import { useLocation, useParams } from "react-router";
 import { useCompilerStore } from "../store/compilerStore";
 import { acceptProjectRevision, getProjectBaseRevision, getCodeProject, saveCodeProject, type CodeProject } from "../services/projectApi";
 import { getAuthOwner, subscribeAuthIdentity } from '../services/authIdentity';
+
+import { CODE_TEMPLATES } from "../store/codeTemplates";
 
 const utf8Encoder = new TextEncoder();
 
@@ -33,6 +35,10 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
     language,
     setLanguage,
     setEditorReady: setEditorControlsReady,
+    isCompiling,
+    isRunning,
+    isGraphViewerOpen,
+    setGraphViewerOpen,
   } = useCompilerStore();
   const [copied, setCopied] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
@@ -49,78 +55,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const codeStorageScope = contestId && contestProblemId ? `contest:${contestId}:${contestProblemId}` : challengeId ? `problem:${challengeId}` : 'main';
   const codeStorageOwner = useSyncExternalStore(subscribeAuthIdentity, getAuthOwner, () => 'guest');
 
-  let defaultCode = `import std.io;
-
-func main() -> u64 {
-    var limit: i64 = 100;
-    var target: i64 = 84;
-    var spf: [101]i64;
-
-    // spf[i] = i의 가장 작은 소인수
-    var i: i64 = 0;
-    while (i <= limit) {
-        spf[i] = 0;
-        i = i + 1;
-    }
-
-    i = 2;
-    while (i <= limit) {
-        if (spf[i] == 0) {
-            spf[i] = i;
-
-            var j: i64 = i * i;
-            while (j <= limit) {
-                if (spf[j] == 0) {
-                    spf[j] = i;
-                }
-                j = j + i;
-            }
-        }
-        i = i + 1;
-    }
-
-    print("target = ");
-    println(target);
-    print("factors = ");
-
-    var current: i64 = target;
-    var first: i64 = 1;
-    while (current > 1) {
-        var p: i64 = spf[current];
-        if (first == 0) {
-            print(" x ");
-        }
-        print(p);
-        first = 0;
-        current = current / p;
-    }
-
-    return 0;
-}
-`;
-
-  // 챌린지를 눌러서 왔을 때, 해당하는 기초 뼈대 드를 삽입해줄 수 있습니다.
-  if (challengeId === 'c1') {
-    defaultCode = `import emitln from std.io;
-
-func main() -> u64 {
-    emitln("Hello, World!");
-    return 0;
-}`;
-  } else if (challengeId === 'c2') {
-    defaultCode = `import emitln from std.io;
-
-func main() -> u64 {
-    var num: i64 = 0;
-    // TODO: 입력 처리를 추가한 뒤 짝수면 "Even", 홀수면 "Odd"를 출력하세요.
-    if ((num % 2) == 0) {
-        emitln("Even");
-    } else {
-        emitln("Odd");
-    }
-    return 0;
-}`;
-  }
+  const defaultCode = CODE_TEMPLATES.bpp;
 
   const fileName = language === 'java' ? 'Main.java' : `main.${language === 'python' ? 'py' : language === 'javascript' ? 'js' : language}`;
   const editorLanguage = language === 'c' || language === 'bpp' ? 'cpp' : language;
@@ -194,7 +129,7 @@ func main() -> u64 {
     const localCode = loadCode(codeStorageScope);
     const initialLanguage = loadCodeLanguage(codeStorageScope) ?? 'bpp';
     setLanguage(initialLanguage);
-    const nextCode = localCode ?? defaultCode;
+    const nextCode = localCode ?? CODE_TEMPLATES[initialLanguage];
     savedContentRef.current = { code: nextCode, language: initialLanguage };
 
     isHydratingEditorRef.current = true;
@@ -431,6 +366,25 @@ func main() -> u64 {
           <span className="text-xs font-mono tracking-wider text-gray-700 dark:text-gray-300">{fileName}</span>
         </div>
         
+        <div className="flex items-center gap-1">
+          <button type="button" title="기본 코드 불러오기" disabled={!hasHydratedEditor || isCompiling || isRunning}
+            onClick={() => {
+              const template = CODE_TEMPLATES[language];
+              if (code !== template && !window.confirm("작성 중인 코드를 지우고 선택한 언어의 기본 코드를 불러올까요?")) return;
+              setCode(template);
+              onCodeChange?.(template);
+              setSelectedText('');
+              setSelectedSourceRange(null);
+            }}
+            className="rounded-md px-2 py-1.5 text-xs text-gray-500 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-[#2d2d2d] disabled:opacity-50">
+            <RotateCcw size={14} className="mr-1 inline" />기본 코드
+          </button>
+          {language === 'bpp' && <button type="button" aria-expanded={isGraphViewerOpen}
+            title={isGraphViewerOpen ? "그래프 닫기" : "그래프 열기"}
+            onClick={() => setGraphViewerOpen(!isGraphViewerOpen)}
+            className="rounded-md px-2 py-1.5 text-xs text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-[#2d2d2d]">
+            <Network size={14} className="mr-1 inline" />그래프
+          </button>}
         <button 
           onClick={handleCopy}
           className="p-1.5 text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#2d2d2d] rounded-md transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
@@ -438,6 +392,7 @@ func main() -> u64 {
         >
           {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
         </button>
+        </div>
       </div>
 
       <div className="flex-1 w-full pt-2 bg-white dark:bg-transparent transition-colors duration-200">

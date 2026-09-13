@@ -26,13 +26,13 @@ export function UserProfile({
           alt={username} 
           className="w-7 h-7 rounded-full object-cover border border-gray-200 dark:border-[#444]" 
         />
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-200 hidden sm:block">{username}</span>
+        <span className="hidden max-w-32 truncate text-sm font-medium text-gray-700 dark:text-gray-200 lg:block" title={username}>{username}</span>
         <ChevronDown size={14} className="text-gray-500 dark:text-gray-400" />
       </DropdownMenu.Trigger>
 
       <DropdownMenu.Portal>
         <DropdownMenu.Content 
-          className="min-w-[200px] bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-[#333] rounded-lg p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95" 
+          className="w-64 max-w-[calc(100vw-24px)] bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-[#333] rounded-lg p-1.5 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95"
           sideOffset={8} 
           align="end"
         >

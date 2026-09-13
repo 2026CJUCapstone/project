@@ -717,7 +717,7 @@ export function CompilerGraphViewer({ code }: { code: string }) {
           <button
             onClick={() => setGraphViewerOpen(false)}
             className="shrink-0 rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-900 dark:text-gray-400 dark:hover:bg-[#252525] dark:hover:text-white"
-            title="최소화"
+            title="그래프 패널 닫기"
           >
             <Minus size={16} />
           </button>

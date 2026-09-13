@@ -397,7 +397,7 @@ export function Challenges() {
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <Code2 size={48} className="text-gray-300 dark:text-[#333] mb-4" />
-                <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">조건에 맞는 챌린지가 없습니다</h3>
+                <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">조건에 맞는 문제가 없습니다</h3>
                 <p className="text-gray-500 text-sm">필터를 조정하여 다른 결과를 확인해보세요.</p>
                 <button
                   onClick={resetFilters}

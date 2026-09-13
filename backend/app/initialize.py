@@ -20,7 +20,7 @@ from app.services.contest_access import now_utc
 from app.services.durable_queue import DurableQueue, QueueFull
 from app.core.config import settings
 
-RUNTIME_SCHEMA_VERSION = '20260910_execution_retention_v10'
+RUNTIME_SCHEMA_VERSION = '20260911_learning_v11'
 
 
 class LegacyRecoveryRequired(RuntimeError):
@@ -78,6 +78,10 @@ def initialize(*, bind=None, allow_legacy_recovery=False):
         database.init_db(connection)
         with Session(bind=connection, autoflush=False, join_transaction_mode='rollback_only') as db:
             recover_legacy(db, allowed=allow_legacy_recovery)
+            if not db.execute(text("SELECT 1 FROM schema_migrations WHERE version = :v"),
+                              {"v": RUNTIME_SCHEMA_VERSION}).first():
+                from app.services.learning import backfill_progress
+                backfill_progress(db)
             bootstrap_application_data(db)
             # Session.commit above cannot commit the enclosing connection.
             db.execute(text('INSERT INTO schema_migrations (version) VALUES (:version) ON CONFLICT (version) DO NOTHING'),

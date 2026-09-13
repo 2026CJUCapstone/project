@@ -8,6 +8,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { JudgePanel } from "./JudgePanel";
 import { ContestJudgePanel } from "./ContestJudgePanel";
+import { ProblemReviewControls } from "./ProblemReviewControls";
 import type { Contest } from "../services/contestApi";
 import type { TestCase } from "../services/problemApi";
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from "../constants/difficulty";
@@ -142,6 +143,7 @@ export function ChallengePanel({ challenge, code, onClose, contest }: Props) {
           )}
         </div>
 
+        {!contest && <div className="px-4 pb-4"><ProblemReviewControls key={challenge.id} problemId={challenge.id} /></div>}
         {/* 채점 접기/펼치기 */}
         {contest ? <ContestJudgePanel contest={contest} problemId={challenge.id} /> : <div className="border-t border-[#333]">
           <button

@@ -120,7 +120,7 @@ def test_initializer_adds_nullable_sandbox_operation_and_preserves_pending_inten
 
     # The v8 marker is additive. This only verifies schema history/data
     # preservation, not that a mixed-version online worker rollout is safe.
-    assert RUNTIME_SCHEMA_VERSION == "20260910_execution_retention_v10"
+    assert RUNTIME_SCHEMA_VERSION == "20260911_learning_v11"
     with engine.connect() as connection:
         versions = set(connection.execute(text("SELECT version FROM schema_migrations")).scalars())
     assert {V7_SCHEMA_VERSION, RUNTIME_SCHEMA_VERSION} <= versions

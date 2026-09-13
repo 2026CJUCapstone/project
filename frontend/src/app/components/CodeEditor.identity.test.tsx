@@ -5,6 +5,7 @@ import { CodeEditor } from './CodeEditor';
 import { getAuthOwner, setAuthToken } from '../services/authIdentity';
 import { acceptProjectRevision, getProjectBaseRevision, saveCodeProject } from '../services/projectApi';
 import { useCompilerStore } from '../store/compilerStore';
+import { CODE_TEMPLATES } from '../store/codeTemplates';
 
 vi.mock('@monaco-editor/react', async () => {
   const { useEffect, useRef } = await import('react');
@@ -43,6 +44,46 @@ afterEach(() => {
 async function mountEditor() {
   await act(async () => { render(<MemoryRouter><CodeEditor /></MemoryRouter>); });
 }
+
+it('uses the shared simple B++ template on a fresh visit', async () => {
+  await mountEditor();
+  expect(screen.getByRole('textbox')).toHaveValue(CODE_TEMPLATES.bpp);
+});
+
+it.each(Object.keys(CODE_TEMPLATES) as (keyof typeof CODE_TEMPLATES)[])('hydrates %s metadata without code using its own template', async language => {
+  useCompilerStore.getState().setLanguage(language);
+  useCompilerStore.getState().saveCode('temporary');
+  localStorage.removeItem('b-compiler-editor-code:v2:guest:main');
+  await mountEditor();
+  expect(screen.getByRole('textbox')).toHaveValue(CODE_TEMPLATES[language]);
+  expect(useCompilerStore.getState().language).toBe(language);
+});
+
+it('preserves saved drafts and resets to the selected template only after confirmation', async () => {
+  useCompilerStore.getState().setLanguage('python');
+  useCompilerStore.getState().saveCode('my existing draft');
+  await mountEditor();
+  expect(screen.getByRole('textbox')).toHaveValue('my existing draft');
+  vi.stubGlobal('confirm', vi.fn().mockReturnValue(false));
+  fireEvent.click(screen.getByTitle('기본 코드 불러오기'));
+  expect(screen.getByRole('textbox')).toHaveValue('my existing draft');
+  vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
+  fireEvent.click(screen.getByTitle('기본 코드 불러오기'));
+  expect(screen.getByRole('textbox')).toHaveValue(CODE_TEMPLATES.python);
+  expect(useCompilerStore.getState().loadCode()).toBe(CODE_TEMPLATES.python);
+});
+
+it('exposes a graph toggle only for B++ and can reopen it after closing', async () => {
+  await mountEditor();
+  fireEvent.click(screen.getByTitle('그래프 닫기'));
+  expect(useCompilerStore.getState().isGraphViewerOpen).toBe(false);
+  fireEvent.click(screen.getByTitle('그래프 열기'));
+  expect(useCompilerStore.getState().isGraphViewerOpen).toBe(true);
+  act(() => useCompilerStore.getState().selectLanguage('java'));
+  expect(screen.queryByTitle('그래프 닫기')).toBeNull();
+  expect(screen.queryByTitle('그래프 열기')).toBeNull();
+  expect(screen.getByRole('textbox')).toHaveValue(CODE_TEMPLATES.java);
+});
 
 it('enables editor controls only after hydration and clears readiness on unmount', async () => {
   expect(useCompilerStore.getState().isEditorReady).toBe(false);
