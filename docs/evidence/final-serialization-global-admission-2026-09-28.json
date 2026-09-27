@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "recordedAtKst": "2026-09-28",
+  "sourceCommit": "c05c8f74b1f47894d67cbc87122203dfa36d0435",
+  "sourceArchive": {
+    "format": "git-archive-tar-gzip",
+    "sha256": "59284358014b4a368d2e3185a7921321a0b539376d826d8c8160ba03bf117b73"
+  },
+  "scope": {
+    "operatingServicesChanged": false,
+    "operatingDataChanged": false,
+    "hostPortsPublished": false,
+    "isolatedPostgresRedis": true,
+    "sharedDefaultDockerDaemon": true,
+    "dedicatedDaemonAcceptance": false
+  },
+  "selectedTests": [
+    "backend/tests/test_problem_delete_submit_race.py",
+    "backend/tests/test_load_balancer_live.py"
+  ],
+  "isolatedResult": {
+    "passed": 3,
+    "failed": 0,
+    "seconds": 107.41,
+    "contracts": [
+      "practice submission and problem archival have one PostgreSQL serial order",
+      "contest attachment and problem archival have one PostgreSQL serial order",
+      "terminal plus distinct authenticated HTTP receipts use an eight-request global admission window",
+      "active terminal upstream loss cancels once and a survivor accepts a new terminal",
+      "accepted unique jobs complete exactly once through both APIs",
+      "missing sandbox image retries three times and leaves no journal or workdir"
+    ]
+  },
+  "freshLfBackendFull": {
+    "passed": 3152,
+    "skipped": 456,
+    "subtestsPassed": 10,
+    "failed": 0,
+    "seconds": 507.90
+  },
+  "localFocusedWithoutExternalServices": {
+    "passed": 5,
+    "skipped": 3,
+    "failed": 0,
+    "seconds": 2.25
+  },
+  "cleanup": {
+    "auditLoadBalancerContainers": 0,
+    "auditLoadBalancerImages": 0,
+    "auditQueueSchemas": 0,
+    "auditLoadBalancerRedisKeys": 0,
+    "sandboxEntries": 0,
+    "runnerContainers": 0,
+    "temporaryServerRootRemoved": true
+  },
+  "executionNotes": [
+    "The first archive transfer was interrupted by an SSH reset and stopped during extraction before Docker or database tests started; its exact owner-only temporary root was checked and removed.",
+    "The first runner attempt could not traverse the owner-only source directory after dropping DAC capabilities. The final run used the source owner UID and Docker-socket group instead of weakening the directory boundary.",
+    "The tests passed before a shell quoting error in the post-test SQL check. Cleanup counts were then queried separately and all returned zero before the exact temporary root was removed."
+  ],
+  "remainingExternalConditions": [
+    "long simultaneous bot and WebSocket soak",
+    "Redis process and cold full-Compose failure",
+    "dedicated non-default Docker daemon or VM cgroup acceptance",
+    "multi-host loss if multi-host high availability is required"
+  ]
+}

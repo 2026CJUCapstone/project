@@ -1,14 +1,14 @@
 # 준비 상태에 따른 API 로드밸런싱
 
-2026-09-28 현재 운영 상태: migration-aware release `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`는 basic pool의 API 2개와 별도 worker, Redis, PgBouncer, API proxy로 정상 기동했고 내부 `:18003/ready` 및 proxy `:18000/ready`는 준비 상태 JSON을 반환한다. 고유 토큰을 붙인 순차 read-only GET 12개는 실제 두 API 로그에 7/5로 나뉘었고 live proxy는 `least_conn`을 사용한다. 다만 외부 `/webcompiler/ready`가 SPA fallback으로 HTML을 반환하는 설정 드리프트를 실측했다. `frontend/nginx.conf`와 운영 include에 exact readiness location을 추가하고 소스 회귀를 통과했으나 아직 재배포하지 않았다. 최신 후보의 별도 single-host 격리 시험은 두 API 분산, 접수 API와 활성 WebSocket upstream 장애, survivor receipt/신규 terminal, 고유 인증 receipt exact-once, 10→50→100, 2→3→2, worker readiness 503까지 통과했다. 이는 운영 장시간 soak, Redis process/cold Compose 장애, 독립 daemon/VM 또는 multi-host HA 증거가 아니며, managed blue/green controller 검증과 현재 basic pool 배포를 같은 완료 증거로 합치지 않는다.
+2026-09-28 현재 운영 상태: migration-aware release `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`는 basic pool의 API 2개와 별도 worker, Redis, PgBouncer, API proxy로 정상 기동했고 내부 `:18003/ready` 및 proxy `:18000/ready`는 준비 상태 JSON을 반환한다. 고유 토큰을 붙인 순차 read-only GET 12개는 실제 두 API 로그에 7/5로 나뉘었고 live proxy는 `least_conn`을 사용한다. 다만 외부 `/webcompiler/ready`가 SPA fallback으로 HTML을 반환하는 설정 드리프트를 실측했다. `frontend/nginx.conf`와 운영 include에 exact readiness location을 추가하고 소스 회귀를 통과했으나 아직 재배포하지 않았다. 최신 후보 `c05c8f74`의 별도 single-host 격리 시험은 두 API 분산, 접수 API와 활성 WebSocket upstream 장애, survivor receipt/신규 terminal, global 한도의 고유 인증 receipt exact-once, 10→50→100, 2→3→2, worker readiness 503까지 통과했다. 이는 운영 장시간 soak, Redis process/cold Compose 장애, 독립 daemon/VM 또는 multi-host HA 증거가 아니며, managed blue/green controller 검증과 현재 basic pool 배포를 같은 완료 증거로 합치지 않는다.
 
 ## 2026-09-28 최종 single-host 격리 결과
 
-최종 검증 후보 `1829ac023ad7b59f8cb4b2bd82a3d61d54a0620e`의 정확한 Git archive를 운영 서비스와 분리된 audit PostgreSQL·Redis 및 외부 host port가 없는 Docker/Nginx/API/worker 구성에서 실행해 **1 PASS/100.18초**를 얻었다. 실제 시나리오는 다음을 모두 포함한다.
+최종 검증 후보 `c05c8f74b1f47894d67cbc87122203dfa36d0435`의 정확한 Git archive(`sha256:59284358014b4a368d2e3185a7921321a0b539376d826d8c8160ba03bf117b73`)를 운영 서비스와 분리된 audit PostgreSQL·Redis 및 외부 host port가 없는 Docker/Nginx/API/worker 구성에서 실행해 삭제 경쟁 2건과 LB 1건, 합계 **3 PASS/107.41초**를 얻었다. [실행 영수증](evidence/final-serialization-global-admission-2026-09-28.json)에 범위와 정리 결과를 보존한다. 실제 시나리오는 다음을 모두 포함한다.
 
 - 두 API에 요청이 분배되고, receipt를 받은 API를 종료한 뒤 survivor가 같은 receipt의 완료를 반환한다.
 - 활성 terminal WebSocket을 실제로 담당한 API를 찾아 종료한다. socket은 닫히고 receipt는 정확히 한 번 취소되며, survivor는 새 terminal을 받는다.
-- terminal 1건 뒤 서로 다른 인증 계정의 HTTP 제출 9건을 보낸다. 7건은 202, 2건은 429이고, 만들어진 고유 job은 모두 한 번만 완료되며 두 API가 모두 요청을 받는다.
+- IP 한도는 1,000으로 높이고 global 한도만 8로 설정한다. terminal 1건 뒤 서로 다른 인증 계정의 HTTP 제출 9건을 보내 7건은 202, 2건은 429이며, 만들어진 고유 job은 모두 한 번만 완료되고 두 API가 모두 요청을 받는지 확인한다.
 - 같은 request ID로 누적 10→50→100 shared-rate window를 확인해 추가 job 생성 없이 제한을 검증한다.
 - 2→3→2 membership, worker 종료 뒤 readiness 503, proxy의 실패 peer quarantine 시간이 실제로 지난 뒤의 복구를 확인한다.
 - 존재하지 않는 sandbox image는 typed 404로 세 번 재시도되고 system error로 끝난다. 같은 daemon/lease/operation에 결속된 권위 있는 no-effect 응답만 create journal을 정산하며 작업 폴더도 worker UID 기준으로 비어 있다. 전송 단절 같은 모호한 결과는 이 경로로 지우지 않는다.
@@ -31,7 +31,7 @@ controller에는 Docker socket, 앱 소스 쓰기 mount, DB 비밀값이 필요�
 
 worker readiness 키는 배포 SHA·`RUNTIME_POOL_ID`·`RUNTIME_INSTANCE_ID`로 나눈다. 같은 SHA여도 blue worker만 살아 있으면 green API는 준비 완료가 아니어야 한다. 기존 pool 미분리 구현은 이 조건에서 SQLite·PostgreSQL 모두 green에 200을 반환해 결함을 재현했다. 후속 incarnation 구현은 같은 pool·SHA로 재배포하더라도 이전 worker의 준비 상태를 새 후보가 사용하지 않게 한다. shared-runtime overlay는 pool을 실제 Compose project에서, instance를 영속 후보 예약에서 전달한다. 직접 개발 실행의 pool 기본값은 `local`, instance는 빈 값이며 production은 명시적인 instance를 요구한다. 현재 incarnation의 실제 전체 검증은 진행표에서 추적한다.
 
-Redis namespace·DB queue·`SANDBOX_POOL_ID`는 공통으로 유지한다. 준비 상태 분리를 이유로 이전 worker의 남은 sandbox를 새 worker가 회수하지 못하게 만들면 안 된다. 과거 hostname-only heartbeat는 같은 컨테이너의 재시작 프로세스가 TTL 안에 이전 준비 상태를 재사용할 수 있어, 현재 아래 프로세스 epoch 방식으로 교체하고 있다. drain 완료나 혼합 버전 스키마 호환성은 별도 검증 대상이다.
+Redis namespace·DB queue·`SANDBOX_POOL_ID`는 공통으로 유지한다. 준비 상태 분리를 이유로 이전 worker의 남은 sandbox를 새 worker가 회수하지 못하게 만들면 안 된다. 과거 hostname-only heartbeat는 같은 컨테이너의 재시작 프로세스가 TTL 안에 이전 준비 상태를 재사용할 수 있어 아래 프로세스 epoch 방식으로 교체했다. drain 완료나 혼합 버전 스키마 호환성은 별도 검증 대상이다.
 
 ### Worker 프로세스 준비 상태 — 격리 통합 검증
 
@@ -47,7 +47,7 @@ worker와 개발 모드 내장 worker는 시작할 때 private 디렉터리에 �
 
 이 식별자는 배포 runtime ID 및 작업 실행 lane UUID와 별개다. 아직 프로세스별 claim 연관·HTTP/WS 진행 수·모든 sandbox와 컨테이너 부재를 증명하는 retirement 절차까지 완료한 것은 아니다. 정확한 최신 실행 결과는 감사 후속 진행표에 기록한다.
 
-### 프로세스 부재 관측 — namespace v7 후속 검증 중
+### 프로세스 부재 관측 — namespace v7 역사적 구현 기록
 
 비공개 `python -m app.process_observe --role api|worker --epoch <epoch> --runtime <runtime-id> --pool <pool> --release <sha> --sandbox-pool <sandbox-pool>`은 정확히 등록된 프로세스를 조회만 한다. 설정과 DB의 runtime 메타데이터를 모두 대조하며, DB 기록·claim·컨테이너를 변경하지 않는다. 출력의 `state`는 `alive`, `absent`, `unknown` 중 하나다. **종료 코드 0은 조회 성공일 뿐 부재를 뜻하지 않는다.** 호출자는 runtime·role·epoch·state를 JSON에서 정확히 대조해야 한다. unknown과 관측 오류는 종료 코드1이다.
 
@@ -55,9 +55,9 @@ Linux scope v3는 설정 외에 boot ID·PID namespace·user namespace·유효 U
 
 프로세스가 없다는 관측만으로 미해결 HTTP/WS 기록이나 실행 claim을 지울 수 없다. 컨테이너의 full ID·시작 시점·namespace와 이 관측을 묶는 소유권 snapshot, 재시작/재생성 감지, sandbox 대조 및 검증된 retirement는 후속 구현 대상이다. 최신 로컬·실제 서버 검증 결과는 감사 후속 진행표를 따른다.
 
-### API HTTP·WebSocket 접수와 수명 — 후속 구현 및 검증 중
+### API HTTP·WebSocket 접수와 수명 — 역사적 구현 기록
 
-최신 소스는 API-lifecycle-v2이며 로컬885개 통과, 실제 전체 서버 회귀는 진행 중이다. full-stack에서 발견한 관리자 감사 로그 중복과 CORS preflight 우회를 수정해 admission을 Audit/CORS 바깥에 배치했다. 접수/정리 DB commit은 관리자 변경으로 기록하지 않으며 preflight도 drain 뒤에는503을 반환한다. 거부 응답에는 동일한 허용 Origin 정책을 적용한다. 실제 Uvicorn의 SIGTERM 재전달 종료 코드를 fixture에 반영하고 별도 DB 종료 기록 검증을 유지했다. 정확한 archive와 실행 상태는 감사 후속 진행표를 따른다.
+다음 API-lifecycle-v2 문단은 당시 구현 checkpoint다. 그 시점에는 로컬885개 통과 후 실제 전체 서버 회귀가 진행 중이었다. 이후 최종 격리 lifecycle 결과는 문서 맨 위와 감사 후속 진행표를 따른다. full-stack에서 발견한 관리자 감사 로그 중복과 CORS preflight 우회를 수정해 admission을 Audit/CORS 바깥에 배치했다. 접수/정리 DB commit은 관리자 변경으로 기록하지 않으며 preflight도 drain 뒤에는503을 반환한다. 거부 응답에는 동일한 허용 Origin 정책을 적용한다. 실제 Uvicorn의 SIGTERM 재전달 종료 코드를 fixture에 반영하고 별도 DB 종료 기록 검증을 유지했다.
 
 관리되는 runtime의 API는 시작 시 runtime ID와 별개의 프로세스 epoch·PID·생성 시각·hostname·scope를 `api_processes`에 등록한다. HTTP/WS는 본문 처리 전에 `active_api_requests`에 접수 기록을 commit한다. runtime 종료 차단과 같은 DB 잠금을 사용하므로 차단 commit 뒤에는 기존 연결의 다음 HTTP 요청과 새 WebSocket을 거부한다. 먼저 접수된 요청은 응답 스트리밍 또는 WebSocket handler가 끝날 때까지 기록을 유지한다. 코드를 실행하는 job 수명과 HTTP 접수 수명은 별개다.
 
@@ -65,7 +65,7 @@ Linux scope v3는 설정 외에 boot ID·PID namespace·user namespace·유효 U
 
 차단/접수 DB 오류는 HTTP 503(no-store·Retry-After) 또는 accept 이전 WebSocket 거부로 처리한다. 취소가 DB thread의 commit과 겹치면 어느 쪽이 먼저 끝나더라도 해당 요청의 기록만 정리한다. 완료 DB 쓰기가 실패하거나 API가 강제 종료되면 미해결 기록을 보존한다. 오래됐다는 이유로 0으로 바꾸지 않는다. `runtime_drain` 상태에는 `active_http`·`active_websockets`가 추가되며, 프로세스 정상 종료는 자기 요청이 없을 때만 기록한다. 현재 기록만으로 컨테이너·sandbox 종료를 승인하지 않는다.
 
-이 변경은 추가형 `api_processes`·`active_api_requests` 테이블과 schema marker `20260910_api_admission_v5`를 사용한다. 기존 runtime/worker/작업 기록을 수정하거나 lane에서 API 기록을 추정하지 않는다. 이전 v4 marker는 아래 worker/runtime 변경 당시의 버전이다. 로컬 전체 878 passed /141 외부·플랫폼 skipped(35.89초). 실제 API 두 복제본과 별도 runtime에 열린 HTTP 스트림·WebSocket을 유지한 drain, SQLite·PostgreSQL 경합/추가형 migration 및 기존 readiness 회귀는 별도 소스 archive로 격리 서버에서 실행 중이다.
+이 변경은 추가형 `api_processes`·`active_api_requests` 테이블과 schema marker `20260910_api_admission_v5`를 사용한다. 기존 runtime/worker/작업 기록을 수정하거나 lane에서 API 기록을 추정하지 않는다. 이전 v4 marker는 아래 worker/runtime 변경 당시의 버전이다. 당시 로컬 전체 결과는 878 passed /141 외부·플랫폼 skipped(35.89초)였고, API 두 복제본과 별도 runtime에 열린 HTTP 스트림·WebSocket을 유지한 drain, SQLite·PostgreSQL 경합/추가형 migration 및 기존 readiness 회귀는 그 뒤의 격리 검증에서 다뤘다. 이 역사 수치를 현재 전체 수락 결과로 사용하지 않는다.
 
 남은 범위: 강제 종료 프로세스의 정확한 부재 확인과 미해결 기록 정리, worker lane과 프로세스의 연결, 유한 시간의 WS 종료 안내 및 전체 edge/Compose retirement 절차. 접수 accounting으로 늘어난 DB 잠금 비용도 혼합 부하 검사 대상이다.
 
@@ -77,7 +77,7 @@ Linux scope v3는 설정 외에 boot ID·PID namespace·user namespace·유효 U
 
 전용 worker·개발 내장 worker·API의 프로세스 시작/DB 등록은 취소해도 계속 실행될 수 있는 thread 작업이다. 따라서 시작 중 취소되면 해당 thread가 끝난 뒤 그 소유권을 정리하며 반복 취소도 이 순서를 깨지 못한다. marker 정리는 예상 프로세스 identity가 현재 소유자와 같을 때만 수행한다. main lifespan은 소유 자원을 역순으로 정리해 늦은 등록이 열린 process row를 남기지 않게 한다.
 
-현재 로컬 전체930 passed /167 외부·플랫폼 skipped(38.88초). 실제 managed worker2 lanes/실행 중 SIGTERM/기존 작업 완료/새 epoch로 다음 작업 처리, API·worker startup 취소 경합, SQLite·PostgreSQL migration, 기존 API/worker readiness 회귀는 격리 서버에서 집중 검사 중이다. 이 최신 변경의 전체 서버 회귀는 아직 남아 있다. process 부재를 검증하는 별도 reconciliation, sandbox/container 소유권 확인과 bounded retirement 및 전체 cold 배포 검증은 계속 미완료로 추적한다.
+이 구현 checkpoint의 로컬 전체 결과는 930 passed /167 외부·플랫폼 skipped(38.88초)였다. managed worker 2개 lane, 실행 중 SIGTERM, 기존 작업 완료, 새 epoch 처리, API·worker startup 취소 경합, SQLite·PostgreSQL migration과 readiness는 이후 격리 검사에 포함됐다. process 부재의 모호한 결과 조정, 전체 sandbox/container 소유권 수락과 cold 배포는 계속 미완료로 추적한다.
 
 `ExecutionWorker` 실행 lane마다 불변 UUID·runtime pool·release SHA·sandbox pool을 기록하고, claim과 같은 DB commit에 `ExecutionJob.worker_id`를 저장한다. `execution_workers.draining_at`은 단조적인 종료 차단 기록이다. 종료 요청과 작업 배정은 같은 DB 잠금으로 직렬화한다. 차단 commit 뒤에는 그 UUID가 새 작업을 받을 수 없지만, 먼저 배정받은 작업은 기존 lease로 결과를 저장할 수 있다. 잠금 대기 또는 만료 sandbox 정리 도중 받은 로컬 종료 신호도 다음 배정 전에 다시 확인한다.
 
