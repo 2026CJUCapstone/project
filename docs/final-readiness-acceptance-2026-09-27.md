@@ -96,7 +96,7 @@ CPU가 제한된 audit host에서 충돌 API는 identity mismatch를 기록했�
 
 `docs/evidence` 85개 중 84개는 기존 Markdown에 직접 연결돼 있다. 남은 [authoring validation 회귀 원시 기록](evidence/authoring-validation-regressions-2026-09-27.json)도 이 문서에서 연결해 미참조 상태를 해소한다. [첫 reference 측정 요약](evidence/freshman-reference-first-pass-summary-2026-09-26.json)에는 당시 Windows checkout 절대 경로가 다섯 곳 남아 있지만 사용자명·비밀은 없고, 원시 영수증을 사후 변조하지 않기 위해 보존한다. `/tmp`와 PostgreSQL container 경로는 격리 실행 경로다. 전체 evidence 검색에서 명백한 실제 토큰·비밀번호·운영 비밀은 발견되지 않았다.
 
-서버에 이번 검증을 위해 만든 `/home/vulpo/webcompiler-audit-final-d000ec1e`와 전송 archive는 테스트 종료 후 정확한 경로를 확인하고 삭제했다. 운영 컨테이너·운영 데이터·기존 audit PostgreSQL·Redis는 변경하지 않았다.
+서버에 이번 검증을 위해 만든 `/home/vulpo/webcompiler-audit-final-d000ec1e`, `/home/vulpo/webcompiler-audit-final-f18279e9`와 전송 archive는 각 경로의 소유권·권한·container mount 참조를 확인한 뒤 삭제했다. 마지막 확인에서 이번 실행의 label을 가진 container·image·network와 audit DB schema·Redis key가 모두 0개였다. 운영 컨테이너·운영 데이터·기존 audit PostgreSQL·Redis는 변경하지 않았다.
 
 ## 다음 실행의 필수 입력
 
