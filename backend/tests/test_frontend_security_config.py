@@ -67,6 +67,18 @@ def test_static_assets_are_compressed_cached_and_missing_files_do_not_soft_404()
     assert config.count('try_files $uri =404;') >= 4
 
 
+def test_nginx_regex_locations_with_braces_are_quoted_for_valid_parsing():
+    config = NGINX_CONFIG.read_text(encoding='utf-8')
+
+    brace_locations = [
+        line.strip()
+        for line in config.splitlines()
+        if line.strip().startswith('location ~') and ('{' in line.split('$', 1)[0])
+    ]
+    assert brace_locations
+    assert all('location ~* "' in line and line.endswith('" {') for line in brace_locations)
+
+
 def test_public_discovery_assets_and_korean_metadata_exist():
     root = NGINX_CONFIG.parents[1]
     index = (root / 'frontend' / 'index.html').read_text(encoding='utf-8')

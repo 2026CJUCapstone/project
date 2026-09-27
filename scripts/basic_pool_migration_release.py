@@ -227,6 +227,10 @@ def build() -> None:
         ("frontend-production.conf", "frontend-dist"),
         state["bases"]["frontend"],
     )
+    b.o.run(
+        "docker", "run", "--rm", "--pull", "never", "--network", "none",
+        "--entrypoint", "nginx", state["images"]["frontend"], "-t", timeout=30,
+    )
     state["phase"] = "built"
     b.save(state)
     print(json.dumps({"phase": "built", "sha": b.SHA, "sandbox": "reused"}), flush=True)
@@ -278,6 +282,7 @@ def _problem_policy_snapshot(container: str) -> dict[str, dict]:
 def _assert_compatibility_policy_migration(before: dict[str, dict], after: dict[str, dict]) -> None:
     assert set(after) == set(before)
     migrated = 0
+    already_compatible = 0
     for problem_id, old in before.items():
         new = after[problem_id]
         eligible = (
@@ -290,8 +295,16 @@ def _assert_compatibility_policy_migration(before: dict[str, dict], after: dict[
             migrated += 1
         else:
             assert new["policy"] == old["policy"]
+            if (
+                problem_id not in {"__notice__", "__free__"}
+                and old["policy"] == {"kind": "compatibility-v1"}
+                and old["review"] is None
+            ):
+                already_compatible += 1
         assert new["review"] == old["review"]
-    assert migrated > 0, "Production rehearsal must exercise the compatibility migration"
+    assert migrated > 0 or already_compatible > 0, (
+        "Production rehearsal must exercise or verify the compatibility migration"
+    )
 
 
 def _dump(path: Path, postgres_id: str) -> None:
@@ -587,10 +600,39 @@ def candidate_edge_configs(current: dict[str, str]) -> dict[str, str]:
     return {"backend": zones + backend, "frontend": zones + frontend}
 
 
+def _stop_failed_candidate(state: dict) -> None:
+    """Stop a failed candidate without requiring its failed process to exit zero."""
+    environment = state.get("env") or state["old"]["env"]
+    b.pc(environment, "stop", "--timeout", "150", "backend")
+    for role in ("backend-1", "backend-2"):
+        row = b.o.inspect(b.PROJECT + "-" + role)["State"]
+        assert row.get("Running") is False
+        assert row.get("OOMKilled") is False
+        assert row.get("Dead", False) is False
+        assert type(row.get("ExitCode")) is int
+
+    deadline = time.monotonic() + 120
+    while b.unsettled():
+        assert time.monotonic() < deadline, "Accepted candidate jobs have not drained"
+        time.sleep(1)
+
+    b.pc(environment, "stop", "--timeout", "150", "worker", "frontend")
+    for role in ("worker-1", "frontend-1"):
+        row = b.o.inspect(b.PROJECT + "-" + role)["State"]
+        assert row.get("Running") is False
+        assert row.get("OOMKilled") is False
+        assert row.get("Dead", False) is False
+        assert type(row.get("ExitCode")) is int
+    assert b.unsettled() == 0
+    assert not b.o.run(
+        "docker", "ps", "-q", "--filter", "label=webcompiler.pool=" + b.PROJECT + "-production"
+    ).strip()
+
+
 def rollback() -> None:
     state = json.loads(b.STATE.read_text())
     assert state["phase"] == "failed"
-    b.stop_current()
+    _stop_failed_candidate(state)
     old_environment = dict(state["old"]["env"])
     old_environment["BASIC_LB_RUNTIME_ID"] = uuid4().hex
     _compose_initialize(old_environment)

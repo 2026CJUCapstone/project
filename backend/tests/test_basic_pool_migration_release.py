@@ -267,6 +267,76 @@ def test_compatibility_policy_migration_is_exact_and_preserves_existing_policies
         release._assert_compatibility_policy_migration(before, invalid)
 
 
+def test_compatibility_policy_migration_accepts_an_exact_idempotent_second_run(release):
+    snapshot = {
+        "legacy": {
+            "id": "legacy",
+            "policy": {"kind": "compatibility-v1"},
+            "review": None,
+        },
+        "measured": {
+            "id": "measured",
+            "policy": {"kind": "measured-v1"},
+            "review": True,
+        },
+    }
+
+    release._assert_compatibility_policy_migration(snapshot, snapshot)
+
+
+def test_compatibility_policy_migration_rejects_a_noop_without_legacy_evidence(release):
+    snapshot = {
+        "measured": {
+            "id": "measured",
+            "policy": {"kind": "measured-v1"},
+            "review": True,
+        },
+    }
+
+    with pytest.raises(AssertionError, match="exercise or verify"):
+        release._assert_compatibility_policy_migration(snapshot, snapshot)
+
+
+def test_failed_candidate_stop_accepts_nonzero_exit_but_rejects_unsafe_state(release, monkeypatch):
+    calls = []
+    states = {
+        "pool-backend-1": {"Running": False, "OOMKilled": False, "ExitCode": 143},
+        "pool-backend-2": {"Running": False, "OOMKilled": False, "ExitCode": 1},
+        "pool-worker-1": {"Running": False, "OOMKilled": False, "ExitCode": 0},
+        "pool-frontend-1": {"Running": False, "OOMKilled": False, "ExitCode": 1},
+    }
+    release.b.PROJECT = "pool"
+    monkeypatch.setattr(release.b, "pc", lambda env, *args: calls.append((env, args)))
+    monkeypatch.setattr(release.b, "unsettled", lambda: 0)
+    monkeypatch.setattr(release.b.o, "inspect", lambda name: {"State": states[name]})
+    monkeypatch.setattr(release.b.o, "run", lambda *args, **kwargs: b"")
+
+    release._stop_failed_candidate({"env": {"DEPLOY_SHA": "candidate"}, "old": {"env": {}}})
+
+    assert calls == [
+        ({"DEPLOY_SHA": "candidate"}, ("stop", "--timeout", "150", "backend")),
+        ({"DEPLOY_SHA": "candidate"}, ("stop", "--timeout", "150", "worker", "frontend")),
+    ]
+
+    states["pool-frontend-1"]["OOMKilled"] = True
+    with pytest.raises(AssertionError):
+        release._stop_failed_candidate({"env": {"DEPLOY_SHA": "candidate"}, "old": {"env": {}}})
+
+    states["pool-frontend-1"]["OOMKilled"] = False
+    states["pool-backend-1"]["Running"] = True
+    with pytest.raises(AssertionError):
+        release._stop_failed_candidate({"env": {"DEPLOY_SHA": "candidate"}, "old": {"env": {}}})
+
+
+def test_build_validates_the_built_frontend_image_with_nginx(release):
+    source = inspect.getsource(release.build)
+
+    image_assignment = source.index('state["images"]["frontend"] = _build(')
+    validation = source.index('"--entrypoint", "nginx", state["images"]["frontend"], "-t"')
+    built_phase = source.index('state["phase"] = "built"')
+    assert image_assignment < validation < built_phase
+
+
 def test_candidate_edge_configs_add_exact_upload_and_normal_api_limits(release):
     current = {
         "backend": "server {\n    location /api/ {\n        proxy_pass http://127.0.0.1:18003/api/;\n    }\n}\n",
