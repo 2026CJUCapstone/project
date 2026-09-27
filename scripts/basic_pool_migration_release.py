@@ -288,6 +288,26 @@ def _run_initialize(image: str, network: str, env_file: Path) -> None:
     )
 
 
+def _wait_for_stable_postgres(container: str, timeout_seconds: int = 90) -> None:
+    """Wait past the entrypoint's temporary init server and final restart."""
+    deadline = time.monotonic() + timeout_seconds
+    consecutive_ready = 0
+    while True:
+        result = subprocess.run(
+            ["docker", "exec", container, "pg_isready", "-U", "compiler", "-d", "compiler"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if result.returncode == 0:
+            consecutive_ready += 1
+            if consecutive_ready >= 3:
+                return
+        else:
+            consecutive_ready = 0
+        assert time.monotonic() < deadline, "Rehearsal PostgreSQL did not become stably ready"
+        time.sleep(1)
+
+
 def rehearse(state: dict) -> None:
     dump = b.ROOT / "rehearsal-source.dump"
     _dump(dump, state["postgres_id"])
@@ -325,17 +345,7 @@ def rehearse(state: dict) -> None:
             b.o.inspect("webcompiler-postgres")["Config"]["Image"],
         )
         created_postgres = True
-        deadline = time.monotonic() + 90
-        while True:
-            result = subprocess.run(
-                ["docker", "exec", postgres, "pg_isready", "-U", "compiler", "-d", "compiler"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            if result.returncode == 0:
-                break
-            assert time.monotonic() < deadline, "Rehearsal PostgreSQL did not become ready"
-            time.sleep(1)
+        _wait_for_stable_postgres(postgres)
         b.o.run("docker", "exec", "-i", postgres, "pg_restore", "-U", "compiler", "-d", "compiler", "--no-owner", data=dump.read_bytes(), timeout=180)
         assert _fingerprints(postgres, columns) == before
         _run_initialize(state["images"]["backend"], network, env_file)

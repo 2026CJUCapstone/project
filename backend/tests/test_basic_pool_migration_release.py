@@ -6,6 +6,7 @@ not load any production operator state.
 import importlib.util
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -151,6 +152,40 @@ def test_env_writer_is_exclusive_and_writes_sorted_utf8_lf(release, tmp_path):
     with pytest.raises(FileExistsError):
         release._write_env(target, {"SAFE_KEY": "replacement"})
     assert "ALPHA_2=first" in target.read_text(encoding="utf-8")
+
+
+def test_postgres_readiness_requires_three_consecutive_successes(release, monkeypatch):
+    results = iter([0, 0, 1, 0, 0, 0])
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(returncode=next(results))
+
+    clock = iter(range(20))
+    monkeypatch.setattr(release.subprocess, "run", fake_run)
+    monkeypatch.setattr(release.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(release.time, "sleep", lambda _seconds: None)
+
+    release._wait_for_stable_postgres("rehearsal-postgres", timeout_seconds=15)
+
+    assert len(calls) == 6
+
+
+def test_postgres_readiness_times_out_without_a_stable_window(release, monkeypatch):
+    results = iter([0, 1, 0, 1, 0, 1])
+
+    monkeypatch.setattr(
+        release.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=next(results)),
+    )
+    clock = iter([0, 1, 2, 3, 4, 5, 6])
+    monkeypatch.setattr(release.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(release.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(AssertionError, match="stably ready"):
+        release._wait_for_stable_postgres("rehearsal-postgres", timeout_seconds=4)
 
 
 def test_candidate_edge_configs_add_exact_upload_and_normal_api_limits(release):
