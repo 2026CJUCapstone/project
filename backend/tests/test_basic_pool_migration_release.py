@@ -155,6 +155,30 @@ def test_env_writer_is_exclusive_and_writes_sorted_utf8_lf(release, tmp_path):
     assert "ALPHA_2=first" in target.read_text(encoding="utf-8")
 
 
+def test_container_environment_reads_exact_container_values(release, monkeypatch):
+    monkeypatch.setattr(
+        release.b.o,
+        "inspect",
+        lambda _container: {"Config": {"Env": ["DATABASE_URL=private=value", "RUNTIME_INSTANCE_ID=abc"]}},
+    )
+
+    assert release._container_environment("backend-1") == {
+        "DATABASE_URL": "private=value",
+        "RUNTIME_INSTANCE_ID": "abc",
+    }
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [["MISSING_SEPARATOR"], ["bad_key=value"], ["DUPLICATE=one", "DUPLICATE=two"]],
+)
+def test_container_environment_rejects_malformed_or_duplicate_values(release, monkeypatch, entries):
+    monkeypatch.setattr(release.b.o, "inspect", lambda _container: {"Config": {"Env": entries}})
+
+    with pytest.raises(AssertionError):
+        release._container_environment("backend-1")
+
+
 def test_postgres_readiness_requires_three_consecutive_successes(release, monkeypatch):
     results = iter([0, 0, 1, 0, 0, 0])
     calls = []

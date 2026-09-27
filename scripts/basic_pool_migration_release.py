@@ -278,6 +278,18 @@ def _write_env(path: Path, environment: dict[str, str]) -> None:
             stream.write(key + "=" + str(value) + "\n")
 
 
+def _container_environment(container: str) -> dict[str, str]:
+    entries = b.o.inspect(container)["Config"]["Env"]
+    assert isinstance(entries, list)
+    environment: dict[str, str] = {}
+    for entry in entries:
+        key, separator, value = entry.partition("=")
+        assert separator and re.fullmatch(r"[A-Z][A-Z0-9_]*", key)
+        assert key not in environment
+        environment[key] = value
+    return environment
+
+
 def _run_initialize(image: str, network: str, env_file: Path) -> None:
     b.o.run(
         "docker", "run", "--rm", "--pull", "never", "--network", network,
@@ -317,11 +329,14 @@ def rehearse(state: dict) -> None:
     postgres = "webcompiler-migration-postgres-" + suffix
     password = secrets.token_urlsafe(24)
     env_file = b.ROOT / "rehearsal.env"
-    environment = dict(state["old"]["env"])
+    backend_container = b.PROJECT + "-backend-1"
+    assert b.o.inspect(backend_container)["Id"] == state["old_ids"]["backend-1"]
+    environment = _container_environment(backend_container)
     environment.update(
         DATABASE_URL=f"postgresql+psycopg2://compiler:{password}@{postgres}:5432/compiler",
         ENVIRONMENT="production",
         DEPLOYMENT_SHA=b.SHA,
+        RUNTIME_INSTANCE_ID=uuid4().hex,
         AUTO_INITIALIZE_DB="false",
         EMBEDDED_EXECUTION_WORKER="false",
     )
