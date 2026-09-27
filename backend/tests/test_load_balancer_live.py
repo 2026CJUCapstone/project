@@ -99,6 +99,7 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
         'SANDBOX_POOL_ID':prefix, 'SANDBOX_IMAGE':os.environ['SANDBOX_IMAGE'],
         'SANDBOX_WORKDIR_ROOT':sandbox, 'SANDBOX_CPU_LIMIT':'0.25',
         'SANDBOX_MEMORY_MB':'256', 'EXECUTION_TIMEOUT':'10',
+        'EXECUTION_LEASE_SECONDS':'8',
         'TERMINAL_CONNECTION_LEASE_SECONDS':'3', 'TERMINAL_SESSION_TIMEOUT':'30',
         'CORS_ORIGINS':'http://audit-lb.test'}
     env['DEPLOYMENT_SHA'] = '0123456789abcdef0123456789abcdef01234567'
@@ -297,18 +298,23 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
             expires = datetime.now(timezone.utc)+timedelta(minutes=5)
             owner_tokens = [jwt.encode({'sub':username,'ver':0,'exp':expires},env['SECRET_KEY'],
                                        algorithm=ALGORITHM) for username in usernames]
+            unique_payload = {'code':'import time\ntime.sleep(2)\nprint(42)','language':'python'}
             with replicas[0]() as db:
                 jobs_before_unique = db.query(m.ExecutionJob).count()
             async with connect(url.replace('http:','ws:')+'/ws/terminal',origin='http://audit-lb.test') as unique_ws:
+                terminal_peer = final_upstream(unique_ws.response.headers['x-audit-upstream'])
+                assert terminal_peer in endpoints
                 await unique_ws.send(json.dumps({'type':'start','language':'python',
-                    'code':"print('unique-window',flush=True)\ns=input()\nprint(s,flush=True)"}))
+                    'code':("print('unique-window',flush=True)\n"
+                            "first=input()\nprint('phase:'+first,flush=True)\n"
+                            "second=input()\nprint(second,flush=True)")}))
                 await receive_until(unique_ws,'unique-window')
 
                 async def unique_submit(number):
                     client_for_receipt = httpx.AsyncClient(timeout=8,
                         headers={'Authorization':'Bearer '+owner_tokens[number]})
                     unique_clients.append(client_for_receipt)
-                    response = await client_for_receipt.post(url+'/api/v1/executions',json=payload,
+                    response = await client_for_receipt.post(url+'/api/v1/executions',json=unique_payload,
                         headers={'X-Request-ID':str(uuid4())})
                     return client_for_receipt,response
 
@@ -319,12 +325,50 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
                            if response.status_code == 429)
                 assert {final_upstream(response.headers['x-audit-upstream'])
                         for _,response in unique_responses} == set(endpoints)
+                accepted = [(client_for_receipt,response.json()['id'])
+                            for client_for_receipt,response in unique_responses if response.status_code == 202]
+                assert len({job for _,job in accepted}) == 7
+
+                # Grow and shrink the API set while one terminal is live and
+                # all accepted HTTP receipts are still pending behind it. DNS
+                # membership changes must not interrupt the socket or lose a
+                # receipt, and every final response must come from a live peer.
+                with replicas[0]() as db:
+                    pending_during_scale = [db.get(m.ExecutionJob,accepted_job).status
+                                            for _,accepted_job in accepted]
+                assert set(pending_during_scale) <= {'queued','running'}
+                assert 'queued' in pending_during_scale
+                third = await asyncio.to_thread(start,app_image,'api-2',command)
+                await wait_http(http,'http://'+address(third)+':8000/health')
+                third_endpoint = address(third)+':8000'
+                expanded = set(endpoints+[third_endpoint])
+                async with asyncio.timeout(12):
+                    seen = set()
+                    while third_endpoint not in seen or not (seen & set(endpoints)):
+                        client_for_receipt,accepted_job = accepted[len(seen) % len(accepted)]
+                        response = await client_for_receipt.get(url+'/api/v1/executions/'+accepted_job)
+                        assert response.status_code == 200
+                        assert response.json()['status'] in ('queued','running')
+                        peer = final_upstream(response.headers['x-audit-upstream'])
+                        assert peer in expanded
+                        seen.add(peer)
+                        await asyncio.sleep(.1)
+                await unique_ws.send('scaled\n')
+                assert 'phase:scaled' in await receive_until(unique_ws,'phase:scaled')
+                await asyncio.to_thread(third.stop,timeout=15)
+                seen = set()
+                for number in range(12):
+                    client_for_receipt,accepted_job = accepted[number % len(accepted)]
+                    response = await client_for_receipt.get(url+'/api/v1/executions/'+accepted_job)
+                    assert response.status_code == 200
+                    assert response.json()['status'] in ('queued','running')
+                    peer = final_upstream(response.headers['x-audit-upstream'])
+                    assert peer in endpoints
+                    seen.add(peer)
+                    await asyncio.sleep(.1)
+                assert seen
                 await unique_ws.send('done\n')
                 assert 'done' in await receive_until(unique_ws,'프로그램이 종료')
-
-            accepted = [(client_for_receipt,response.json()['id'])
-                        for client_for_receipt,response in unique_responses if response.status_code == 202]
-            assert len({job for _,job in accepted}) == 7
 
             async def completed_once(client_for_receipt, accepted_job):
                 async with asyncio.timeout(90):
@@ -342,30 +386,52 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
                 for _,accepted_job in accepted:
                     row = db.get(m.ExecutionJob,accepted_job)
                     assert row.status == 'completed' and row.attempts == 1
-            # DNS membership must grow/shrink without regenerating the proxy
-            # or losing previously committed receipts. No extra code is run.
-            third = await asyncio.to_thread(start,app_image,'api-2',command)
-            await wait_http(http,'http://'+address(third)+':8000/health')
-            expanded = set(endpoints+[address(third)+':8000'])
+            # Exercise worker replacement separately so the global-admission
+            # receipts above retain their strict one-attempt proof. One slow
+            # job is interrupted and at least one remains queued; a fresh
+            # worker must recover both durable receipts to terminal results.
+            keys = list(store.scan_iter(match=prefix+':rate_limit:*'))
+            if keys:
+                store.delete(*keys)
+            replacement_payload = {'code':'import time\ntime.sleep(4)\nprint(84)','language':'python'}
+            replacement_responses = await asyncio.gather(*(
+                http.post(url+'/api/v1/executions',json=replacement_payload,
+                          headers={'X-Request-ID':str(uuid4()),
+                                   'X-Forwarded-For':f'203.0.113.{number+1}'})
+                for number in range(3)))
+            assert [response.status_code for response in replacement_responses] == [202,202,202]
+            replacement_jobs = [response.json()['id'] for response in replacement_responses]
             async with asyncio.timeout(12):
-                seen = set()
-                while seen != expanded:
-                    response = await http.get(url+'/api/v1/executions/'+job_id)
-                    assert response.status_code == 200 and response.json()['status'] == 'completed'
-                    seen.add(final_upstream(response.headers['x-audit-upstream']))
+                while True:
+                    with replicas[0]() as db:
+                        replacement_states = [db.get(m.ExecutionJob,replacement_job).status
+                                              for replacement_job in replacement_jobs]
+                    if 'running' in replacement_states and 'queued' in replacement_states:
+                        break
                     await asyncio.sleep(.1)
-            await asyncio.to_thread(third.stop,timeout=15)
-            # A removed endpoint can appear once in the upstream retry trace;
-            # each final response must come from a surviving peer and succeed.
-            async with asyncio.timeout(12):
-                seen = set()
-                while seen != set(endpoints):
-                    response = await http.get(url+'/api/v1/executions/'+job_id)
-                    assert response.status_code == 200 and response.json()['status'] == 'completed'
-                    peer = final_upstream(response.headers['x-audit-upstream'])
-                    assert peer in endpoints
-                    seen.add(peer)
-                    await asyncio.sleep(.1)
+            await asyncio.to_thread(worker.stop,timeout=1)
+            worker = await asyncio.to_thread(start,app_image,'worker-replacement',
+                                             ['python','-m','app.worker'],worker=True)
+            check = worker.exec_run(['python','-c',
+                "import os; from app.core.config import settings; assert os.access(settings.SANDBOX_WORKDIR_ROOT,os.W_OK); assert os.access('/var/run/docker.sock',os.W_OK)"])
+            assert check.exit_code == 0
+
+            async def recovered_after_worker_replacement(replacement_job):
+                async with asyncio.timeout(90):
+                    while True:
+                        response = await http.get(url+'/api/v1/executions/'+replacement_job)
+                        assert response.status_code == 200
+                        if response.json()['status'] == 'completed':
+                            assert response.json()['result']['value']['stdout'].strip() == '84'
+                            return
+                        await asyncio.sleep(.2)
+
+            await asyncio.gather(*(recovered_after_worker_replacement(job) for job in replacement_jobs))
+            with replicas[0]() as db:
+                replacement_rows = [db.get(m.ExecutionJob,job) for job in replacement_jobs]
+                assert all(row.status == 'completed' for row in replacement_rows)
+                assert all(1 <= row.attempts <= 2 for row in replacement_rows)
+                assert sum(row.attempts == 2 for row in replacement_rows) <= 1
             empty = worker.exec_run(['python','-c',
                 "from pathlib import Path; from app.core.config import settings; assert not any(Path(settings.SANDBOX_WORKDIR_ROOT).iterdir())"])
             assert empty.exit_code == 0, empty.output
