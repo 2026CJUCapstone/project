@@ -35,6 +35,8 @@ http {{
     uwsgi_temp_path /tmp/uwsgi;
     scgi_temp_path /tmp/scgi;
     map $http_upgrade $connection_upgrade {{ default upgrade; '' ''; }}
+    limit_conn_zone $binary_remote_addr zone=judge_upload_ip:64k;
+    limit_conn_zone $server_name zone=judge_upload_total:32k;
     upstream execution_api {{
         zone execution_api 64k;
         least_conn;
@@ -62,6 +64,15 @@ http {{
         proxy_send_timeout 15s;
         proxy_next_upstream error timeout http_502 http_503;
         proxy_next_upstream_tries 2;
+        location ^~ /api/v1/admin/judge-test-data/ {{
+            client_max_body_size 16m;
+            limit_conn judge_upload_ip 2;
+            limit_conn judge_upload_total 8;
+            limit_conn_status 429;
+            proxy_request_buffering off;
+            proxy_next_upstream off;
+            proxy_pass http://execution_api;
+        }}
         location / {{
             proxy_pass http://execution_api;
             error_page 502 504 = @fresh_read;
@@ -121,7 +132,7 @@ def render_managed(upstreams: list[str], generation: str, *, diagnostic_header=F
 '''
     # A return directive would bypass access-phase allow/deny checks. Static
     # generation files let only loopback clients acknowledge a successful HUP.
-    for location in ('location / {', 'location @fresh_read {'):
+    for location in ('location / {', 'location @fresh_read {', 'location ^~ /api/v1/admin/judge-test-data/ {'):
         config = config.replace('        '+location, '        '+location+'\n'
             '            auth_request /_proxy_membership;\n'
             '            error_page 403 500 = @membership_unavailable;')

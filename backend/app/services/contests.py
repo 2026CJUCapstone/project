@@ -17,7 +17,7 @@ from app.services.scoreboard_cache import (
 )
 
 logger = logging.getLogger(__name__)
-PENALTY_VERDICTS = {"wrong_answer", "runtime_error", "time_limit_exceeded", "memory_limit_exceeded"}
+PENALTY_VERDICTS = {"wrong_answer", "runtime_error", "time_limit_exceeded", "memory_limit_exceeded", "output_limit_exceeded"}
 PENDING = ("queued", "running")
 
 
@@ -48,6 +48,7 @@ def problem_rows(db, contest_id):
 
 
 def contest_read(db, contest, user=None):
+    from app.services.contest_rejudge import public_corrections
     at = now_utc()
     joined = participant(db, contest.id, user)
     is_admin = bool(user and user.role == "admin")
@@ -58,6 +59,7 @@ def contest_read(db, contest, user=None):
         "startsAt": iso(contest.starts_at), "endsAt": iso(contest.ends_at), "serverTime": iso(at),
         "state": state, "published": contest.published, "joined": joined, "canManage": is_admin,
         "participantCount": db.query(m.ContestParticipant).filter_by(contest_id=contest.id).count(),
+        "corrections": public_corrections(db, contest.id),
         "problems": [problem_read(p) for p in problem_rows(db, contest.id)] if can_view else [],
     }
 
@@ -68,19 +70,23 @@ def problem_read(problem, detail=False):
               "title": snap["title"], "points": problem.points, "difficulty": snap["difficulty"]}
     if detail:
         result.update(description=snap["description"], tags=snap["tags"], testCases=snap["sample"])
+        from app.services.judge_policy import public_policy_fields
+        result.update(public_policy_fields(snap.get('judgePolicy')))
     return result
 
 
 def submission_read(submission, include_code=False):
+    from app.services.judge_metrics import public_usage
     result = {"id": submission.id, "contestProblemId": submission.contest_problem_id,
               "language": submission.language, "receivedAt": iso(submission.received_at),
-              "status": submission.status, "verdict": submission.verdict, "finishedAt": iso(submission.finished_at)}
+              "status": submission.status, "verdict": submission.verdict, "finishedAt": iso(submission.finished_at),
+              "resourceUsage":public_usage(submission.resource_report)}
     if include_code:
         result["code"] = submission.code
     return result
 
 
-def _scoreboard_projection(db, contest):
+def _scoreboard_projection(db, contest, *, verdict_overrides=None):
     """Compute the cache-safe scoreboard shape from receipt-ordered facts."""
     # ContestProblem.snapshot includes private statement/test material.  Score
     # computation needs only the stable public identifier, position and points.
@@ -98,6 +104,9 @@ def _scoreboard_projection(db, contest):
         m.ContestSubmission.verdict,
     ).filter_by(contest_id=contest.id).order_by(
         m.ContestSubmission.received_at, m.ContestSubmission.id).all()
+    if verdict_overrides:
+        from types import SimpleNamespace
+        submissions = [SimpleNamespace(**{**s._mapping, 'verdict':verdict_overrides.get(s.id, s.verdict)}) for s in submissions]
     by_user = {}
     for s in submissions:
         by_user.setdefault(s.user_id, []).append(s)
@@ -154,6 +163,7 @@ def _scoreboard_names(db, rows):
 
 
 def _scoreboard_response(db, contest, projection, at):
+    from app.services.contest_rejudge import public_corrections
     names = _scoreboard_names(db, projection["rows"])
     rows = []
     for row in projection["rows"]:
@@ -168,6 +178,7 @@ def _scoreboard_response(db, contest, projection, at):
             "rank": row["rank"],
         })
     return {"rows": rows, "state": contest_state(contest, at), "serverTime": iso(at),
+            "corrections": public_corrections(db, contest.id),
             "pendingCount": projection["pendingCount"],
             "problems": [dict(problem) for problem in projection["problems"]]}
 
@@ -199,6 +210,8 @@ def finalize_contests():
     for contest_id in ids:
         with SessionLocal() as db:
             # This conditional write serializes finalizers across backend processes.
+            from app.services.runtime_registry import execution_lock
+            execution_lock(db)  # Consistent queue -> contest -> user lock order with corrections.
             claimed = db.query(m.Contest).filter_by(id=contest_id, finalized_at=None).update({"finalized_at": at})
             if not claimed:
                 db.rollback()
@@ -218,6 +231,10 @@ def finalize_contests():
                 db.query(m.User).filter_by(id=user_id).update({"id": user_id}, synchronize_session=False)
             for s in accepted:
                 p = problem_map[s.contest_problem_id]
+                from app.services.solve_evidence import preserve_legacy, record as record_solve
+                preserve_legacy(db, s.user_id, p.problem_id)
+                record_solve(db, user_id=s.user_id, problem_id=p.problem_id, source_kind='contest',
+                    source_id=s.id, points=p.snapshot['practicePoints'], solved_at=s.received_at)
                 if db.query(m.UserProblemScore.id).filter_by(user_id=s.user_id, challenge_id=p.problem_id).first():
                     continue
                 points = p.snapshot["practicePoints"]
@@ -240,6 +257,9 @@ async def contest_maintenance():
     while True:
         try:
             finalize_contests()
+            from app.services.contest_rejudge import dispatch_pending
+            from app.services.execution_runtime import execution_queue
+            await asyncio.to_thread(dispatch_pending, execution_queue())
         except Exception:
             logger.exception("Contest finalization failed; retrying")
         await asyncio.sleep(1)

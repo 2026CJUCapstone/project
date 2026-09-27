@@ -31,6 +31,11 @@ export const DIFFICULTY_LABELS: Record<ProblemDifficulty, string> = {
   diamond3: '다이아 3',
   diamond2: '다이아 2',
   diamond1: '다이아 1',
+  ruby5: '루비 5',
+  ruby4: '루비 4',
+  ruby3: '루비 3',
+  ruby2: '루비 2',
+  ruby1: '루비 1',
 };
 
 export function getDifficultyBadgeClass(difficulty: string): string {
@@ -40,5 +45,6 @@ export function getDifficultyBadgeClass(difficulty: string): string {
   if (difficulty.startsWith('gold')) return 'text-yellow-300 bg-yellow-500/10 border-yellow-500/30';
   if (difficulty.startsWith('platinum')) return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30';
   if (difficulty.startsWith('diamond')) return 'text-blue-300 bg-blue-500/10 border-blue-500/30';
+  if (difficulty.startsWith('ruby')) return 'text-rose-300 bg-rose-500/10 border-rose-500/30';
   return 'text-gray-300 bg-gray-500/10 border-gray-500/30';
 }

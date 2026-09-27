@@ -12,6 +12,7 @@ type ChallengeTag = ProblemTag;
 const toChallenge = (p: Problem): Challenge => ({
   id: p.id, title: p.title, difficulty: p.difficulty, tags: p.tags ?? [], description: p.description,
   testCases: p.testCases, solved: p.solved, attempted: p.attempted, lastSubmissionVerdict: p.lastSubmissionVerdict,
+  judgeLimits: p.judgeLimits, judgePolicyLegacy: p.judgePolicyLegacy,
 });
 type SortOption = 'difficultyAsc' | 'difficultyDesc' | 'title';
 
@@ -25,6 +26,8 @@ interface Challenge {
   solved: boolean;
   attempted: boolean;
   lastSubmissionVerdict?: string | null;
+  judgeLimits?: Problem['judgeLimits'];
+  judgePolicyLegacy?: boolean;
 }
 
 const difficultyTrackStops: Difficulty[] = [
@@ -35,6 +38,8 @@ const difficultyTrackStops: Difficulty[] = [
   'platinum5',
   'diamond5',
   'diamond1',
+  'ruby5',
+  'ruby1',
 ];
 
 function getProblemSummary(description: string): string {
@@ -112,7 +117,7 @@ export function Challenges() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [minDifficulty, setMinDifficulty] = useState<Difficulty>('iron5');
-  const [maxDifficulty, setMaxDifficulty] = useState<Difficulty>('diamond1');
+  const [maxDifficulty, setMaxDifficulty] = useState<Difficulty>('ruby1');
   const [selectedTags, setSelectedTags] = useState<Set<ChallengeTag>>(new Set());
   const [sortBy, setSortBy] = useState<SortOption>('difficultyAsc');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -206,7 +211,7 @@ export function Challenges() {
   const resetFilters = () => {
     setSearchText('');
     setMinDifficulty('iron5');
-    setMaxDifficulty('diamond1');
+    setMaxDifficulty('ruby1');
     setSelectedTags(new Set());
     setSortBy('difficultyAsc');
   };

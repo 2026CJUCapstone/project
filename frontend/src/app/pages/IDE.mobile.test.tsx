@@ -53,6 +53,12 @@ describe("IDE mobile panels", () => {
     expect(editorMounts).toBe(1);
   });
 
+  it("does not show problem limits in a plain IDE without a problem context", () => {
+    render(<MemoryRouter><IDE /></MemoryRouter>);
+
+    expect(screen.queryByRole("heading", { name: "채점 제한" })).not.toBeInTheDocument();
+  });
+
   it("supports arrow-key tab navigation and opens the graph on demand", async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><IDE /></MemoryRouter>);

@@ -102,6 +102,22 @@ def migrate_schema(bind=None) -> None:
     _add_column_if_missing("users", "email", "email VARCHAR", bind)
     _add_column_if_missing("problems", "points", "points INTEGER DEFAULT 100 NOT NULL", bind)
     _add_column_if_missing("problems", "deleted_at", "deleted_at TIMESTAMP", bind)
+    _add_column_if_missing("problems", "judge_policy", "judge_policy JSON", bind)
+    _add_column_if_missing("problems", "publication_review_required", "publication_review_required BOOLEAN", bind)
+    _add_column_if_missing("problems", "publication_approved_at", "publication_approved_at TIMESTAMP", bind)
+    _add_column_if_missing('submissions', 'resource_report', 'resource_report JSON', bind)
+    _add_column_if_missing('contest_submissions', 'resource_report', 'resource_report JSON', bind)
+    _add_column_if_missing('contest_rejudge_applications', 'preview_hash', 'preview_hash VARCHAR', bind)
+    _add_column_if_missing('contest_rejudge_applications', 'review_provenance', 'review_provenance JSON', bind)
+    _add_column_if_missing('contest_rejudge_applications', 'legacy_resolution_provenance', 'legacy_resolution_provenance JSON', bind)
+    _add_column_if_missing('contest_rejudge_batches', 'review_basis', 'review_basis JSON', bind)
+    _add_column_if_missing('contest_rejudge_batches', 'submission_set_hash', 'submission_set_hash VARCHAR', bind)
+    _add_column_if_missing('contest_rejudge_batches', 'shard_count', 'shard_count INTEGER', bind)
+    _add_column_if_missing('contest_rejudge_batches', 'source_bytes', 'source_bytes INTEGER', bind)
+    _add_column_if_missing('contest_rejudge_items', 'shard_id', 'shard_id VARCHAR REFERENCES contest_rejudge_shards(id)', bind)
+    _add_column_if_missing('contest_rejudge_items', 'candidate_receipt_hash', 'candidate_receipt_hash VARCHAR', bind)
+    _create_index_if_missing('contest_rejudge_items', 'ix_contest_rejudge_items_shard_id', ['shard_id'], bind)
+    _add_column_if_missing('execution_jobs', 'resource_reservation', 'resource_reservation JSON', bind)
     _add_column_if_missing("contests", "scoreboard_revision", "scoreboard_revision INTEGER DEFAULT 0 NOT NULL", bind)
     _add_column_if_missing("code_projects", "revision", "revision VARCHAR DEFAULT 'legacy' NOT NULL", bind)
     _add_column_if_missing('execution_jobs', 'quota_key', 'quota_key VARCHAR', bind)
@@ -120,6 +136,12 @@ def migrate_schema(bind=None) -> None:
             connection.execute(text('UPDATE execution_jobs SET quota_key = owner_key WHERE quota_key IS NULL'))
         _create_index_if_missing('execution_jobs', 'ix_execution_jobs_quota_key', ['quota_key'], bind)
     _create_index_if_missing("problems", "ix_problems_deleted_at", ["deleted_at"], bind)
+    _create_index_if_missing(
+        "problems",
+        "ix_problems_publication_gate",
+        ["publication_review_required", "publication_approved_at"],
+        bind,
+    )
     _add_column_if_missing("submissions", "verdict", "verdict VARCHAR DEFAULT 'system_error' NOT NULL", bind)
     for submission_table in ('submissions', 'contest_submissions'):
         _add_column_if_missing(submission_table, 'execution_job_id', 'execution_job_id VARCHAR REFERENCES execution_jobs(id)', bind)

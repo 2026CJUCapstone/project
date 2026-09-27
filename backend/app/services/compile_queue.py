@@ -1,16 +1,16 @@
 import asyncio
 from typing import Literal, TypeAlias
 
-from sqlalchemy import func
-
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import database as db_models
+from app.services.compile_history import history_snapshot
 
 QueueVerdict: TypeAlias = Literal[
     "pending", "running", "compile_success", "compile_error", "accepted",
     "wrong_answer", "finished", "runtime_error", "time_limit_exceeded",
-    "memory_limit_exceeded", "system_error", "canceled",
+    "memory_limit_exceeded", "output_limit_exceeded", "process_limit_exceeded",
+    "compile_resource_error", "system_error", "canceled",
 ]
 
 
@@ -26,12 +26,16 @@ class CompileQueue:
         status: str | None = None, verdict: str | None = None,
         kind: str | None = None, username: str | None = None,
         user_id: str | None = None, problem_id: str | None = None,
+        viewer_id: str | None = None, source: str | None = None,
+        contest_id: str | None = None, problem_search: str | None = None,
+        language: str | None = None, mine: bool = False,
     ) -> dict:
         return await asyncio.to_thread(
             self._snapshot_sync,
             limit=limit, offset=offset, status=status, verdict=verdict,
             kind=kind, username=username, user_id=user_id,
-            problem_id=problem_id,
+            problem_id=problem_id, viewer_id=viewer_id, source=source,
+            contest_id=contest_id, problem_search=problem_search, language=language, mine=mine,
         )
 
     def _snapshot_sync(
@@ -39,64 +43,19 @@ class CompileQueue:
         status: str | None = None, verdict: str | None = None,
         kind: str | None = None, username: str | None = None,
         user_id: str | None = None, problem_id: str | None = None,
+        viewer_id: str | None = None, source: str | None = None,
+        contest_id: str | None = None, problem_search: str | None = None,
+        language: str | None = None, mine: bool = False,
     ) -> dict:
-        normalized_username = username.lower().strip() if username else None
-        normalized_status = status.lower().strip() if status else None
-        normalized_verdict = verdict.lower().strip() if verdict else None
-        normalized_kind = kind.lower().strip() if kind else None
-
         # Observation must never claim leases, repair Redis, or alter jobs.
         with SessionLocal() as db:
-            base_query = db.query(db_models.CompileQueueRecord)
-            pending_positions = {
-                job_id: index
-                for index, (job_id,) in enumerate(
-                    db.query(db_models.CompileQueueRecord.id)
-                    .filter(db_models.CompileQueueRecord.status == "queued")
-                    .order_by(db_models.CompileQueueRecord.queued_at,
-                              db_models.CompileQueueRecord.id)
-                    .all(), start=1,
-                )
-            }
-            filtered_query = base_query
-            if normalized_status:
-                filtered_query = filtered_query.filter(
-                    db_models.CompileQueueRecord.status == normalized_status)
-            if normalized_verdict:
-                filtered_query = filtered_query.filter(
-                    db_models.CompileQueueRecord.verdict == normalized_verdict)
-            if normalized_kind:
-                filtered_query = filtered_query.filter(
-                    db_models.CompileQueueRecord.kind == normalized_kind)
-            if normalized_username:
-                filtered_query = filtered_query.filter(
-                    func.lower(db_models.CompileQueueRecord.username)
-                    == normalized_username)
-            if user_id:
-                filtered_query = filtered_query.filter(
-                    db_models.CompileQueueRecord.user_id == user_id)
-            if problem_id:
-                filtered_query = filtered_query.filter(
-                    db_models.CompileQueueRecord.problem_id == problem_id)
-
-            page = (filtered_query
-                    .order_by(db_models.CompileQueueRecord.queued_at.desc())
-                    .offset(max(0, offset)).limit(limit).all())
-            group_records = (filtered_query
-                             .order_by(db_models.CompileQueueRecord.queued_at.desc())
-                             .limit(self._history_limit).all())
-            return {
-                "jobs": [self._record_to_dict(record, pending_positions.get(record.id))
-                         for record in page],
-                "total": base_query.count(),
-                "filtered_total": filtered_query.count(),
-                "queued": base_query.filter(
-                    db_models.CompileQueueRecord.status == "queued").count(),
-                "running": base_query.filter(
-                    db_models.CompileQueueRecord.status == "running").count(),
-                "problem_groups": self._build_groups(group_records, "problem"),
-                "user_groups": self._build_groups(group_records, "user"),
-            }
+            return history_snapshot(
+                db, history_limit=self._history_limit, limit=limit, offset=offset,
+                status=status, verdict=verdict, kind=kind, username=username,
+                user_id=user_id, problem_id=problem_id, viewer_id=viewer_id,
+                source=source, contest_id=contest_id, problem_search=problem_search,
+                language=language, mine=mine,
+            )
 
     @staticmethod
     def _build_groups(jobs: list[db_models.CompileQueueRecord],
@@ -155,14 +114,22 @@ def _exit_code(result: dict) -> int:
         return 1
 
 
+def _resource_verdict(result: dict, *, compile_stage=False) -> QueueVerdict | None:
+    # Trusted collector evidence takes precedence even if the container's
+    # parent exits 0 after an OOM-killed child. Never parse user diagnostics.
+    reason = result.get('failure_reason')
+    if reason in {'time_limit_exceeded', 'memory_limit_exceeded', 'output_limit_exceeded',
+                  'process_limit_exceeded'}:
+        return 'compile_resource_error' if compile_stage or result.get('execution_phase') == 'compile' else reason
+    return None
+
+
 def _classify_nonzero_execution(result: dict) -> QueueVerdict:
     # Only the worker's deadline/Docker state establishes a resource failure.
     # User programs can print these words or exit with 124/137 themselves.
-    reason = result.get('failure_reason')
-    if reason in {'time_limit_exceeded', 'memory_limit_exceeded'}:
-        return reason
-    if reason == 'output_limit_exceeded':
-        return 'runtime_error'
+    resource = _resource_verdict(result)
+    if resource:
+        return resource
     if result.get('execution_phase') == 'compile':
         return 'compile_error'
     if result.get('execution_phase') == 'run':
@@ -182,14 +149,30 @@ def _classify_nonzero_execution(result: dict) -> QueueVerdict:
 
 
 def classify_compile_result(result: dict) -> QueueVerdict:
-    return "compile_success" if result.get("success") else "compile_error"
+    return _resource_verdict(result, compile_stage=True) or ("compile_success" if result.get("success") else "compile_error")
+
+
+def classify_compile_stage_result(result: dict) -> QueueVerdict:
+    resource = _resource_verdict(result, compile_stage=True)
+    if resource:
+        return resource
+    if _exit_code(result) == 0:
+        return 'compile_success'
+    # Old images lack a trusted phase/resource record; preserve the explicit
+    # system failure for their ambiguous killed/timed-out compiler result.
+    if result.get('execution_phase') is None and _exit_code(result) in (124, 137):
+        return 'system_error'
+    return 'compile_error'
 
 
 def classify_run_result(result: dict) -> QueueVerdict:
-    return "finished" if _exit_code(result) == 0 else _classify_nonzero_execution(result)
+    return _resource_verdict(result) or ("finished" if _exit_code(result) == 0 else _classify_nonzero_execution(result))
 
 
 def classify_grading_result(result: dict, expected_output: str) -> QueueVerdict:
+    resource = _resource_verdict(result)
+    if resource:
+        return resource
     if _exit_code(result) != 0:
         return _classify_nonzero_execution(result)
     return ("accepted" if str(result.get("stdout") or "").strip()

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query, Request, Response
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_optional_current_user
@@ -63,6 +65,7 @@ def run_code(
 
 @router.get("/queue", response_model=schemas.CompileQueueResponse)
 async def get_compile_queue(
+    response: Response,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status: str | None = Query(None),
@@ -71,7 +74,18 @@ async def get_compile_queue(
     username: str | None = Query(None),
     user_id: str | None = Query(None, alias="userId"),
     problem_id: str | None = Query(None, alias="problemId"),
+    source: Literal['all', 'ide', 'practice', 'contest'] = Query('all'),
+    contest_id: str | None = Query(None, alias='contestId', max_length=128),
+    problem_search: str | None = Query(None, alias='problemSearch', max_length=200),
+    language: schemas.CompilerLanguage | None = Query(None),
+    mine: bool = Query(False),
+    current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Vary'] = 'Authorization, Cookie'
+    if (mine or source == 'contest' or contest_id) and current_user is None:
+        raise HTTPException(401, '내 기록과 콘테스트 기록은 로그인 후 조회할 수 있습니다.',
+                            headers={'Cache-Control': 'no-store'})
     return await compile_queue.snapshot(
         limit=limit,
         offset=offset,
@@ -81,6 +95,8 @@ async def get_compile_queue(
         username=username,
         user_id=user_id,
         problem_id=problem_id,
+        source=source, contest_id=contest_id, problem_search=problem_search,
+        language=language, mine=mine, viewer_id=current_user.id if current_user else None,
     )
 
 

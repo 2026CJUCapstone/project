@@ -102,7 +102,9 @@ function DifficultyBadge({ difficulty }: { difficulty: string }) {
   const value = difficultyValue.get(difficulty) ?? 0;
   const family = difficulty.replace(/\d+$/, '');
   const level = difficulty.match(/\d+$/)?.[0] ?? String(value);
-  const colorClass = family === 'diamond'
+  const colorClass = family === 'ruby'
+    ? 'border-rose-300/60 bg-rose-400 text-rose-950'
+    : family === 'diamond'
     ? 'border-sky-300/60 bg-sky-400 text-sky-950'
     : family === 'platinum'
       ? 'border-cyan-300/60 bg-cyan-400 text-cyan-950'

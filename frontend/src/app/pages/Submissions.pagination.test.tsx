@@ -100,6 +100,29 @@ describe('Submissions pagination query boundaries', () => {
     expect(getSubmissions).toHaveBeenCalledTimes(1);
   });
 
+  it('shows and forwards output, process, and compiler resource verdict filters', async () => {
+    vi.mocked(getSubmissions).mockResolvedValue({
+      total: 3, filteredTotal: 3,
+      submissions: [
+        { id: 'ole', problemId: 'p1', language: 'python', status: 'Rejected', verdict: 'output_limit_exceeded', sampleTotalCases: 1, samplePassedCases: 0, gradingCompleted: true, gradingPassed: false, awardedPoints: 0, createdAt: '2026-09-26T00:00:00Z' },
+        { id: 'process-limit', problemId: 'p-process', language: 'python', status: 'Rejected', verdict: 'process_limit_exceeded', sampleTotalCases: 1, samplePassedCases: 0, gradingCompleted: true, gradingPassed: false, awardedPoints: 0, createdAt: '2026-09-26T00:00:00Z' },
+        { id: 'compile-resource', problemId: 'p2', language: 'java', status: 'Rejected', verdict: 'compile_resource_error', sampleTotalCases: 0, samplePassedCases: 0, gradingCompleted: false, gradingPassed: false, awardedPoints: 0, createdAt: '2026-09-26T00:00:00Z' },
+      ],
+    });
+
+    render(<MemoryRouter initialEntries={['/submissions?verdict=output_limit_exceeded']}><Routes><Route path="/submissions" element={<Submissions />} /></Routes></MemoryRouter>);
+
+    expect(await screen.findByText('출력 초과')).toBeInTheDocument();
+    expect(screen.getByText('프로세스 제한 초과', { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getAllByText('컴파일 자원 초과')).not.toHaveLength(0);
+    expect(screen.getByRole('option', { name: '출력 초과' })).toHaveValue('output_limit_exceeded');
+    expect(screen.getByRole('option', { name: '프로세스 제한 초과' })).toHaveValue('process_limit_exceeded');
+    expect(screen.getByRole('option', { name: '컴파일 자원 초과' })).toHaveValue('compile_resource_error');
+    expect(getSubmissions).toHaveBeenLastCalledWith(expect.objectContaining({ verdict: 'output_limit_exceeded' }));
+    fireEvent.change(screen.getAllByRole('combobox')[1], { target: { value: 'process_limit_exceeded' } });
+    await waitFor(() => expect(getSubmissions).toHaveBeenLastCalledWith(expect.objectContaining({ verdict: 'process_limit_exceeded' })));
+  });
+
   it('does not let a superseded out-of-range response redirect the current page', async () => {
     const stale = deferred<Awaited<ReturnType<typeof getSubmissions>>>();
     vi.mocked(getSubmissions)

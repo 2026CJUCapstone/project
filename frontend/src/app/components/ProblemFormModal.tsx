@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { DIFFICULTY_LEVELS } from "../services/problemApi";
-import type { ProblemCreateRequest, TestCase, ProblemTag } from "../services/problemApi";
+import { isStoredHiddenTestCase, type HiddenTestCase, type ProblemCreateRequest, type TestCase, type ProblemTag } from "../services/problemApi";
 import { DIFFICULTY_LABELS } from "../constants/difficulty";
 import { PROBLEM_TAG_OPTIONS } from "../constants/problemTags";
+import { JudgePolicyEditor } from "./JudgePolicyEditor";
+import { StoredHiddenTestReference } from './StoredHiddenTestReference';
+import { HiddenTestFileUpload } from './HiddenTestFileUpload';
 
 const TAG_OPTIONS: { value: ProblemTag; label: string }[] = Array.from(PROBLEM_TAG_OPTIONS);
 
@@ -19,7 +22,10 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
   const [points, setPoints] = useState(initialData?.points ?? 100);
   const [description, setDescription] = useState(initialData?.description ?? "");
   const [testCases, setTestCases] = useState<TestCase[]>(initialData?.testCases?.length ? initialData.testCases : [{ input: "", expectedOutput: "" }]);
-  const [hiddenTestCases, setHiddenTestCases] = useState<TestCase[]>(initialData?.hiddenTestCases?.length ? initialData.hiddenTestCases : [{ input: "", expectedOutput: "" }]);
+  const [hiddenTestCases, setHiddenTestCases] = useState<HiddenTestCase[]>(initialData?.hiddenTestCases?.length ? initialData.hiddenTestCases : [{ input: "", expectedOutput: "" }]);
+  const [judgePolicy, setJudgePolicy] = useState(initialData?.judgePolicy);
+  const [hiddenUploadActive, setHiddenUploadActive] = useState(false);
+  const hiddenUploadTargetRef = useRef(`problem-modal-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`);
   const [customTag, setCustomTag] = useState("");
   const [validationError, setValidationError] = useState("");
 
@@ -32,7 +38,12 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
   };
 
   const removeHiddenTestCase = (idx: number) => {
-    if (hiddenTestCases.length <= 1) return;
+    if (hiddenTestCases.length <= 1) {
+      // Keep the existing inline editor's one-row behavior, while allowing a
+      // sole stored reference to be deliberately removed.
+      if (isStoredHiddenTestCase(hiddenTestCases[idx]!)) setHiddenTestCases([{ input: '', expectedOutput: '' }]);
+      return;
+    }
     setHiddenTestCases(hiddenTestCases.filter((_, i) => i !== idx));
   };
 
@@ -41,18 +52,24 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
   };
 
   const updateHiddenTestCase = (idx: number, field: keyof TestCase, value: string) => {
-    setHiddenTestCases(hiddenTestCases.map((tc, i) => (i === idx ? { ...tc, [field]: value } : tc)));
+    setHiddenTestCases(hiddenTestCases.map((tc, i) => (i === idx && !isStoredHiddenTestCase(tc) ? { ...tc, [field]: value } : tc)));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (hiddenUploadActive) {
+      setValidationError('숨김 테스트 파일 업로드가 끝난 뒤 문제를 저장할 수 있습니다.');
+      return;
+    }
     const normalizedSamples = testCases.map((tc) => ({
       input: tc.input,
       expectedOutput: tc.expectedOutput,
     }));
     const normalizedHidden = hiddenTestCases
-      .filter((tc) => tc.input.length > 0 || tc.expectedOutput.length > 0)
-      .map((tc) => ({ input: tc.input, expectedOutput: tc.expectedOutput }));
+      .filter((tc) => isStoredHiddenTestCase(tc) || tc.input.length > 0 || tc.expectedOutput.length > 0)
+      // Retain a stored reference exactly as received. It is not an inline
+      // payload and must never be normalized into empty input/output strings.
+      .map((tc) => isStoredHiddenTestCase(tc) ? tc : ({ input: tc.input, expectedOutput: tc.expectedOutput }));
 
     if (!title.trim() || !description.trim()) {
       setValidationError("제목과 문제 설명을 입력하세요.");
@@ -71,6 +88,7 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
       description: description.trim(),
       testCases: normalizedSamples,
       hiddenTestCases: normalizedHidden,
+      ...(judgePolicy ? { judgePolicy } : {}),
     });
   };
 
@@ -240,7 +258,9 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
 
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium text-gray-700">채점</label>
-          {hiddenTestCases.map((tc, idx) => (
+          {hiddenTestCases.map((tc, idx) => isStoredHiddenTestCase(tc) ? (
+            <StoredHiddenTestReference key={idx} testCase={tc} ordinal={idx + 1} label="채점" canRemove onRemove={() => removeHiddenTestCase(idx)} />
+          ) : (
 	            <div key={idx} className="flex gap-2 items-start">
 	              <div className="flex-1 grid grid-cols-1 gap-2 md:grid-cols-2">
 	                <textarea
@@ -276,7 +296,15 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
           >
             + 채점 추가
           </button>
+          <HiddenTestFileUpload
+            targetKey={hiddenUploadTargetRef.current}
+            disabled={hiddenUploadActive}
+            onBusyChange={setHiddenUploadActive}
+            onUploaded={testCase => setHiddenTestCases(current => [...current, testCase])}
+          />
         </div>
+
+        <JudgePolicyEditor policy={judgePolicy} onReplace={setJudgePolicy} />
 
         <div className="flex justify-end gap-2 pt-2">
           <button
@@ -288,6 +316,7 @@ export function ProblemFormModal({ onClose, onSubmit, initialData }: Props) {
           </button>
           <button
             type="submit"
+            disabled={hiddenUploadActive}
             className="px-4 py-2 text-sm text-white bg-blue-500 rounded hover:bg-blue-600"
           >
             저장

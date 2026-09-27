@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -7,12 +7,31 @@ from app.api.routes.auth import require_admin
 from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
+from app.models.legacy_execution import LegacyExecutionResolutionWrite
 
 router = APIRouter()
 
 
+@router.get('/execution-jobs/{job_id}/legacy-resolution')
+def get_legacy_execution_resolution(job_id: str, response: Response,
+        db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
+    from app.services import legacy_execution_resolution as service
+    response.headers['Cache-Control'] = 'no-store'
+    return service.read(db, job_id)
+
+
+@router.post('/execution-jobs/{job_id}/legacy-resolution')
+def create_legacy_execution_resolution(job_id: str, data: LegacyExecutionResolutionWrite,
+        response: Response, db: Session = Depends(get_db),
+        current_user: db_models.User = Depends(require_admin)):
+    from app.services import legacy_execution_resolution as service
+    response.headers['Cache-Control'] = 'no-store'
+    return service.append(db, job_id, data, current_user)
+
+
 @router.get("/users", response_model=schemas.AdminUsersResponse)
 def list_users(
+    response: Response,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     search: str | None = Query(None, max_length=80),
@@ -38,6 +57,7 @@ def list_users(
         .limit(limit)
         .all()
     )
+    response.headers["Cache-Control"] = "no-store"
     return {"users": users, "total": total, "filtered_total": filtered_total}
 
 

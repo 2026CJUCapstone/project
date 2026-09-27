@@ -4,7 +4,7 @@ import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import admin, community, compiler, problems, projects, terminal, auth, contests, executions, learning
+from app.api.routes import admin, community, compiler, problems, projects, terminal, auth, contests, executions, learning, judge_test_data
 from app.services.contests import contest_maintenance
 from app.services.execution_runtime import build_worker
 from app.services.housekeeping import retention_maintenance
@@ -101,6 +101,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(community.router, prefix="/api/v1/community", tags=["community"])
 app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(judge_test_data.router, prefix='/api/v1/admin/judge-test-data', tags=['admin'])
 app.include_router(contests.router, prefix="/api/v1/contests", tags=["contests"])
 app.include_router(executions.router, prefix="/api/v1/executions", tags=["executions"])
 app.include_router(learning.router, prefix="/api/v1/learning", tags=["learning"])

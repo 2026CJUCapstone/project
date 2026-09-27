@@ -1,6 +1,7 @@
 from datetime import datetime
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 from app.models.schemas import CamelModel, CompilerLanguage, ProblemCreate
+from app.models.judge_policy import Digest
 
 
 class ContestProblemWrite(CamelModel):
@@ -42,6 +43,19 @@ class ContestWrite(CamelModel):
 
 
 class ContestSubmit(CamelModel):
+    model_config = ConfigDict(extra='forbid')
+
     code: str = Field(min_length=1)
     language: CompilerLanguage
     request_id: str = Field(min_length=1, max_length=80)
+
+
+class AuthoringValidationWrite(CamelModel):
+    """Administrator source checked against one server-owned draft snapshot."""
+    model_config = ConfigDict(extra='forbid')
+
+    code: str = Field(min_length=1)
+    language: CompilerLanguage
+    request_id: str = Field(min_length=1, max_length=80)
+    expected_fingerprint: Digest
+    reference_asset_digest: Digest

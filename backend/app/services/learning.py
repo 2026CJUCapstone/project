@@ -7,7 +7,7 @@ from app.models import database as m
 from app.services.contest_access import private_problem_ids, iso, utc_naive
 from app.core.bootstrap import SYSTEM_BOARD_IDS
 
-DIFFICULTIES = [f"{tier}{level}" for tier in ("iron", "bronze", "silver", "gold", "platinum", "diamond") for level in range(5, 0, -1)]
+DIFFICULTIES = [f"{tier}{level}" for tier in ("iron", "bronze", "silver", "gold", "platinum", "diamond", "ruby") for level in range(5, 0, -1)]
 TRACKS = [
     ("io", "입출력부터 시작", "표준 입력을 읽고 정해진 형식으로 출력하는 연습입니다.", ["io"]),
     ("condition", "조건문과 반복문", "조건에 따라 분기하고 같은 작업을 반복해 보세요.", ["condition", "loop", "control"]),
@@ -17,7 +17,9 @@ TRACKS = [
     ("greedy", "구현과 그리디", "조건을 코드로 옮기고 선택 기준을 세우는 연습입니다.", ["implementation", "greedy"]),
     ("graph", "그래프와 동적 계획법", "그래프를 탐색하고 작은 문제의 답을 재사용해 보세요.", ["graph", "dp"]),
 ]
-REVIEW_VERDICTS = ("wrong_answer", "compile_error", "runtime_error", "time_limit_exceeded", "memory_limit_exceeded")
+REVIEW_VERDICTS = ("wrong_answer", "compile_error", "runtime_error", "time_limit_exceeded",
+                   "memory_limit_exceeded", "output_limit_exceeded", "process_limit_exceeded",
+                   "compile_resource_error")
 
 
 def insert_for(db):
@@ -112,7 +114,7 @@ def recommendations(db, user_id=None):
         m.Problem.difficulty, m.Problem.tags).all() if user_id else []
     levels = sorted(DIFFICULTIES.index(p.difficulty) for p in solved if p.difficulty in DIFFICULTIES)
     # Median is robust to a single unusually difficult solve. Move one step up.
-    target = min(29, levels[len(levels) // 2] + 1) if levels else 0
+    target = min(len(DIFFICULTIES) - 1, levels[len(levels) // 2] + 1) if levels else 0
     query = public_problems(db)
     if user_id:
         query = query.filter(~solved_expression(user_id))

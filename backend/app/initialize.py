@@ -7,6 +7,7 @@ an old process has stopped.
 """
 import argparse
 import hashlib
+import re
 import sys
 
 from sqlalchemy import text
@@ -20,11 +21,43 @@ from app.services.contest_access import now_utc
 from app.services.durable_queue import DurableQueue, QueueFull
 from app.core.config import settings
 
-RUNTIME_SCHEMA_VERSION = '20260911_learning_v11'
+LEARNING_SCHEMA_VERSION = '20260911_learning_v11'
+RUNTIME_SCHEMA_VERSION = '20260927_problem_publication_gate_v26'
+_RUNTIME_MARKER = re.compile(r'_v[0-9]+$')
 
 
 class LegacyRecoveryRequired(RuntimeError):
     pass
+
+
+def _prepare_runtime_history(db):
+    db.execute(text('''CREATE TABLE IF NOT EXISTS runtime_schema_history (
+        version VARCHAR PRIMARY KEY,
+        retired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )'''))
+
+
+def _migration_applied(db, version):
+    return bool(db.execute(text('''SELECT 1 FROM schema_migrations WHERE version=:v
+        UNION ALL SELECT 1 FROM runtime_schema_history WHERE version=:v LIMIT 1'''), {'v':version}).first())
+
+
+def _activate_runtime_marker(db):
+    """Atomically retire every old readiness marker before enabling this binary.
+
+    Previous binaries only know how to look up their own marker in
+    ``schema_migrations``. Keeping historical runtime markers there would leave
+    stale API replicas ready during a rolling deployment.
+    """
+    versions=list(db.execute(text('SELECT version FROM schema_migrations')).scalars())
+    for version in versions:
+        if not _RUNTIME_MARKER.search(version):
+            continue
+        db.execute(text('INSERT INTO runtime_schema_history (version) VALUES (:v) ON CONFLICT (version) DO NOTHING'),
+                   {'v':version})
+        db.execute(text('DELETE FROM schema_migrations WHERE version=:v'), {'v':version})
+    db.execute(text('INSERT INTO schema_migrations (version) VALUES (:v) ON CONFLICT (version) DO NOTHING'),
+               {'v':RUNTIME_SCHEMA_VERSION})
 
 
 def recover_legacy(db, *, allowed=False):
@@ -77,11 +110,13 @@ def initialize(*, bind=None, allow_legacy_recovery=False, skip_bootstrap=False):
     with database.schema_transaction(bind) as connection:
         database.init_db(connection)
         with Session(bind=connection, autoflush=False, join_transaction_mode='rollback_only') as db:
+            _prepare_runtime_history(db)
             recover_legacy(db, allowed=allow_legacy_recovery)
-            if not db.execute(text("SELECT 1 FROM schema_migrations WHERE version = :v"),
-                              {"v": RUNTIME_SCHEMA_VERSION}).first():
+            if not _migration_applied(db, LEARNING_SCHEMA_VERSION):
                 from app.services.learning import backfill_progress
                 backfill_progress(db)
+                db.execute(text('INSERT INTO schema_migrations (version) VALUES (:v) ON CONFLICT (version) DO NOTHING'),
+                           {'v': LEARNING_SCHEMA_VERSION})
             if skip_bootstrap:
                 # Existing installations may have edited their admin/system
                 # content. An additive migration must not silently rewrite it.
@@ -90,8 +125,7 @@ def initialize(*, bind=None, allow_legacy_recovery=False, skip_bootstrap=False):
             else:
                 bootstrap_application_data(db)
             # Session.commit above cannot commit the enclosing connection.
-            db.execute(text('INSERT INTO schema_migrations (version) VALUES (:version) ON CONFLICT (version) DO NOTHING'),
-                {'version':RUNTIME_SCHEMA_VERSION})
+            _activate_runtime_marker(db)
             db.commit()
 
 

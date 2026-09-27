@@ -74,7 +74,7 @@ def read_execution(job_id: str, request: Request, response: Response,
     response.headers['Cache-Control'] = 'no-store'
     owner = execution_owner(request,user)
     job = db.query(m.ExecutionJob).filter_by(id=job_id, owner_key=owner).first() if owner else None
-    if job is None:
+    if job is None or job.kind == 'authoring-validation-v1':
         raise HTTPException(404, '실행 기록을 찾을 수 없습니다.')
     if job.content_expired_at is not None:
         raise HTTPException(410, EXECUTION_EXPIRED_MESSAGE, headers={'Cache-Control':'no-store'})

@@ -11,8 +11,11 @@ import { ContestJudgePanel } from "./ContestJudgePanel";
 import { ProblemReviewControls } from "./ProblemReviewControls";
 import type { Contest } from "../services/contestApi";
 import type { TestCase } from "../services/problemApi";
+import type { PublicJudgeLimits } from "../services/judgePolicyTypes";
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from "../constants/difficulty";
 import { getProblemTagClass, getProblemTagLabel } from "../constants/problemTags";
+import { useCompilerStore } from "../store/compilerStore";
+import { JudgeLimitTable } from "./JudgeLimitTable";
 interface Challenge {
   id: string;
   title: string;
@@ -22,6 +25,8 @@ interface Challenge {
   expectedOutput?: string;
   failurePoints?: string[];
   testCases?: TestCase[];
+  judgeLimits?: PublicJudgeLimits | null;
+  judgePolicyLegacy?: boolean;
 }
 
 interface Props {
@@ -33,6 +38,7 @@ interface Props {
 
 export function ChallengePanel({ challenge, code, onClose, contest }: Props) {
   const [judgeOpen, setJudgeOpen] = useState(false);
+  const language = useCompilerStore((state) => state.language);
   const navigate = useNavigate();
 
   const goToCommunity = () => {
@@ -141,6 +147,12 @@ export function ChallengePanel({ challenge, code, onClose, contest }: Props) {
               </ul>
             </div>
           )}
+
+          <JudgeLimitTable
+            policy={challenge.judgeLimits ?? null}
+            selectedLanguage={language}
+            legacy={challenge.judgePolicyLegacy === true}
+          />
         </div>
 
         {!contest && <div className="px-4 pb-4"><ProblemReviewControls key={challenge.id} problemId={challenge.id} /></div>}
