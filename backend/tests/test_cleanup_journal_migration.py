@@ -169,5 +169,8 @@ def test_v9_cleanup_journal_migration_preserves_v8_intent_and_is_idempotent(
     assert _job_snapshot(engine, include_daemon=True) == cleanup_before_retry
     with engine.connect() as connection:
         versions = list(connection.execute(text("SELECT version FROM schema_migrations")).scalars())
-    assert versions.count(V8_SCHEMA_VERSION) == 1
+    assert versions.count(V8_SCHEMA_VERSION) == 0
     assert versions.count(RUNTIME_SCHEMA_VERSION) == 1
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT 1 FROM runtime_schema_history WHERE version=:v'),
+                                  {'v':V8_SCHEMA_VERSION}).first()

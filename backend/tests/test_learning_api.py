@@ -55,12 +55,21 @@ async def test_parallel_first_writers_only_one_version_wins(fixture):
 
 def test_publication_progress_and_award_share_transaction_and_survive_pruning(fixture, monkeypatch):
     from app.services.execution_results import publish_result
+    from app.services.durable_queue import execution_payload_hash
     from app.api.routes import problems
+    from tests.test_judge_metrics import full_report
+    from tests.test_measured_judge import payload_fixture
     _, factory, _ = fixture
     now = now_utc()
+    payload = payload_fixture()
+    payload.update(practice_points=100, problem_id='p0')
+    def accepted():
+        return {'verdict':'accepted', 'value':{'grading_completed':True,
+            '_resource_report':full_report(payload)}}
     with factory() as db:
         db.add(m.ExecutionJob(id='job', owner_key='alice', quota_key='alice', request_id='r',
-            payload_hash='h', kind='practice', payload={'practice_points': 100}, received_at=now))
+            payload_hash=execution_payload_hash('practice',payload)[0], kind='practice',
+            payload=payload, received_at=now))
         db.flush()
         db.add(m.Submission(id='s', execution_job_id='job', user_id='alice', problem_id='p0',
             language='python', code='print(42)', status='queued', verdict='pending', created_at=now))
@@ -71,7 +80,7 @@ def test_publication_progress_and_award_share_transaction_and_survive_pruning(fi
     monkeypatch.setattr(problems, '_prune_old_submissions', fail_prune)
     with factory() as db:
         with pytest.raises(RuntimeError, match='injected'):
-            publish_result(db, 'job', {'verdict': 'accepted', 'value': {'grading_completed': True}})
+            publish_result(db, 'job', accepted())
         db.rollback()
     with factory() as db:
         assert db.get(m.ProblemLearningRecord, ('alice', 'p0')) is None
@@ -81,7 +90,7 @@ def test_publication_progress_and_award_share_transaction_and_survive_pruning(fi
     monkeypatch.setattr(problems, '_prune_old_submissions', original_prune)
     for _ in range(2):
         with factory() as db:
-            publish_result(db, 'job', {'verdict': 'accepted', 'value': {'grading_completed': True}})
+            publish_result(db, 'job', accepted())
             db.commit()
     with factory() as db:
         assert db.query(m.UserProblemScore).count() == 1

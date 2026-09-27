@@ -57,7 +57,8 @@ def test_compiler_failure_does_not_require_english_compile_keyword():
 
 @pytest.mark.parametrize('reason', ['time_limit_exceeded','memory_limit_exceeded'])
 def test_trusted_runner_resource_failure_takes_precedence(reason):
-    assert classify_run_result({'exit_code':137,'execution_phase':'compile','failure_reason':reason}) == reason
+    assert classify_run_result({'exit_code':137,'execution_phase':'compile','failure_reason':reason}) == 'compile_resource_error'
+    assert classify_run_result({'exit_code':137,'execution_phase':'run','failure_reason':reason}) == reason
 
 
 def test_phase_metadata_does_not_consume_user_output_budget(monkeypatch):

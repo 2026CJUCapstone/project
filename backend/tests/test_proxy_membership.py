@@ -55,7 +55,9 @@ def test_discovery_addresses_are_bounded_and_inside_explicit_network():
 def test_managed_config_is_closed_and_generation_has_access_phase_checks():
     rendered = render_managed([], 'b'*32)
     assert 'server 127.0.0.1:1 ' in rendered
-    assert rendered.count('auth_request /_proxy_membership;') == 2
+    # General API, compile socket, and the bounded private-data upload route
+    # all retain the same access-phase membership gate.
+    assert rendered.count('auth_request /_proxy_membership;') == 3
     assert 'proxy_pass_request_body off;' in rendered
     assert 'proxy_pass_request_headers off;' in rendered
     assert ':/allow/'+'b'*32+';' in rendered

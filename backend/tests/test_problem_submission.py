@@ -7,10 +7,11 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.models.database import Problem, Submission, User
 from app.services import compiler as compiler_service
-from tests.execution_helpers import finish_receipt
+from tests.execution_helpers import finish_receipt, install_measured_fake_judge
+from tests.test_judge_policy import policy_fixture
 
 
-def _create_problem_with_grading_case() -> tuple[str, str]:
+def _create_problem_with_grading_case(*, measured=False) -> tuple[str, str]:
     suffix = uuid.uuid4().hex[:10]
     db = SessionLocal()
     try:
@@ -18,16 +19,16 @@ def _create_problem_with_grading_case() -> tuple[str, str]:
         db.add(user)
         db.flush()
 
+        sample = [{"input": "sample", "expected_output": "ok"}]
+        hidden = [{"input": "judge", "expected_output": "ok"}]
         problem = Problem(
             creator_id=user.id,
             title=f"채점 응답 검증 {suffix}",
             difficulty="iron5",
             tags=["io"],
             description="## 문제\n\n출력을 검증합니다.",
-            test_cases={
-                "sample": [{"input": "sample", "expected_output": "ok"}],
-                "hidden": [{"input": "judge", "expected_output": "ok"}],
-            },
+            test_cases={"sample": sample, "hidden": hidden},
+            judge_policy=policy_fixture(sample, hidden, ('bpp',)) if measured else None,
         )
         db.add(problem)
         db.commit()
@@ -63,8 +64,10 @@ async def test_problem_list_omits_grading_cases_for_public_users():
 
 
 @pytest.mark.asyncio
-async def test_submission_response_does_not_reveal_grading_case_counts(monkeypatch: pytest.MonkeyPatch):
-    user_id, problem_id = _create_problem_with_grading_case()
+async def test_submission_response_does_not_reveal_grading_case_counts(
+        monkeypatch: pytest.MonkeyPatch, tmp_path):
+    install_measured_fake_judge(tmp_path, monkeypatch)
+    user_id, problem_id = _create_problem_with_grading_case(measured=True)
 
     async def fake_run(source_code: str, language: str, stdin: str = "", optimize: bool = False):
         return {"stdout": "ok\n", "stderr": "", "exit_code": 0, "execution_time": 1.0}
