@@ -112,7 +112,7 @@ describe('Submissions pagination query boundaries', () => {
 
     render(<MemoryRouter initialEntries={['/submissions?verdict=output_limit_exceeded']}><Routes><Route path="/submissions" element={<Submissions />} /></Routes></MemoryRouter>);
 
-    expect(await screen.findByText('출력 초과')).toBeInTheDocument();
+    expect(await screen.findByText('출력 초과', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getByText('프로세스 제한 초과', { selector: 'span' })).toBeInTheDocument();
     expect(screen.getAllByText('컴파일 자원 초과')).not.toHaveLength(0);
     expect(screen.getByRole('option', { name: '출력 초과' })).toHaveValue('output_limit_exceeded');
