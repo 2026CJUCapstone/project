@@ -2,7 +2,7 @@
 
 ## 2026-09-27 최종 후보 검증 — `d000ec1e`
 
-최종 코드 기준선 `d000ec1e47a5acbc4c794dd3a2f87cca25d05d57`에서 백엔드 전체 **3,150 PASS/454 조건부 SKIP/10 subtests PASS/실패 0**, 프런트 **58 files/322 PASS**, TypeScript 검사와 production build가 통과했다. 별도 서버 audit PostgreSQL·Redis에서는 재채점 shard FK 순서 오류 7건을 재현한 뒤 부모 shard 선행 flush로 고쳐 동일 묶음이 **48 PASS/3 의도된 SQLite 변형 SKIP**이 됐다. runtime controller 출력은 stdout·stderr 합계 128 KiB에서 실제 프로세스를 종료하도록 바꾸고 overflow·timeout 회귀를 추가했다.
+최종 코드 기준선 `d000ec1e47a5acbc4c794dd3a2f87cca25d05d57`에서 백엔드 전체 **3,150 PASS/454 조건부 SKIP/10 subtests PASS/실패 0**, 프런트 **58 files/322 PASS**, TypeScript 검사와 production build가 통과했다. 별도 서버 audit PostgreSQL·Redis에서는 재채점 shard FK 순서 오류 7건을 재현한 뒤 부모 shard 선행 flush로 고쳐 동일 묶음이 **48 PASS/3 의도된 SQLite 변형 SKIP**이 됐다. runtime controller 출력은 stdout·stderr 합계 128 KiB에서 실제 프로세스를 종료하도록 바꾸고 overflow·timeout 회귀를 추가했다. 현재 exact source의 Linux A–J private package·bundle 계약은 **152 PASS/4 명시적 SKIP**, 실제 임시 PostgreSQL package import·재시도·비공개 차단 흐름은 **3 PASS**, 종료 후 audit schema 잔여값은 0이다.
 
 운영 SHA는 여전히 `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`다. 공개 `/webcompiler/ready`가 200 HTML SPA fallback을 반환하는 문제도 다시 확인했다. push, main 병합, 배포, 운영 데이터 변경, A–J 등록은 하지 않았다. A01–A25와 5.4, A–J 패키지, 실제 검증 결과와 남은 외부 조건은 [최종 준비 상태 문서](final-readiness-acceptance-2026-09-27.md)를 기준으로 한다. 아래 과거 checkpoint는 이 판정을 덮어쓰지 않는다.
 

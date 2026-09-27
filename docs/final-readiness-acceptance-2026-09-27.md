@@ -13,6 +13,8 @@
 | 백엔드 전체 | 3,150 PASS, 454 SKIP, 10 subtests PASS, 0 FAIL, 368.07초 | skip은 PostgreSQL·Redis·POSIX·Docker/cgroup·외부 런타임 등 명시적 환경 조건이며 성공으로 세지 않는다. |
 | 프런트 전체 | 58 files, 322 PASS | TypeScript 검사와 production build도 PASS. `npm ci` 감사 결과 알려진 취약점 0건. |
 | 서버 격리 PostgreSQL·Redis | 48 PASS, 3 SKIP, 0 FAIL, 147.03초 | 운영 DB·Redis와 분리된 기존 audit Compose를 재사용했다. 세 skip은 PostgreSQL 전용 process test의 SQLite 매개변수 변형이다. |
+| Linux A–J private package·bundle | 152 PASS, 4 SKIP, 0 FAIL, 263.92초 | owner-only 출력, blob closure, 부분 생성 실패 정리, symlink 거부, 동일 bundle replay, import transport를 비권한 UID·read-only·network-none container에서 확인했다. skip은 POSIX에서 불필요한 Windows 음성 테스트 1개, image의 Git 부재 1개, 별도 staged archive 부재 2개다. |
+| PostgreSQL private import 흐름 | 3 PASS, 0 FAIL, 21.86초 | 실제 C 최대 stored data package의 미검수 비공개 차단과 검수·재시도 흐름을 고유 임시 PostgreSQL schema에서 실행했다. 종료 후 `audit_contest_*`·`audit_queue_*` 잔여 schema는 0개다. |
 | 운영 read-only probe | `/health` 200, release marker 200 | 둘 다 운영 SHA `ebd7e367...`를 반환했다. `/webcompiler/ready`는 200 HTML SPA fallback을 반환해 운영 host include가 아직 고쳐지지 않았음을 재확인했다. |
 
 서버 검증 중 재채점 shard의 부모 행보다 item이 먼저 INSERT되어 PostgreSQL FK가 7건 실패하는 오류를 재현했다. `contest_rejudge.py`가 각 bounded shard 부모를 먼저 flush하도록 고쳤고 동일 묶음이 48 PASS로 바뀌었다. SQLite만으로는 드러나지 않던 실제 dialect 차이다.
@@ -76,6 +78,7 @@ runtime matrix controller가 `capture_output=True`로 출력을 전부 메모리
 - 공개 예제 26개, hidden 후보 53개, unique stored blob 89개(12,718,689 bytes), 여섯 언어 reference source 60개
 - C, C++, Python, Java, JavaScript 기준 풀이는 현재 로컬 도구로 통과했다. B++ source inventory는 있으나 A–J 전체 실제 실행은 최종 설치 runtime이 없어 수락하지 않았다. 운영 B++ 단일 `42` smoke는 A–J 실행 증거가 아니다.
 - private builder·blob receipt·단일 import·apply idempotency 계약은 mock transport와 fixture에서 통과했다. 상태는 의도적으로 `draft-unapproved`, `releaseReady=false`, `published=false`다.
+- Linux에서 실제 owner-only bundle 작성·재작성 거부·동일 bundle replay와 PostgreSQL private-import 재시도를 확인했다. 이는 transport·DB 멱등 준비 증거이며 관리자 HTTPS endpoint에 실제 업로드했다는 뜻은 아니다.
 - 운영자 승인 없이 package ID를 새로 만들거나 업로드·등록·공개하지 않는다.
 
 반드시 사람이 결정하거나 외부 근거를 제공해야 하는 항목은 A–J 지문·예제와 J 수학 검수, 원문·번역·각색·테스트 재배포 권리, 최신 solved.ac tier 근거, 제목·KST 일정·배점·난이도·태그·참가 규칙, J 순위 반영, AI·외부 도움 규칙, 종료 후 공개 여부, 최종 여섯 언어 정책과 문제×runtime 최소 10회 실측이다.
