@@ -29,6 +29,9 @@ def _load(name: str):
 
 b = _load("basic_pool_deploy")
 m = _load("basic_pool_migration_release")
+# The migration helper loads its own copy of the base module.  Rebind it so
+# every reused helper observes this release's configured ROOT/STATE/SHA.
+m.b = b
 
 APPLICATION_CONTRACTS = (
     "backend/app/models/database.py",

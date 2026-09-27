@@ -111,6 +111,7 @@ def test_candidate_preflight_is_networkless_and_validates_runtime_security():
 
 def test_release_is_pinned_to_the_reviewed_operating_transition():
     release = load_release()
+    assert release.m.b is release.b
     assert release.EXPECTED_PREVIOUS_RELEASE == "ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e"
     assert release.EXPECTED_REVIEWED_BASE == "488356236e7181b7c7a4e7da09d47cdad4cd40b1"
     assert release.EXPECTED_RELEASE_DELTA == {
