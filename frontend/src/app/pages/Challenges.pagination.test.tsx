@@ -12,6 +12,7 @@ vi.mock('../services/problemApi', () => ({
     'gold5', 'gold4', 'gold3', 'gold2', 'gold1',
     'platinum5', 'platinum4', 'platinum3', 'platinum2', 'platinum1',
     'diamond5', 'diamond4', 'diamond3', 'diamond2', 'diamond1',
+    'ruby5', 'ruby4', 'ruby3', 'ruby2', 'ruby1',
   ],
   getProblemsPage: vi.fn(),
 }));
@@ -47,6 +48,57 @@ describe('Challenges paginated filters', () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+  });
+
+  it('includes Ruby 1 in the default difficulty request', async () => {
+    vi.useFakeTimers();
+    vi.mocked(getProblemsPage).mockResolvedValue({ items: [], total: 0 });
+
+    render(<MemoryRouter><Challenges /></MemoryRouter>);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(getProblemsPage).toHaveBeenLastCalledWith(
+      24,
+      0,
+      expect.objectContaining({ difficultyMin: 'iron5', difficultyMax: 'ruby1' }),
+      expect.anything(),
+    );
+  });
+
+  it('restores Ruby 1 as the maximum difficulty when filters are reset', async () => {
+    vi.useFakeTimers();
+    vi.mocked(getProblemsPage).mockResolvedValue({ items: [], total: 0 });
+
+    render(<MemoryRouter><Challenges /></MemoryRouter>);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    fireEvent.change(screen.getAllByRole('slider')[1], { target: { value: '29' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(getProblemsPage).toHaveBeenLastCalledWith(
+      24,
+      0,
+      expect.objectContaining({ difficultyMax: 'diamond1' }),
+      expect.anything(),
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: /^초기화$/ })[0]);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(getProblemsPage).toHaveBeenLastCalledWith(
+      24,
+      0,
+      expect.objectContaining({ difficultyMin: 'iron5', difficultyMax: 'ruby1' }),
+      expect.anything(),
+    );
   });
 
   it('does not append a page from an earlier filter after a new filtered page has loaded', async () => {

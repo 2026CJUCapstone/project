@@ -175,7 +175,7 @@ export function Leaderboard() {
                   <div>
                     <p className="font-bold text-gray-900 dark:text-white">아직 등록된 레이팅이 없습니다.</p>
                     <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                      챌린지를 통과하면 첫 B++ 레이팅이 만들어집니다.
+                      문제를 풀면 첫 B++ 레이팅이 만들어집니다.
                     </p>
                   </div>
                 </div>

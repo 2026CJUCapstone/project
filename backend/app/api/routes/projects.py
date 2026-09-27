@@ -2,7 +2,7 @@ from typing import List
 from datetime import timezone
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_current_user
@@ -44,6 +44,7 @@ def _serialize_project(project: db_models.CodeProject) -> schemas.CodeProjectRea
 
 @router.get("/", response_model=List[schemas.CodeProjectRead])
 def list_projects(
+    response: Response,
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(get_current_user),
 ):
@@ -53,12 +54,14 @@ def list_projects(
         .order_by(db_models.CodeProject.updated_at.desc())
         .all()
     )
+    response.headers["Cache-Control"] = "no-store"
     return [_serialize_project(project) for project in projects]
 
 
 @router.get("/{scope:path}", response_model=schemas.CodeProjectRead)
 def get_project(
     scope: str,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(get_current_user),
 ):
@@ -70,6 +73,7 @@ def get_project(
     )
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
+    response.headers["Cache-Control"] = "no-store"
     return _serialize_project(project)
 
 
@@ -77,6 +81,7 @@ def get_project(
 def upsert_project(
     scope: str,
     payload: schemas.CodeProjectUpsert,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(get_current_user),
 ):
@@ -125,6 +130,7 @@ def upsert_project(
 
     db.commit()
     db.refresh(project)
+    response.headers["Cache-Control"] = "no-store"
     return _serialize_project(project)
 
 

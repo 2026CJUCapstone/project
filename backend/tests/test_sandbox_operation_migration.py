@@ -118,12 +118,15 @@ def test_initializer_adds_nullable_sandbox_operation_and_preserves_pending_inten
     pending_before_retry = _job_snapshot(engine, include_operation=True)
     assert pending_before_retry["running"]["sandbox_operation"] == PENDING_OPERATION
 
-    # The v8 marker is additive. This only verifies schema history/data
-    # preservation, not that a mixed-version online worker rollout is safe.
-    assert RUNTIME_SCHEMA_VERSION == "20260910_execution_retention_v10"
+    # Runtime history is preserved outside the active marker namespace so a
+    # stale replica cannot remain ready during a rolling deployment.
+    assert RUNTIME_SCHEMA_VERSION == "20260927_problem_publication_gate_v26"
     with engine.connect() as connection:
         versions = set(connection.execute(text("SELECT version FROM schema_migrations")).scalars())
-    assert {V7_SCHEMA_VERSION, RUNTIME_SCHEMA_VERSION} <= versions
+    assert RUNTIME_SCHEMA_VERSION in versions and V7_SCHEMA_VERSION not in versions
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT 1 FROM runtime_schema_history WHERE version=:v'),
+                                  {'v':V7_SCHEMA_VERSION}).first()
 
     initialize(bind=engine)
 

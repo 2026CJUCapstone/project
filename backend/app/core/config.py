@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     CODE_PROJECT_SCOPE_MAX_LENGTH: int = 128
     SUBMISSION_CODE_MAX_BYTES: int = 200_000
     EXECUTION_STDIN_MAX_BYTES: int = 65_536
+    # Private immutable test corpus, counted before compression across the DB.
+    JUDGE_TEST_DATA_STORE_MAX_MB: int = Field(default=512,ge=16,le=8192)
+    JUDGE_TEST_DATA_STORE_MAX_OBJECTS: int = Field(default=10000,ge=1,le=100000)
     EXECUTION_IP_RATE_LIMIT: int = 30
     EXECUTION_USER_RATE_LIMIT: int = 30
     EXECUTION_GLOBAL_RATE_LIMIT: int = 300
@@ -73,6 +76,13 @@ class Settings(BaseSettings):
     EXECUTION_QUEUE_PER_OWNER: int = 4
     EXECUTION_LEASE_SECONDS: int = 120
     EXECUTION_JOB_TIMEOUT_SECONDS: float = 120
+    EXECUTION_MEMORY_BUDGET_MB: int = Field(default=1024, ge=1, le=65536)
+    EXECUTION_CPU_BUDGET_MILLIS: int = Field(default=2000, ge=1, le=256000)
+    EXECUTION_JOB_OVERHEAD_MB: int = Field(default=32, ge=0, le=1024)
+    JUDGE_WORKER_CLASS: str = 'legacy'
+    # Operator-approved exact image/toolchain/launcher allowlist; no implicit
+    # production enrollment from an administrator's problem policy JSON.
+    JUDGE_RUNTIME_REGISTRY: str = ''
     COMPILER_QUEUE_HISTORY_LIMIT: int = Field(default=500, ge=0, le=10_000)
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_RESET_BASE_URL: str | None = None

@@ -33,7 +33,7 @@ const featureCards = [
   },
   {
     icon: Swords,
-    eyebrow: '챌린지',
+    eyebrow: '문제',
     title: '알고리즘 문제 풀기',
     description: '난이도와 주제별로 문제를 찾아 풀어보세요. 제출한 코드의 채점 결과와 이전 제출 기록을 확인할 수 있습니다.',
     accent: 'text-emerald-600 dark:text-emerald-300',
@@ -52,7 +52,7 @@ const featureCards = [
 const steps = [
   ['01', '코드 실행하기', 'IDE에서 언어를 선택하면 기본 예제 코드가 나타납니다. 예제를 그대로 실행하거나 직접 코드를 작성해 보세요.'],
   ['02', 'B++ 컴파일 결과 살펴보기', 'B++ 코드를 실행한 뒤 AST·SSA 그래프와 IR·어셈블리 코드를 살펴보세요. 코드가 분석되고 변환되는 과정을 확인할 수 있습니다.'],
-  ['03', '알고리즘 문제 풀기', '챌린지에서 문제를 골라 코드를 제출해 보세요. 채점 결과와 레이팅을 확인하고, 궁금한 점은 커뮤니티에 질문할 수 있습니다.'],
+  ['03', '알고리즘 문제 풀기', '문제 목록에서 풀고 싶은 문제를 골라 코드를 제출해 보세요. 채점 결과와 레이팅을 확인하고, 궁금한 점은 커뮤니티에 질문할 수 있습니다.'],
 ];
 
 export function Landing() {
@@ -93,7 +93,7 @@ export function Landing() {
                 onClick={() => navigate('/challenges')}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white/80 px-5 py-3 text-sm font-bold text-slate-800 transition hover:border-slate-400 hover:bg-white dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
               >
-                <Swords size={17} /> 챌린지 둘러보기
+                <Swords size={17} /> 문제 둘러보기
               </button>
             </div>
             <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500 dark:text-slate-400">
@@ -166,7 +166,7 @@ export function Landing() {
           <div className="max-w-2xl">
             <p className="text-xs font-bold tracking-[0.2em] text-blue-600 dark:text-blue-400">주요 기능</p>
             <h2 className="mt-3 text-3xl font-black tracking-[-0.03em] sm:text-4xl">코드 실행과 문제 풀이</h2>
-            <p className="mt-4 leading-7 text-slate-600 dark:text-slate-400">코드 실행은 IDE에서, 알고리즘 연습은 챌린지에서 시작하세요. 질문이나 풀이 이야기는 커뮤니티에 남길 수 있습니다.</p>
+            <p className="mt-4 leading-7 text-slate-600 dark:text-slate-400">코드 실행은 IDE에서, 알고리즘 연습은 문제 목록에서 시작하세요. 질문이나 풀이 이야기는 커뮤니티에 남길 수 있습니다.</p>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {featureCards.map(({ icon: Icon, eyebrow, title, description, accent, panel }) => (

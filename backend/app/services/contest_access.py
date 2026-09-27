@@ -17,10 +17,15 @@ def iso(value):
 
 
 def private_problem_ids(at=None):
-    return select(ContestProblem.problem_id).join(Contest, Contest.id == ContestProblem.contest_id).where(
+    contest_private = select(ContestProblem.problem_id).join(Contest, Contest.id == ContestProblem.contest_id).where(
         ContestProblem.is_new.is_(True),
         or_(Contest.published.is_(False), Contest.ends_at > (at or now_utc())),
     )
+    reviewed_drafts = select(Problem.id).where(
+        Problem.publication_review_required.is_(True),
+        Problem.publication_approved_at.is_(None),
+    )
+    return contest_private.union(reviewed_drafts)
 
 
 def require_public_problem(db, problem_id, user=None):
@@ -30,8 +35,8 @@ def require_public_problem(db, problem_id, user=None):
     # Administrators may inspect drafts, but contest grading uses snapshots.
     if user is not None and user.role == "admin":
         return
-    if db.query(ContestProblem.id).filter(
-        ContestProblem.problem_id == problem_id,
-        ContestProblem.problem_id.in_(private_problem_ids()),
+    if db.query(Problem.id).filter(
+        Problem.id == problem_id,
+        Problem.id.in_(private_problem_ids()),
     ).first():
         raise HTTPException(status_code=404, detail="Problem not found")

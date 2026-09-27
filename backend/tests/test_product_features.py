@@ -7,10 +7,11 @@ from app.core.config import settings
 from app.core.bootstrap import COMMUNITY_GUIDE_NOTICE_ID
 from app.core.database import SessionLocal
 from app.main import app
-from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, Submission, User, UserProblemScore
+from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, ProblemLearningRecord, Submission, User, UserProblemScore
 from app.services import auth
 from app.services import compiler as compiler_service
-from tests.execution_helpers import finish_receipt
+from tests.execution_helpers import finish_receipt, install_measured_fake_judge
+from tests.test_judge_policy import policy_fixture
 
 
 def _token_for(username: str) -> str:
@@ -44,6 +45,7 @@ def _delete_users(*usernames: str) -> None:
         users = db.query(User).filter(User.username.in_(usernames)).all()
         user_ids = [user.id for user in users]
         if user_ids:
+            db.query(ProblemLearningRecord).filter(ProblemLearningRecord.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(PasswordResetToken).filter(PasswordResetToken.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(CodeProject).filter(CodeProject.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(Comment).filter(Comment.user_id.in_(user_ids)).delete(synchronize_session=False)
@@ -227,7 +229,8 @@ async def test_community_guide_notice_is_published():
 
 
 @pytest.mark.asyncio
-async def test_submission_awards_problem_points_and_records_submission(monkeypatch: pytest.MonkeyPatch):
+async def test_submission_awards_problem_points_and_records_submission(
+        monkeypatch: pytest.MonkeyPatch, tmp_path):
     suffix = uuid.uuid4().hex[:10]
     owner = _create_user(f"owner_{suffix}", role="admin")
     solver = _create_user(f"solver_{suffix}")
@@ -241,9 +244,12 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
 
     monkeypatch.setattr(compiler_service.compiler_instance, "run", fake_run)
     monkeypatch.setattr(compiler_service.compiler_instance, "_execute", fake_execute)
+    install_measured_fake_judge(tmp_path, monkeypatch)
 
     db = SessionLocal()
     try:
+        sample = [{"input": "", "expected_output": "ok"}]
+        hidden = []
         problem = Problem(
             creator_id=owner.id,
             title=f"points {suffix}",
@@ -251,7 +257,8 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
             tags=["io"],
             description="points",
             points=250,
-            test_cases={"sample": [{"input": "", "expected_output": "ok"}], "hidden": []},
+            test_cases={"sample": sample, "hidden": hidden},
+            judge_policy=policy_fixture(sample, hidden, ('bpp',)),
         )
         db.add(problem)
         db.commit()
@@ -290,6 +297,7 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
             if problem_id:
                 db.query(Submission).filter(Submission.problem_id == problem_id).delete()
                 db.query(UserProblemScore).filter(UserProblemScore.challenge_id == problem_id).delete()
+                db.query(ProblemLearningRecord).filter(ProblemLearningRecord.problem_id == problem_id).delete()
                 db.query(Problem).filter(Problem.id == problem_id).delete()
             db.commit()
         finally:
@@ -382,7 +390,8 @@ async def test_submission_rejects_oversized_code_before_running():
 
 
 @pytest.mark.asyncio
-async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.MonkeyPatch):
+async def test_submission_history_exposes_public_metadata(
+        monkeypatch: pytest.MonkeyPatch, tmp_path):
     suffix = uuid.uuid4().hex[:10]
     owner = _create_user(f"history_owner_{suffix}", role="admin")
     solver = _create_user(f"history_solver_{suffix}")
@@ -396,9 +405,12 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(compiler_service.compiler_instance, "run", fake_run)
     monkeypatch.setattr(compiler_service.compiler_instance, "_execute", fake_execute)
+    install_measured_fake_judge(tmp_path, monkeypatch)
 
     db = SessionLocal()
     try:
+        sample = [{"input": "", "expected_output": "ok"}]
+        hidden = []
         problem = Problem(
             creator_id=owner.id,
             title=f"history {suffix}",
@@ -406,7 +418,8 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
             tags=["io"],
             description="history",
             points=100,
-            test_cases={"sample": [{"input": "", "expected_output": "ok"}], "hidden": []},
+            test_cases={"sample": sample, "hidden": hidden},
+            judge_policy=policy_fixture(sample, hidden, ('bpp',)),
         )
         db.add(problem)
         db.commit()
@@ -443,6 +456,7 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
             if problem_id:
                 db.query(Submission).filter(Submission.problem_id == problem_id).delete()
                 db.query(UserProblemScore).filter(UserProblemScore.challenge_id == problem_id).delete()
+                db.query(ProblemLearningRecord).filter(ProblemLearningRecord.problem_id == problem_id).delete()
                 db.query(Problem).filter(Problem.id == problem_id).delete()
             db.commit()
         finally:

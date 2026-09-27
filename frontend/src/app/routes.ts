@@ -11,6 +11,9 @@ async function loadWithLocalMonaco<Module>(loadPage: () => Promise<Module>) {
 
 const IDE = lazyRoute(() => loadWithLocalMonaco(() => import("./pages/IDE")), "IDE");
 const Leaderboard = lazyRoute(() => import("./pages/Leaderboard"), "Leaderboard");
+const Profile = lazyRoute(() => import("./pages/Profile"), "Profile");
+const Settings = lazyRoute(() => import("./pages/Settings"), "Settings");
+const Learning = lazyRoute(() => import("./pages/Learning"), "Learning");
 const Challenges = lazyRoute(() => import("./pages/Challenges"), "Challenges");
 const ChallengeDetail = lazyRoute(() => import("./pages/ChallengeDetail"), "ChallengeDetail");
 const Community = lazyRoute(() => import("./pages/Community"), "Community");
@@ -41,6 +44,9 @@ export const routeDefinitions = [
       { path: "contests/:contestId/edit", Component: ContestEditor },
       { path: "contests/:contestId/problems/:contestProblemId", Component: ContestProblemPage },
       { path: "leaderboard", Component: Leaderboard },
+      { path: "profile", Component: Profile },
+      { path: "settings", Component: Settings },
+      { path: "learning", Component: Learning },
       { path: "challenges", Component: Challenges },
       { path: "challenges/:challengeId", Component: ChallengeDetail },
       { path: "queue", Component: CompileQueue },

@@ -16,6 +16,16 @@ COMPILER = 'b'*40
 IDS = {role: 'sha256:'+str(index)*64 for index, role in enumerate(ci.ROLES, 1)}
 
 
+@pytest.mark.parametrize('error,expected', [(ci.ScanError('Image OS inventory was not detected'), 'Image OS inventory was not detected'), (subprocess.CalledProcessError(1, ['tool', 'private-credential']), 'CalledProcessError')])
+def test_main_reports_fixed_validation_reason_but_not_subprocess_secrets(monkeypatch, capsys, error, expected):
+    monkeypatch.setattr(sys, 'argv', ['ci_image_security.py', '--commit', COMMIT, '--trivy', 'scanner', '--output-dir', 'output', '--cache-dir', 'cache'])
+    def fail(**kwargs):
+        raise error
+    monkeypatch.setattr(ci, 'build_and_scan', fail)
+    assert ci.main() == 2
+    assert capsys.readouterr().out.strip() == 'Application image security failed: ' + expected
+
+
 def test_builds_real_contexts_with_no_service_start_or_mutable_tag():
     for role in ci.ROLES:
         command = ci.build_command(role, COMMIT, COMPILER, 'bounded', Path('id'))

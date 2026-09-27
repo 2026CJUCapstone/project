@@ -95,7 +95,9 @@ def main():
         receipt = build_and_scan(commit=args.commit, trivy=args.trivy,
             output=args.output_dir, cache=args.cache_dir)
     except (ValueError, OSError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as exc:
-        print('Application image security failed: ' + type(exc).__name__)
+        # ScanError messages are fixed validation reasons; subprocess repr may
+        # contain credentials and must remain suppressed.
+        print('Application image security failed: ' + (str(exc) if isinstance(exc, ScanError) else type(exc).__name__))
         return 2
     print(json.dumps(receipt))
     return 0 if receipt['policyPassed'] else 1

@@ -81,7 +81,14 @@ jobs:
           retention-days: 14
 
       - name: Run Backend Tests
-        run: pytest -q backend/tests
+        # Kernel identity tests need a procfs mounted for their PID namespace.
+        # Hosted runner users cannot inspect root-owned host PID1 namespaces.
+        # Create a private namespace, then drop back to the original UID/GID:
+        # do not weaken production identity checks or skip the real Linux tests.
+        run: |
+          sudo unshare --mount --pid --fork --mount-proc --propagation private --kill-child=SIGKILL \
+            setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups \
+            "$(command -v python)" -m pytest -q backend/tests
 
   frontend-checks:
     runs-on: ubuntu-latest

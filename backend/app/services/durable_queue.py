@@ -12,7 +12,7 @@ import json
 import re
 import uuid
 
-from app.models.database import ExecutionJob, ExecutionWorkerRecord, ExecutionRuntimeRecord, WorkerProcessRecord
+from app.models.database import ExecutionJob, ExecutionWorkerRecord, ExecutionRuntimeRecord, WorkerProcessRecord, ExecutionResourceBudget
 from app.services.contest_access import now_utc
 from app.services.runtime_identity import RuntimeIdentity
 from app.services.runtime_registry import execution_lock, ensure_runtime_locked
@@ -31,6 +31,12 @@ class ExecutionExpired(Exception):
 
 
 EXECUTION_EXPIRED_MESSAGE = '보관 기간이 지나 실행 코드와 결과가 삭제되었습니다. 자동으로 다시 실행하지 않습니다.'
+
+
+def execution_payload_hash(kind, payload):
+    encoded = json.dumps({'kind':kind,'payload':payload}, sort_keys=True,
+        separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest(), len(encoded)
 
 
 class SandboxOperationPending(RuntimeError):
@@ -69,10 +75,18 @@ class Claim:
     payload: dict
     attempts: int
     daemon_id: str | None = None
+    runtime_snapshot: object | None = None
+
+
+@dataclass(frozen=True)
+class ClaimPreparation:
+    """Trusted pre-claim material plus the payload used for host reservation."""
+    runtime_snapshot: object
+    reservation_payload: dict
 
 
 class DurableQueue:
-    def __init__(self, session_factory, *, concurrency=2, capacity=200, per_owner=4, lease_seconds=120, max_attempts=3, reap_expired=None, on_terminal=None, on_transition=None):
+    def __init__(self, session_factory, *, concurrency=2, capacity=200, per_owner=4, lease_seconds=120, max_attempts=3, reap_expired=None, on_terminal=None, on_transition=None, resource_budget=None):
         if min(concurrency, capacity, per_owner, lease_seconds, max_attempts) < 1:
             raise ValueError("Queue limits must be positive")
         self.sessions = session_factory
@@ -81,6 +95,7 @@ class DurableQueue:
         self.reap_expired = reap_expired
         self.on_terminal = on_terminal
         self.on_transition = on_transition
+        self.resource_budget = resource_budget
 
     def _lock(self, db):
         # PostgreSQL and SQLite support this upsert. It serializes first creation
@@ -101,10 +116,9 @@ class DurableQueue:
         quota_key = quota_key or owner_key
         if len(quota_key) > 200:
             raise ValueError('Invalid quota identity')
-        encoded = json.dumps({"kind": kind, "payload": payload}, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
-        if len(encoded) > 2_000_000:
+        digest, encoded_size = execution_payload_hash(kind,payload)
+        if encoded_size > 2_000_000:
             raise ValueError("Job payload too large")
-        digest = hashlib.sha256(encoded).hexdigest()
         self._lock(db)
         old = db.query(ExecutionJob).filter_by(owner_key=owner_key, request_id=request_id).first()
         if old:
@@ -194,10 +208,12 @@ class DurableQueue:
             active=db.query(ExecutionJob.id).filter_by(worker_id=worker.id,status='running').count()
             return {'id':worker.id,'draining':record.draining_at is not None,'active_claims':active}
 
-    def claim(self, *, at=None, worker=None, stop_requested=None, daemon_id=None):
+    def claim(self, *, at=None, worker=None, stop_requested=None, daemon_id=None, eligible=None):
         if daemon_id is not None and (not isinstance(daemon_id, str)
                 or not re.fullmatch('[A-Za-z0-9][A-Za-z0-9:_.-]{0,127}', daemon_id)):
             raise ValueError('Exact sandbox daemon identity required')
+        if eligible is not None and not callable(eligible):
+            raise ValueError('Claim eligibility must be a trusted callable')
         with self.sessions() as db:
             self._lock(db)
             at = at or now_utc()
@@ -251,10 +267,19 @@ class DurableQueue:
             if db.query(ExecutionJob).filter_by(status='running').count() >= self.concurrency:
                 db.commit()
                 return None
-            job = db.query(ExecutionJob).filter_by(status='queued').order_by(ExecutionJob.received_at, ExecutionJob.id).first()
-            if job is None:
+            if self.resource_budget:
+                selected = self._resource_candidate(db, daemon_id, eligible)
+            else:
+                selected = None
+                for queued in db.query(ExecutionJob).filter_by(status='queued').order_by(ExecutionJob.received_at, ExecutionJob.id):
+                    prepared = eligible(queued.kind,queued.payload,queued.id) if eligible else True
+                    if prepared:
+                        selected=(queued,prepared)
+                        break
+            if selected is None:
                 db.commit()
                 return None
+            job,prepared=selected
             job.status, job.lease_token = 'running', uuid.uuid4().hex
             job.sandbox_daemon_id = daemon_id
             job.worker_id = worker.id if worker is not None else None
@@ -262,9 +287,61 @@ class DurableQueue:
             job.attempts += 1
             if self.on_transition:
                 self.on_transition(db, job)
-            result = Claim(job.id, job.lease_token, job.kind, job.payload, job.attempts, job.sandbox_daemon_id)
+            snapshot = prepared.runtime_snapshot if isinstance(prepared, ClaimPreparation) else prepared
+            result = Claim(job.id, job.lease_token, job.kind, job.payload, job.attempts,
+                job.sandbox_daemon_id, snapshot if snapshot is not True else None)
             db.commit()
             return result
+
+    def _resource_candidate(self, db, daemon_id, eligible=None):
+        """Called under the same database lock as claim/cleanup/publication."""
+        budget = self.resource_budget
+        scope = 'daemon:' + daemon_id if daemon_id else 'legacy-global'
+        ceiling = db.get(ExecutionResourceBudget, scope)
+        if ceiling is None:
+            db.add(ExecutionResourceBudget(scope=scope, memory_bytes=budget.memory_bytes, cpu_millis=budget.cpu_millis))
+            db.flush()
+        elif (ceiling.memory_bytes, ceiling.cpu_millis) != (budget.memory_bytes, budget.cpu_millis):
+            # A rolling worker config change must not silently raise the host
+            # allowance or reduce its reservation accounting. Operator action
+            # on an idle, drained host is required to reconfigure this row.
+            raise ValueError('Worker host resource budget configuration mismatch')
+        used_memory = used_cpu = 0
+        for running in db.query(ExecutionJob).filter_by(status='running').all():
+            reservation = running.resource_reservation
+            if reservation is None:
+                # Old workers did not record a trustworthy resource peak.
+                # Drain them, do not guess their memory from today's config.
+                return None
+            expected_scope = 'daemon:' + running.sandbox_daemon_id if running.sandbox_daemon_id else 'legacy-global'
+            if (not isinstance(reservation, dict) or type(reservation.get('version')) is not int or reservation['version'] != 1
+                    or reservation.get('scope') != expected_scope
+                    or type(reservation.get('memoryBytes')) is not int or reservation['memoryBytes'] <= 0
+                    or type(reservation.get('cpuMillis')) is not int or reservation['cpuMillis'] <= 0):
+                raise ValueError('Invalid active resource reservation')
+            # An unbound legacy claimant could be on any host: account it on
+            # every daemon. A legacy claimant likewise sees all daemon claims.
+            if scope == 'legacy-global' or reservation.get('scope') in (scope, 'legacy-global'):
+                used_memory += reservation['memoryBytes']
+                used_cpu += reservation['cpuMillis']
+        for job in db.query(ExecutionJob).filter_by(status='queued').order_by(ExecutionJob.received_at, ExecutionJob.id):
+            prepared = eligible(job.kind,job.payload,job.id) if eligible else True
+            if not prepared:
+                continue
+            reservation_payload=(prepared.reservation_payload
+                if isinstance(prepared,ClaimPreparation) else job.payload)
+            reservation = budget.reservation(reservation_payload, scope)
+            if reservation['workerClass'] not in (None, budget.worker_class):
+                continue
+            if not budget.fits(reservation):
+                raise ValueError('Queued submission cannot fit this worker host resource budget')
+            if not budget.fits(reservation, used_memory, used_cpu):
+                # Strict FIFO within each eligible class: do not indefinitely
+                # starve a large job with a stream of smaller later receipts.
+                return None
+            job.resource_reservation = reservation
+            return job,prepared
+        return None
 
     def start(self, job_id, token, action, *, at=None):
         """Execute a sandbox start only while this claim is still exclusive."""

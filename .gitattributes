@@ -1,2 +1,7 @@
 # Shell entrypoints must keep LF in Windows checkouts and git archive exports.
 *.sh text eol=lf
+
+# The judge hashes these Python launchers byte-for-byte. CRLF conversion would
+# change their identity and make archived execution receipts unreplayable.
+backend/app/services/linux_phase_launcher.py text eol=lf
+backend/app/services/launcher_archive/*.py text eol=lf

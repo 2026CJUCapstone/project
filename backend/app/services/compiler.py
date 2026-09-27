@@ -107,6 +107,16 @@ class DockerCompilerRunner:
         self.cleanup_guard = cleanup_guard
         self.client_factory = client_factory
 
+    def measured_submission(self, payload):
+        from app.services.measured_judge import MeasuredSubmission
+        from app.services.judge_runtime_registry import RuntimeRegistry
+        snapshot=getattr(self,'measured_snapshot',None)
+        worker_class=getattr(self,'measured_worker_class',settings.JUDGE_WORKER_CLASS)
+        if snapshot is not None:
+            return MeasuredSubmission(self,payload,None,worker_class,snapshot=snapshot)
+        return MeasuredSubmission(self,payload,
+            RuntimeRegistry.load(settings.JUDGE_RUNTIME_REGISTRY),worker_class)
+
     async def compile(
         self,
         source_code: str,
@@ -128,7 +138,8 @@ class DockerCompilerRunner:
         errors = [item.to_dict() for item in diagnostics if item.severity == "error"]
         warnings = [item.to_dict() for item in diagnostics if item.severity == "warning"]
         response = {
-            "success": result["exit_code"] == 0,
+            "success": result["exit_code"] == 0 and not result.get("failure_reason"),
+            "failure_reason": result.get("failure_reason"),
             "errors": errors,
             "warnings": warnings,
             "execution_time": result["execution_time"],
@@ -138,7 +149,7 @@ class DockerCompilerRunner:
             },
         }
 
-        if result["exit_code"] != 0 or language != "bpp":
+        if not response["success"] or language != "bpp":
             return response
 
         source_filename = self._resolve_filename(language, source_code)
@@ -323,7 +334,8 @@ class DockerCompilerRunner:
             if output_exceeded:
                 exit_code = 1
                 stderr += b"\nOutput limit exceeded."
-                failure_reason = 'output_limit_exceeded'
+                # Preserve proven OOM if both collectors observed a failure.
+                failure_reason = failure_reason or 'output_limit_exceeded'
         except TimeoutError:
             if container is not None:
                 await self._kill_container(container)

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.models import database as db_models
+from app.services.contest_access import private_problem_ids
 from app.services.redis_client import cache_delete_pattern, cache_get_json, cache_set_json, redis_key
 
 
@@ -16,6 +17,7 @@ DIFFICULTY_LEVELS: tuple[str, ...] = (
     "gold5", "gold4", "gold3", "gold2", "gold1",
     "platinum5", "platinum4", "platinum3", "platinum2", "platinum1",
     "diamond5", "diamond4", "diamond3", "diamond2", "diamond1",
+    "ruby5", "ruby4", "ruby3", "ruby2", "ruby1",
 )
 
 DIFFICULTY_VALUES: dict[str, int] = {
@@ -186,6 +188,7 @@ def rating_stats_for_users(db: Session, user_ids: Iterable[str]) -> dict[str, Ra
         .filter(
             db_models.UserProblemScore.user_id.in_(missing_user_ids),
             ~db_models.Problem.id.in_(SYSTEM_BOARD_IDS),
+            ~db_models.Problem.id.in_(private_problem_ids()),
         )
         .all()
     )
@@ -224,6 +227,7 @@ def tag_proficiencies_for_user(db: Session, user_id: str, limit: int = 8) -> lis
         .filter(
             db_models.UserProblemScore.user_id == user_id,
             ~db_models.Problem.id.in_(SYSTEM_BOARD_IDS),
+            ~db_models.Problem.id.in_(private_problem_ids()),
         )
         .all()
     )
