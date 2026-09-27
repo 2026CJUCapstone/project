@@ -1,5 +1,11 @@
 # 감사 후속 수정 진행표
 
+## 2026-09-27 최종 후보 검증 — `d000ec1e`
+
+최종 코드 기준선 `d000ec1e47a5acbc4c794dd3a2f87cca25d05d57`에서 백엔드 전체 **3,150 PASS/454 조건부 SKIP/10 subtests PASS/실패 0**, 프런트 **58 files/322 PASS**, TypeScript 검사와 production build가 통과했다. 별도 서버 audit PostgreSQL·Redis에서는 재채점 shard FK 순서 오류 7건을 재현한 뒤 부모 shard 선행 flush로 고쳐 동일 묶음이 **48 PASS/3 의도된 SQLite 변형 SKIP**이 됐다. runtime controller 출력은 stdout·stderr 합계 128 KiB에서 실제 프로세스를 종료하도록 바꾸고 overflow·timeout 회귀를 추가했다.
+
+운영 SHA는 여전히 `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`다. 공개 `/webcompiler/ready`가 200 HTML SPA fallback을 반환하는 문제도 다시 확인했다. push, main 병합, 배포, 운영 데이터 변경, A–J 등록은 하지 않았다. A01–A25와 5.4, A–J 패키지, 실제 검증 결과와 남은 외부 조건은 [최종 준비 상태 문서](final-readiness-acceptance-2026-09-27.md)를 기준으로 한다. 아래 과거 checkpoint는 이 판정을 덮어쓰지 않는다.
+
 ## 2026-09-27 최신 상태 — migration release와 최종 잔여 조건
 
 운영은 release `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`로 교체됐다. 운영 dump 복원 리허설과 추가형 migration, 실패 시 이전 application image rollback을 실제 수행했고 PostgreSQL·Redis·PgBouncer·API-proxy identity를 보존했다. API 2개, worker, frontend 및 상태 서비스는 healthy다. C/C++/Python/Java/JavaScript와 새 B++ 실행 `694bf991-357a-4cfa-9232-082c32fa9d03`이 stdout `42`로 완료됐고, CE·RE·TLE·MLE, 기록 필터와 public request-size 경계를 확인했다. 고유 read-only GET 12개는 두 API에 7/5로 분배됐으며 live proxy는 `least_conn`이다. 대기·실행 작업과 잔여 sandbox는 검증 뒤 0이다.
