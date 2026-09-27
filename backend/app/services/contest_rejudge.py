@@ -177,6 +177,10 @@ def create_batch(db, contest_id, data, actor):
             item_count=len(shard_items), source_bytes=shard_bytes,
             manifest_hash=_manifest_hash(shard_entries), status='pending')
         db.add(shard)
+        # ContestRejudgeItem stores only the scalar shard_id, so SQLAlchemy has
+        # no relationship edge from which to derive INSERT ordering. PostgreSQL
+        # enforces the FK immediately; persist the bounded parent row first.
+        db.flush([shard])
         for values in shard_items:
             db.add(m.ContestRejudgeItem(batch_id=batch.id, shard_id=shard.id, **values))
         # Flush one bounded shard at a time so source text from earlier shards is

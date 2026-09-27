@@ -17,6 +17,7 @@ import shutil
 import stat
 import subprocess
 import tarfile
+import threading
 import time
 import uuid
 from types import SimpleNamespace
@@ -48,6 +49,7 @@ DRAFT_CASE_COUNT = 79
 DIAGNOSTIC_PROGRAM_COUNT = 6
 SLOW_TARGET_COUNT = 3
 DEFAULT_DOCKER_SOCKET_PATHS = frozenset(('/var/run/docker.sock', '/run/docker.sock'))
+CONTROLLER_OUTPUT_LIMIT_BYTES = 128 * 1024
 
 
 def command(*args,timeout=10):
@@ -55,6 +57,78 @@ def command(*args,timeout=10):
     if value.returncode:
         raise RuntimeError('Docker isolated operation failed: '+args[0])
     return value.stdout
+
+
+def run_bounded_controller(argv, *, timeout, output_limit=CONTROLLER_OUTPUT_LIMIT_BYTES):
+    """Run the trusted controller without ever retaining unbounded pipe output."""
+    if timeout <= 0 or output_limit <= 0:
+        raise ValueError('Controller timeout and output limit must be positive')
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    chunks = {'stdout': [], 'stderr': []}
+    truncated = {'stdout': False, 'stderr': False}
+    total = 0
+    lock = threading.Lock()
+    overflow = threading.Event()
+
+    def drain(name, stream):
+        nonlocal total
+        try:
+            while True:
+                chunk = stream.read(8192)
+                if not chunk:
+                    return
+                with lock:
+                    remaining = max(0, output_limit - total)
+                    if remaining:
+                        kept = chunk[:remaining]
+                        chunks[name].append(kept)
+                        total += len(kept)
+                    if len(chunk) > remaining:
+                        truncated[name] = True
+                        overflow.set()
+        except (OSError, ValueError):
+            return
+
+    readers = [
+        threading.Thread(target=drain, args=('stdout', process.stdout), daemon=True),
+        threading.Thread(target=drain, args=('stderr', process.stderr), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+
+    deadline = time.monotonic() + timeout
+    timed_out = False
+    while process.poll() is None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            break
+        if overflow.wait(min(0.05, remaining)):
+            break
+    if process.poll() is None and (timed_out or overflow.is_set()):
+        process.kill()
+    try:
+        returncode = process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        returncode = process.wait(timeout=5)
+    for reader in readers:
+        reader.join(timeout=2)
+    if timed_out:
+        returncode = 124
+    elif overflow.is_set():
+        returncode = 125
+    return SimpleNamespace(
+        returncode=returncode,
+        stdout=b''.join(chunks['stdout']),
+        stderr=b''.join(chunks['stderr']),
+        timed_out=timed_out,
+        output_overflow=overflow.is_set(),
+        stdout_truncated=truncated['stdout'],
+        stderr_truncated=truncated['stderr'],
+        captured_output_bytes=total,
+        output_limit_bytes=output_limit,
+    )
 
 
 def capacity():
@@ -430,20 +504,14 @@ def main():
             *(['--candidate'] if candidate else []),
             *(['--draft-corpus'] if draft else []), '--execute').decode().strip()
         if not re.fullmatch('[a-f0-9]{64}', identity): raise RuntimeError('Controller identity invalid')
-        timed_out=False
         controller_started=time.monotonic()
-        try:
-            result = subprocess.run(['docker','start','-a',identity], capture_output=True,
-                                    timeout=controller_timeout)
-        except subprocess.TimeoutExpired as exc:
-            timed_out=True
-            result=SimpleNamespace(returncode=124,stdout=exc.stdout or b'',stderr=exc.stderr or b'')
-        if len(result.stdout)+len(result.stderr) > 131072: raise RuntimeError('Controller report cap')
+        result = run_bounded_controller(
+            ['docker','start','-a',identity], timeout=controller_timeout)
         # Persist exact evidence before temporary container cleanup, even for a
         # failed matrix. This report does not itself approve a contest policy.
         elapsed=time.monotonic()-controller_started
         evidence=dict(version=1,owner=owner,suite=args.suite,repetition=args.repetition,
-            **controller_watchdog_evidence(args.suite,args.language,elapsed,timed_out),
+            **controller_watchdog_evidence(args.suite,args.language,elapsed,result.timed_out),
             host=dict(system=platform.system(),kernel=platform.release(),architecture=platform.machine(),cpuCount=os.cpu_count()),
             dedicatedDockerDaemonIdSha256=daemon_id_sha256,
             fixedInputIdentities=fixed_input_identities,
@@ -452,6 +520,11 @@ def main():
             scriptsSha256={name:hashlib.sha256((root/name).read_bytes()).hexdigest()
                            for name in set(('run_isolated_runtime_matrix.py','verify_runtime_matrix.py',probe_name))},
             versions=versions,capacityBefore=before,capacityBeforeCleanup=capacity(),controllerExitCode=result.returncode,
+            controllerOutputLimitBytes=result.output_limit_bytes,
+            controllerOutputBytesCaptured=result.captured_output_bytes,
+            controllerOutputOverflow=result.output_overflow,
+            controllerStdoutTruncated=result.stdout_truncated,
+            controllerStderrTruncated=result.stderr_truncated,
             stdout=result.stdout.decode(errors='replace'),stderr=result.stderr.decode(errors='replace'))
         if reference_suite:
             evidence['referenceArchiveSha256']=hashlib.sha256((root/'freshman-package.tar.gz').read_bytes()).hexdigest()
@@ -463,6 +536,8 @@ def main():
             for name in ('bpp_candidate_overlay.py','probe_bpp_candidate.py'):
                 evidence['scriptsSha256'][name]=hashlib.sha256((root/name).read_bytes()).hexdigest()
         print(result.stdout.decode(errors='replace'), flush=True)
+        if result.output_overflow:
+            raise RuntimeError('Controller report cap exceeded')
         if result.returncode:
             print(result.stderr.decode(errors='replace'), flush=True)
             raise RuntimeError('Runtime matrix incomplete')

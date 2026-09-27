@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import stat
 import sys
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -277,6 +278,34 @@ def test_runtime_harness_pins_every_controller_input_before_docker(tmp_path: Pat
 def test_runtime_harness_trusted_manifest_matches_current_sources() -> None:
     for name,expected in host_probe.TRUSTED_CONTROLLER_FILES.items():
         assert hashlib.sha256((ROOT/'scripts'/name).read_bytes()).hexdigest()==expected
+
+
+def test_controller_output_is_killed_and_captured_within_the_physical_cap() -> None:
+    started = time.monotonic()
+    result = host_probe.run_bounded_controller(
+        [sys.executable, '-c', 'import os,time; os.write(1,b"x"*131072); time.sleep(10)'],
+        timeout=5,
+        output_limit=4096,
+    )
+    assert time.monotonic() - started < 4
+    assert result.output_overflow is True
+    assert result.timed_out is False
+    assert result.returncode == 125
+    assert result.stdout_truncated is True
+    assert result.captured_output_bytes == len(result.stdout) + len(result.stderr) == 4096
+
+
+def test_controller_timeout_uses_the_same_bounded_capture() -> None:
+    result = host_probe.run_bounded_controller(
+        [sys.executable, '-c', 'import os,time; os.write(2,b"waiting"); time.sleep(10)'],
+        timeout=0.1,
+        output_limit=4096,
+    )
+    assert result.timed_out is True
+    assert result.output_overflow is False
+    assert result.returncode == 124
+    assert result.stderr == b'waiting'
+    assert result.captured_output_bytes <= result.output_limit_bytes
 
 
 def test_staged_runtime_source_archives_when_available() -> None:
