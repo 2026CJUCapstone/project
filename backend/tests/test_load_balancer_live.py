@@ -94,7 +94,8 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
         'REDIS_URL':os.environ['TEST_REDIS_URL'], 'REDIS_KEY_PREFIX':prefix,
         'SECRET_KEY':'isolated-lb-test-secret-012345678901234567890',
         'COMPILER_QUEUE_CONCURRENCY':'1', 'EXECUTION_QUEUE_CAPACITY':'8',
-        'EXECUTION_QUEUE_PER_OWNER':'4', 'EXECUTION_IP_RATE_LIMIT':'8',
+        'EXECUTION_QUEUE_PER_OWNER':'4', 'EXECUTION_IP_RATE_LIMIT':'1000',
+        'EXECUTION_GLOBAL_RATE_LIMIT':'8',
         'SANDBOX_POOL_ID':prefix, 'SANDBOX_IMAGE':os.environ['SANDBOX_IMAGE'],
         'SANDBOX_WORKDIR_ROOT':sandbox, 'SANDBOX_CPU_LIMIT':'0.25',
         'SANDBOX_MEMORY_MB':'256', 'EXECUTION_TIMEOUT':'10',
@@ -281,8 +282,9 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
             with replicas[0]() as db:
                 assert db.query(m.ExecutionJob).count() == jobs_before_idempotent_ramp
                 assert db.get(m.ExecutionJob,job_id).attempts == 1
-            # A second rate window uses one real terminal plus distinct HTTP
-            # owners and request IDs. Exactly eight unique receipts are admitted
+            # A second global rate window uses one real terminal plus distinct
+            # HTTP owners and request IDs. The per-IP cap is deliberately high,
+            # so exactly eight unique receipts prove the shared global cap
             # across both protocols; every accepted HTTP job completes once.
             keys = list(store.scan_iter(match=prefix+':rate_limit:*'))
             if keys:
