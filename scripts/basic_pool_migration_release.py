@@ -54,6 +54,7 @@ BUSINESS_TABLES = (
     "execution_jobs",
     "problem_learning_records",
 )
+MIGRATED_BUSINESS_COLUMNS = {"problems": {"judge_policy"}}
 UNCHANGED_CONTRACTS = (
     "backend/Dockerfile",
     "backend/requirements.lock",
@@ -256,6 +257,43 @@ def _fingerprints(container: str, columns: dict[str, tuple[str, ...]]) -> dict[s
     return values
 
 
+def _preserved_columns(columns: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+    return {
+        table: tuple(
+            name for name in names if name not in MIGRATED_BUSINESS_COLUMNS.get(table, set())
+        )
+        for table, names in columns.items()
+    }
+
+
+def _problem_policy_snapshot(container: str) -> dict[str, dict]:
+    rows = b.o.sql(
+        container,
+        "SELECT json_build_object('id',id,'policy',judge_policy,'review',publication_review_required)::text "
+        "FROM problems ORDER BY id",
+    ).splitlines()
+    return {row["id"]: row for row in (json.loads(value) for value in rows)}
+
+
+def _assert_compatibility_policy_migration(before: dict[str, dict], after: dict[str, dict]) -> None:
+    assert set(after) == set(before)
+    migrated = 0
+    for problem_id, old in before.items():
+        new = after[problem_id]
+        eligible = (
+            problem_id not in {"__notice__", "__free__"}
+            and old["policy"] is None
+            and old["review"] is None
+        )
+        if eligible:
+            assert new["policy"] == {"kind": "compatibility-v1"}
+            migrated += 1
+        else:
+            assert new["policy"] == old["policy"]
+        assert new["review"] == old["review"]
+    assert migrated > 0, "Production rehearsal must exercise the compatibility migration"
+
+
 def _dump(path: Path, postgres_id: str) -> None:
     with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as stream:
         result = subprocess.run(
@@ -344,7 +382,7 @@ def _wait_for_stable_postgres(container: str, timeout_seconds: int = 90) -> None
 def rehearse(state: dict) -> None:
     dump = b.ROOT / "rehearsal-source.dump"
     _dump(dump, state["postgres_id"])
-    columns = _columns("webcompiler-postgres")
+    columns = _preserved_columns(_columns("webcompiler-postgres"))
     suffix = uuid4().hex[:12]
     network = "webcompiler-migration-" + suffix
     postgres = "webcompiler-migration-postgres-" + suffix
@@ -385,11 +423,16 @@ def rehearse(state: dict) -> None:
         # Production remains live while the rehearsal dump is restored, so its
         # rows may legitimately change after pg_dump's snapshot.  The restored
         # snapshot is the stable baseline for proving that both old and new
-        # initializers preserve every pre-existing business column.
+        # initializers preserve every column except the explicitly reviewed
+        # legacy judge-policy migration, which is verified row by row below.
         before = _fingerprints(postgres, columns)
+        policies_before = _problem_policy_snapshot(postgres)
         _run_initialize(state["images"]["backend"], network, env_file)
         _run_initialize(state["images"]["backend"], network, env_file)
         assert _fingerprints(postgres, columns) == before
+        _assert_compatibility_policy_migration(
+            policies_before, _problem_policy_snapshot(postgres)
+        )
         old_env = b.ROOT / "rehearsal-old.env"
         old_environment = dict(environment)
         old_environment["DEPLOYMENT_SHA"] = state["old"]["source_sha"]
@@ -556,9 +599,10 @@ def rollout() -> None:
         b.edge(state, maintenance)
         touched = True
         b.stop_current()
-        columns = _columns("webcompiler-postgres")
+        columns = _preserved_columns(_columns("webcompiler-postgres"))
         state["fingerprints"] = _fingerprints("webcompiler-postgres", columns)
         state["columns"] = {key: list(value) for key, value in columns.items()}
+        policies_before = _problem_policy_snapshot("webcompiler-postgres")
         b.save(state)
         _dump(b.ROOT / "pre-update-production.dump", state["postgres_id"])
         environment = dict(state["old"]["env"])
@@ -575,6 +619,9 @@ def rollout() -> None:
         _compose_initialize(environment)
         _compose_initialize(environment)
         assert _fingerprints("webcompiler-postgres", columns) == state["fingerprints"]
+        _assert_compatibility_policy_migration(
+            policies_before, _problem_policy_snapshot("webcompiler-postgres")
+        )
         state["phase"] = "starting"
         b.save(state)
         b.pc(environment, "up", "--no-build", "--pull", "never", "--no-deps", "-d", "backend", "worker", "frontend")

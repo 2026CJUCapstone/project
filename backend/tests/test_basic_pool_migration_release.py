@@ -233,6 +233,40 @@ def test_business_fingerprints_exclude_runtime_coordination_tables(release):
     assert "contest_submissions" in release.BUSINESS_TABLES
 
 
+def test_preserved_columns_exclude_only_the_reviewed_legacy_policy_migration(release):
+    columns = {
+        "problems": ("id", "title", "judge_policy", "publication_review_required"),
+        "users": ("id", "username"),
+    }
+
+    assert release._preserved_columns(columns) == {
+        "problems": ("id", "title", "publication_review_required"),
+        "users": ("id", "username"),
+    }
+
+
+def test_compatibility_policy_migration_is_exact_and_preserves_existing_policies(release):
+    before = {
+        "legacy": {"id": "legacy", "policy": None, "review": None},
+        "reviewed": {"id": "reviewed", "policy": None, "review": True},
+        "measured": {"id": "measured", "policy": {"kind": "measured-v1"}, "review": True},
+        "__notice__": {"id": "__notice__", "policy": None, "review": None},
+    }
+    after = {
+        "legacy": {"id": "legacy", "policy": {"kind": "compatibility-v1"}, "review": None},
+        "reviewed": before["reviewed"],
+        "measured": before["measured"],
+        "__notice__": before["__notice__"],
+    }
+
+    release._assert_compatibility_policy_migration(before, after)
+
+    invalid = {key: dict(value) for key, value in after.items()}
+    invalid["measured"] = {**invalid["measured"], "policy": {"kind": "compatibility-v1"}}
+    with pytest.raises(AssertionError):
+        release._assert_compatibility_policy_migration(before, invalid)
+
+
 def test_candidate_edge_configs_add_exact_upload_and_normal_api_limits(release):
     current = {
         "backend": "server {\n    location /api/ {\n        proxy_pass http://127.0.0.1:18003/api/;\n    }\n}\n",
