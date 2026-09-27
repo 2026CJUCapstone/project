@@ -1,8 +1,8 @@
 # 감사 후속 수정 진행표
 
-## 2026-09-27 최종 후보 검증 — `d000ec1e`
+## 2026-09-28 최종 후보 검증 — `1829ac02`
 
-최종 제품 코드 기준선 `d000ec1e47a5acbc4c794dd3a2f87cca25d05d57`과 load/lifecycle 검증 보강을 포함한 새 LF worktree에서 백엔드 전체 **3,150 PASS/454 조건부 SKIP/10 subtests PASS/실패 0/353.22초**, 프런트 **58 files/322 PASS**, TypeScript 검사와 production build가 통과했다. 별도 서버 audit PostgreSQL·Redis에서는 재채점 shard FK 순서 오류 7건을 재현한 뒤 부모 shard 선행 flush로 고쳐 동일 묶음이 **48 PASS/3 의도된 SQLite 변형 SKIP**이 됐다. runtime controller 출력은 stdout·stderr 합계 128 KiB에서 실제 프로세스를 종료하도록 바꾸고 overflow·timeout 회귀를 추가했다. 현재 exact source의 Linux A–J private package·bundle 계약은 **152 PASS/4 명시적 SKIP**, 실제 임시 PostgreSQL package import·재시도·비공개 차단 흐름은 **3 PASS**다. 실제 single-host 격리 LB 10→50→100·API loss·2→3→2·WebSocket 흐름 **1 PASS**, readiness/controller **1 PASS**, API·worker lifecycle/runtime inventory **14 PASS**도 완료했고 모든 audit resource 잔여값은 0이다.
+최종 제품 코드 기준선 `a17b3b24261333d95887c555844e4110edc4cafa`의 새 LF worktree에서 백엔드 전체 **3,152 PASS/455 조건부 SKIP/10 subtests PASS/실패 0/545.71초**, 프런트 **58 files/322 PASS**, TypeScript 검사와 production build가 통과했다. 이후 두 커밋은 실제 LB 시험의 관측·대기 로직만 바꿨고 최종 후보 `1829ac023ad7b59f8cb4b2bd82a3d61d54a0620e`에서 관련 집중 회귀 **43 PASS/2 명시적 SKIP**과 corpus manifest 검증이 통과했다. 별도 서버 audit PostgreSQL·Redis에서는 실제 삭제·제출 경쟁이 **1 PASS/5.16초**로 직렬화됐고, single-host 격리 LB는 활성 WebSocket의 정확한 upstream 종료, 서로 다른 인증 계정의 고유 receipt와 exact-once 완료, 누적 10→50→100, 2→3→2, worker readiness 실패, typed ImageNotFound 정리까지 **1 PASS/100.18초**로 통과했다. 누락 image는 세 번 재시도 뒤 journal·workdir 0이었고, 모든 audit resource 잔여값도 0이다. 기존 PostgreSQL/Redis·A–J package/import·readiness/lifecycle 증거는 그대로 유지된다.
 
 운영 SHA는 여전히 `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`다. 공개 `/webcompiler/ready`가 200 HTML SPA fallback을 반환하는 문제도 다시 확인했다. push, main 병합, 배포, 운영 데이터 변경, A–J 등록은 하지 않았다. A01–A25와 5.4, A–J 패키지, 실제 검증 결과와 남은 외부 조건은 [최종 준비 상태 문서](final-readiness-acceptance-2026-09-27.md)를 기준으로 한다. 아래 과거 checkpoint는 이 판정을 덮어쓰지 않는다.
 
@@ -451,14 +451,14 @@ inventory-v5 전체86700은1237 passed /20 host-tool skipped /2 subtests passed(
 | A02 계정 초안 | 주 에이전트 | 로컬 검증 | v2 계정/guest 저장 키, legacy는 guest만, account switch/늦은 GET/잘못된 계정 PUT 방지 4개 테스트 통과 |
 | A03 비밀번호/SMTP | 주 에이전트 | 부분 검증 | auth_version로 기존 JWT 폐기, reset CAS/만료 경계 3개 회귀 통과. 실메일 미설정/미검증 |
 | A04 0테스트 문제 | 주 에이전트 | 로컬 검증 | 공개 생성/수정 1–200 테스트 필수, legacy 빈 테스트 제출 409. 대회 초안은 유지 |
-| A05 삭제 점수 원장 | 주 에이전트 | 로컬 검증 | deleted_at 논리 삭제, 점수/풀이/댓글/레이팅 보존·접근 차단. 동시 삭제/제출 통합 검증 남음 |
-| A06 다중 프로세스 큐 | 주 에이전트 | 부분 검증 | DB durable receipt→worker→fenced result 연결. 두 실제 API 중 접수 프로세스 종료 후 다른 API 조회/별도 worker 채점 성공(SQLite·PG). WS API/worker 강제 종료 및 실제 Nginx 경유 실행·receipt 공유 통과. 혼합 부하 검증 남음 |
+| A05 삭제 점수 원장 | 주 에이전트 | 로컬 검증 | deleted_at 논리 삭제, 점수/풀이/댓글/레이팅 보존·접근 차단. 같은 problem row lock을 사용하는 실제 PostgreSQL 삭제/제출 barrier race 1 PASS: 삭제 선점은 404·무접수, 제출 선점은 receipt/job 보존 후 논리 삭제 |
+| A06 다중 프로세스 큐 | 주 에이전트 | 부분 검증 | DB durable receipt→worker→fenced result 연결. 두 실제 API 중 접수 프로세스 종료 후 다른 API 조회/별도 worker 채점 성공(SQLite·PG). 활성 terminal socket의 정확한 upstream API 종료→취소 1회와 survivor 신규 접수, 고유 receipt exact-once 완료 통과. 장시간 혼합 soak는 남음 |
 | A07 실행 출력/로그 | 주 에이전트 | 부분 검증 | 합산 1MiB 스트리밍/초과 종료, Docker 로그 none, swap 금지. 실제 Docker 출력·시간 제한과 WS 한글 입출력/종료 통과. 프록시 경유 느린 소비자·혼합 부하 추가 검증 남음 |
 | A08 Docker 권한 분리 | 주 에이전트/Terra ultra | 부분 검증 | 실제 LB의 API nonroot/read-only/socket·소스 mount 없음, worker sandbox 소유 UID/GID·socket 보조 그룹 및 접수 API 종료 후 별도 채점 검증. frontend 최종 Nginx stage의 UID10001/read-only/cap-drop/NNP/tmpfs/8080 실행도 검증. React 빌드는 fixture였으며 전체 이미지 빌드·Compose 수명주기 검증은 남음 |
 | A09 재시작/readiness | 주 에이전트/Terra ultra/Luna max | 부분 검증 | PG 초기화/rollback, readiness, controller/edge 복구, worker fence와 API crash/SIGTERM·migration 검증 이력이 있다. runtime-evidence-v1(4004d1c…)의 DB/kernel snapshot·살아 있는 다른 스레드의 unknown 판정은 집중122개, 전체1302개와 호스트20개 검사에서 통과했다. 해당 실행은 종료됐으며 이후 소스의 정확한 컨테이너 종료 증명·retirement·전체 cold Compose/빌드 수명주기 검증을 대신하지 않는다 |
 | A10 일반 제출 내구성 | 주 에이전트 | 부분 검증 | 접수 코드·시각·문제 snapshot·job 단일 commit→202→private polling, 동시 정답 1회 지급/rollback/수정 후 retry/한도 거절 원자성 PG 검증. legacy offline 복구/rollback PG 통과; 실제 배포 이관 및 최종 부하 시험 남음 |
 | A11 점수판 조회 | Terra ultra/주 에이전트 (초기 Sol 이력) | 부분 검증 | 제출6열·문제3열 projection, 공개 revision 캐시/15초 TTL/같은 transaction bump 구현. cleanup-cache-v1(d987066…) 실제95개에 Redis hit/TTL/동시 revision 검증이 포함됐다. setex 경고 수정 후 ownedpg-registration-v3(e3e0554…) 집중82129도125개 통과로 종료됐다. 이 과거 소스의 증거와 별도로 현재 최종 구성의 대규모 조회 비용·혼합 부하 검증이 남는다 |
-| A12 Redis 큐 정체 | 초기 Sol 기여 보존; 주 에이전트 | 부분 검증 | HTTP/WS 모두 DB job 사용, legacy contest/closure/Redis callback 실행기 제거. 공개 큐는 별도 thread에서 SELECT만 수행. initialize-v2(9a385d…) 실제 PG/Redis/Docker 전체245개 검사는 skip 없이186.18초에 종료됐다. 이후 변경된 worker/retirement·혼합 부하·전체 rollout 검증을 그 결과로 대체하지 않는다 |
+| A12 Redis 큐 정체 | 초기 Sol 기여 보존; 주 에이전트 | 부분 검증 | HTTP/WS 모두 DB job 사용, legacy contest/closure/Redis callback 실행기 제거. 실제 두 API에서 서로 다른 인증 계정 9건과 terminal 1건을 함께 넣어 전역 한도 8건, HTTP 429 두 건, 생성 job exact-once 완료를 확인했다. 장시간 backlog·Redis process 장애·전체 rollout은 남음 |
 | A13 저장 충돌/유실 | 주 에이전트 | 부분 검증 | 즉시 local 저장+UUID revision CAS/UTC/동시 수정·삭제 재생성 방지 backend4개 PG 통과, frontend 충돌 테스트 및 실제 Edge 두 탭 충돌→명시 해결 통과 |
 | A14 모바일 IDE/목록 | Sol | 부분 검증 | 모바일 full-width 탭/마운트 유지·카드 목록·390px 브라우저 확인. 실제 데이터 카드 검증 남음 |
 | A15 503 로그아웃 | Terra | 로컬 검증 | ApiError 상태 보존, 401/403만 세션 폐기, 임시 실패 재시도/회귀 통과 |
@@ -468,10 +468,10 @@ inventory-v5 전체86700은1237 passed /20 host-tool skipped /2 subtests passed(
 | A19 백업 복구 | 주 에이전트/Luna max (초기 Sol 이력) | 부분 검증 | private mktemp/no-clobber custom dump, stdin hash, empty DB 복원. 이전 실제10table 복원에 더해 정식 Docker/PG 회귀에서 관계·한글/CR 경로·덮어쓰기·비어 있지 않은 대상·checksum 거부 통과. 정기일정/외부보관/RPO·RTO 미적용 |
 | A20 보안 헤더/origin | Terra/주 에이전트 | 부분 검증 | nosniff/XFO/Referrer/Permissions/512k body limit, CSP Report-Only self-host 정책 및4개 정적 회귀. CSP enforce/HTTPS terminator HSTS·trusted proxy 검증 남음 |
 | A21 보관 정책 | 주 에이전트/Terra ultra/Luna max | 부분 검증 | 일반 제출200개/익명7일 정책에 공개 완료 이력 기본500개·회당500건 정리 및 opt-in 실행 본문 만료/410 접수 기록 보존 추가. 기본값0은 본문 만료 비활성. 현재 실제 PG/HTTP 재시작 포함 집중105통과, Compose5통과. 기간 승인, 최소 receipt 장기 상한·대규모 지연·혼합 버전 교체 검증 남음. 상세는 최상단 A21 절 |
-| A22 임시 파일 정리 | Terra/주 에이전트 | 부분 검증 | 초기화·파일 작성 실패시 정리 및 미확인 RPC의 컨테이너/작업폴더 증거 보존 검증. v9 일반 정리 journal·원래 데몬/claim 종료 확인 뒤 삭제로 보강했으며 현재 소스 실제 장애 복구 검증 남음 |
+| A22 임시 파일 정리 | Terra/주 에이전트 | 부분 검증 | 초기화·파일 작성 실패시 정리 및 미확인 RPC의 증거 보존 검증. typed Docker ImageNotFound는 동일 daemon/lease/operation의 권위 있는 no-effect 응답일 때만 create journal을 정산하며, 실제 세 번 재시도 뒤 system_error·journal 0·worker UID 기준 workdir 0을 확인했다. 연결 단절·daemon 장애 같은 불확실 RPC 조정은 남음 |
 | A23 조회/번들 | Terra/Sol/주 에이전트 | 부분 검증 | 커뮤니티 GROUP BY, 13 lazy routes로 초기JS1655→786KB. Monaco/worker self-host 실제 Edge 검증(CDN0). 문제/대회/library 서버 필터 후 pagination/count, 프런트 더보기/필터 재시작 테스트 통과. 대규모 데이터 조회 비용/번들 추가 최적화 검증 남음 |
 | A24 안내/접근성 | Terra/Sol | 부분 검증 | tokenless 비밀번호 재설정 요청 폼, Admin 로그인 안내, 모바일 탭 접근성 테스트 통과. 전체 화면 검사 남음 |
-| A25 로드밸런싱 | 주 에이전트/Terra ultra 검토/Luna max 단위검사 | 부분 검증 | 다섯 overlay/edge adapter, internal API·frontend plane와 frontend/proxy 전용 ingress, 색상별 loopback 포트·pooler alias·두 peer promotion 구현. 실제 분배·차단·단일 peer 거부·loopback HTTP·별도 edge rollback 중 HTTP/WS 유지 통과. 실제 controller+adapter의 전체 cold 배포·검증된 drain/종료·신뢰 프록시·혼합 부하·장시간 WS·proxy 재생성은 남음 |
+| A25 로드밸런싱 | 주 에이전트/Terra ultra 검토/Luna max 단위검사 | 부분 검증 | 실제 두 API 분배, 접수 API loss 후 survivor receipt, 활성 WS upstream loss, 고유 인증 receipt 전역 한도와 exact-once, 10→50→100, 2→3→2, worker readiness 503 및 controller quarantine를 한 single-host 격리 시험으로 통과. cold 전체 Compose·Redis process loss·장시간 soak·독립 daemon/VM·multi-host HA는 남음 |
 
 ## 최신 통합 checkpoint
 
