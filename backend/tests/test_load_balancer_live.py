@@ -370,6 +370,12 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
             await asyncio.to_thread(worker.stop,timeout=15)
             await wait_http(http,url+'/ready',status=503)
             assert proxy.exec_run(['wget','-q','-O','/dev/null','http://127.0.0.1:8080/ready']).exit_code != 0
+            # The intentional readiness 503 quarantines both upstreams for the
+            # configured two-second fail_timeout. Wait for that bounded window
+            # and prove ordinary health routing has recovered before the next
+            # acceptance request.
+            await asyncio.sleep(2.2)
+            await wait_http(http,url+'/health')
             # A definitive Docker ImageNotFound response must settle the exact
             # create journal and remove every per-attempt work directory. It is
             # safe to retry as a system error, but it must not retain capacity
