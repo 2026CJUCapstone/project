@@ -5,3 +5,7 @@
 # change their identity and make archived execution receipts unreplayable.
 backend/app/services/linux_phase_launcher.py text eol=lf
 backend/app/services/launcher_archive/*.py text eol=lf
+
+# Freshman contest manifests and reference sources are also hashed byte-for-byte.
+# Keep their identities stable across Windows checkouts and Git archives.
+tools/freshman_contest/** text eol=lf

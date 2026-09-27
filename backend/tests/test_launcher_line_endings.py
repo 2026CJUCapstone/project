@@ -13,6 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SERVICES = ROOT / "backend" / "app" / "services"
 ARCHIVE = SERVICES / "launcher_archive"
+FRESHMAN_PACKAGE = ROOT / "tools" / "freshman_contest"
 
 
 def test_content_addressed_launchers_are_forced_to_lf() -> None:
@@ -33,6 +34,16 @@ def test_content_addressed_launchers_are_forced_to_lf() -> None:
         assert hashlib.sha256(payload).hexdigest() == match.group(1)
 
 
+def test_freshman_package_is_forced_to_lf() -> None:
+    attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8").splitlines()
+    assert "tools/freshman_contest/** text eol=lf" in attributes
+
+    package_files = [path for path in FRESHMAN_PACKAGE.rglob("*") if path.is_file()]
+    assert package_files
+    for path in package_files:
+        assert b"\r\n" not in path.read_bytes(), path.relative_to(ROOT).as_posix()
+
+
 def test_git_checkout_and_archive_preserve_launcher_identity(tmp_path: Path) -> None:
     if shutil.which("git") is None:
         pytest.skip("Git is required for checkout/archive line-ending verification")
@@ -46,6 +57,11 @@ def test_git_checkout_and_archive_preserve_launcher_identity(tmp_path: Path) -> 
         *(
             Path("backend/app/services/launcher_archive") / path.name
             for path in sorted(ARCHIVE.glob("sha256-*.py"))
+        ),
+        *(
+            path.relative_to(ROOT)
+            for path in sorted(FRESHMAN_PACKAGE.rglob("*"))
+            if path.is_file()
         ),
     ]
     for relative in relative_files:
