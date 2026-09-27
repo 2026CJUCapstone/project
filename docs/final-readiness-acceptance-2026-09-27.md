@@ -15,6 +15,9 @@
 | 서버 격리 PostgreSQL·Redis | 48 PASS, 3 SKIP, 0 FAIL, 147.03초 | 운영 DB·Redis와 분리된 기존 audit Compose를 재사용했다. 세 skip은 PostgreSQL 전용 process test의 SQLite 매개변수 변형이다. |
 | Linux A–J private package·bundle | 152 PASS, 4 SKIP, 0 FAIL, 263.92초 | owner-only 출력, blob closure, 부분 생성 실패 정리, symlink 거부, 동일 bundle replay, import transport를 비권한 UID·read-only·network-none container에서 확인했다. skip은 POSIX에서 불필요한 Windows 음성 테스트 1개, image의 Git 부재 1개, 별도 staged archive 부재 2개다. |
 | PostgreSQL private import 흐름 | 3 PASS, 0 FAIL, 21.86초 | 실제 C 최대 stored data package의 미검수 비공개 차단과 검수·재시도 흐름을 고유 임시 PostgreSQL schema에서 실행했다. 종료 후 `audit_contest_*`·`audit_queue_*` 잔여 schema는 0개다. |
+| 실제 격리 LB·failover·부하 | 1 PASS, 0 FAIL, 62.50초 | 두 API 분산, 접수 API 강제 종료 뒤 다른 API의 receipt 조회, 실제 worker 완료, WebSocket, 공유 rate limit, 누적 10→50→100 요청, 2→3→2 증감을 외부 port 없이 실행했다. |
+| readiness·controller fail-closed | 1 PASS, 0 FAIL, 182.65초 | 실제 Nginx/frontend/API/worker/controller를 만들고 release·pool·runtime identity 충돌, membership reload와 잘못된 peer 거부를 확인했다. |
+| API·worker lifecycle·runtime inventory | 14 PASS, 0 FAIL, 221.21초 | held HTTP·WebSocket drain, worker fencing·재시작, runtime restart·replace·graceful retirement·stateful 보존, namespace 위조 거부를 확인했다. |
 | 운영 read-only probe | `/health` 200, release marker 200 | 둘 다 운영 SHA `ebd7e367...`를 반환했다. `/webcompiler/ready`는 200 HTML SPA fallback을 반환해 운영 host include가 아직 고쳐지지 않았음을 재확인했다. |
 
 서버 검증 중 재채점 shard의 부모 행보다 item이 먼저 INSERT되어 PostgreSQL FK가 7건 실패하는 오류를 재현했다. `contest_rejudge.py`가 각 bounded shard 부모를 먼저 flush하도록 고쳤고 동일 묶음이 48 PASS로 바뀌었다. SQLite만으로는 드러나지 않던 실제 dialect 차이다.
@@ -31,18 +34,18 @@ runtime matrix controller가 `capture_output=True`로 출력을 전부 메모리
 
 | 항목 | 판정 | 현재 근거 | 남은 정확한 조건 |
 |---|---|---|---|
-| A01 공개 실행 제한 | 외부검증필요 | terminal admission, execution resource budget 회귀 | 신뢰 프록시 경유 HTTP+WebSocket 혼합 부하와 익명·대회 간 starvation |
+| A01 공개 실행 제한 | 현재증거 | terminal admission, execution resource budget 회귀와 격리 10→50→100 shared-rate ramp | 장시간 동시 WebSocket을 포함한 더 긴 soak와 익명·대회 간 starvation |
 | A02 계정 초안 | 완료-로컬 | `CodeEditor.identity.test.tsx` | 없음 |
 | A03 비밀번호·메일 | 외부검증필요 | session-version, reset configuration 회귀 | SMTP는 이번 목표에서 제외. 실제 공급자·발송·수신·reset URL은 별도 수락 |
 | A04 테스트 0개 문제 | 완료-로컬 | problem integrity 회귀 | 없음 |
 | A05 삭제와 점수 원장 | 현재증거 | problem integrity 회귀 | 문제 삭제와 제출이 동시에 일어나는 실제 DB 경쟁 |
-| A06 다중 프로세스 큐 | 외부검증필요 | queue observation, worker process 회귀 | 실제 Nginx·WebSocket·worker 장애를 합친 부하 |
+| A06 다중 프로세스 큐 | 현재증거 | 실제 격리 Nginx·두 API·worker·WebSocket·API/worker 강제 종료·receipt 복구 | 더 긴 soak와 운영과 동급인 별도 staging host 장애 |
 | A07 실행 출력·로그 상한 | 외부검증필요 | runner output budget과 controller 물리 128 KiB cap | 느린 소비자와 혼합 부하에서 API·프록시·디스크 상한 |
 | A08 Docker 권한 분리 | 외부검증필요 | runtime binding·worker 격리 회귀 | 전용 non-default daemon 또는 VM의 전체 Compose 권한·mount 수명주기 |
-| A09 재시작·readiness | 외부검증필요 | readiness, worker drain, runtime retirement 회귀 | cold Compose, 물리 컨테이너 종료, retirement 수락 |
+| A09 재시작·readiness | 현재증거 | 실제 격리 readiness/controller, API·worker drain, restart·replace·retirement 15 PASS | cold 전체 Compose와 host 손실 수락 |
 | A10 일반 제출 내구성 | 외부검증필요 | durable submission 회귀, PostgreSQL rejudge shard 통합 PASS | 실제 배포 이관·장애·혼합 부하 |
 | A11 점수판 조회 | 외부검증필요 | projection·cache concurrency 회귀 | 대용량 대회 자료와 혼합 조회 성능 |
-| A12 Redis 큐 정체 | 외부검증필요 | shared Redis·worker 회귀 | 최신 worker와 retirement를 포함한 전체 rollout·부하 |
+| A12 Redis 큐 정체 | 현재증거 | 실제 격리 shared Redis admission, worker fencing·재시작, API loss와 100-request ramp | 장시간 backlog·Redis process 장애·전체 rollout |
 | A13 저장 충돌·유실 | 현재증거 | project revision·editor identity 회귀 | 전체 브라우저와 운영 흐름 수락 |
 | A14 모바일 IDE·목록 | 현재증거 | IDE mobile 회귀 | 실제 데이터가 많은 모바일 목록 검수 |
 | A15 503 시 로그아웃 | 완료-로컬 | header auth 회귀 | 없음 |
@@ -55,19 +58,23 @@ runtime matrix controller가 `capture_output=True`로 출력을 전부 메모리
 | A22 임시 파일 정리 | 외부검증필요 | runner cleanup·sandbox reconciliation 회귀 | daemon 장애와 불확실 RPC 복구 |
 | A23 조회·번들 | 외부검증필요 | compile history filter·browser 회귀 | 대용량 조회와 bundle 성능 |
 | A24 안내·접근성 | 현재증거 | auth modal 접근성·모바일 tab 회귀 | 전체 화면 키보드·확대·보조기기 검수 |
-| A25 로드밸런싱 | 외부검증필요 | shared runtime·proxy·promotion·edge runtime 회귀 | cold deploy, 장시간 WebSocket, 신뢰 proxy, 혼합 부하, 검증된 drain |
+| A25 로드밸런싱 | 현재증거 | 실제 두 upstream, API loss, receipt 연속성, WebSocket, 10→50→100, 2→3→2, drain·controller fail-closed | 별도 daemon/host의 cold deploy, 장시간 soak, multi-host HA |
 
 ## 5.4 최종 로드밸런싱 목표
 
-코드에는 두 API peer, 공유 상태, generation·drain, idempotent receipt, worker fencing, proxy promotion 경계가 있다. 운영의 read-only 요청 12건이 두 API에 7/5로 분배된 과거 smoke도 있다. 이것을 최종 로드밸런싱 수락으로 확대하지 않는다.
+코드에는 두 API peer, 공유 상태, generation·drain, idempotent receipt, worker fencing, proxy promotion 경계가 있다. 운영의 read-only 요청 12건이 두 API에 7/5로 분배된 과거 smoke도 있다. 최신 후보는 운영과 분리된 audit PostgreSQL·Redis와 실제 Docker/Nginx/API/worker를 사용해 다음 단일-host 시나리오까지 통과했다.
+
+- 두 upstream 분산과 접수 API 강제 종료 후 다른 API의 동일 receipt 조회·완료.
+- Python worker와 terminal WebSocket 입출력, held HTTP·WebSocket drain.
+- 공유 rate window의 실제 누적 10→50→100 요청: 각 checkpoint에서 8건만 202, 나머지는 429와 `Retry-After`.
+- 2→3→2 membership 증감, runtime identity 충돌 fail-closed, worker restart·fencing, graceful retirement.
+- 매 실행 뒤 테스트 container·image·network·Redis key·DB audit schema·sandbox 잔여값 0.
+
+이것은 현재 후보의 실제 single-host 격리 증거다. 테스트 controller가 기본 Docker daemon을 공유하고 host 자체를 잃지 않았으므로 독립 daemon/VM 또는 multi-host 최종 수락으로 확대하지 않는다.
 
 다음은 staging에서 한 시나리오로 실행해야 한다.
 
-1. 실제 두 upstream에 HTTP·WebSocket 요청이 분산되는지 확인한다.
-2. 한 API를 중지해도 접수된 작업·로그인·점수·receipt가 유실되지 않아야 한다.
-3. 10→50→100의 bounded 혼합 부하에서 익명 봇 제한과 정상 사용자 진행을 함께 확인한다.
-4. 2→3→2 증감 중 drain, 장시간 WebSocket 재연결, 동일 idempotency key 재시도, worker 강제 종료·복구를 확인한다.
-5. multi-host를 목표로 한다면 host 한 대 손실까지 별도 수락한다. 단일 host의 여러 컨테이너는 HA가 아니다.
+남은 최종 수락은 장시간 WebSocket과 HTTP bot을 동시에 유지하는 더 긴 soak, Redis process 자체 장애, cold 전체 Compose, 운영과 동급인 독립 daemon/VM, 그리고 multi-host가 범위라면 host 한 대 손실이다. 단일 host의 여러 컨테이너는 HA가 아니다.
 
 현재 서버에는 테스트용 PostgreSQL·Redis Compose는 있으나, runtime harness가 요구하는 별도 non-default Docker socket은 없다. 기본 `/var/run/docker.sock`을 독립 staging으로 가장하지 않고 harness가 fail-closed하도록 유지했다. 따라서 최신 v2 24-case mechanics, 여섯 언어×A–J cgroup 반복, OOM·PID·tmpfs·network·cleanup 수락은 외부 조건이다.
 
