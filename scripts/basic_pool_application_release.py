@@ -223,13 +223,13 @@ def schema_inventory(container: str) -> str:
     value = b.o.sql(
         container,
         "SELECT md5(string_agg(value,E'\\n' ORDER BY value)) FROM ("
-        "SELECT 'relation|'||n.nspname||'|'||c.relname||'|'||c.relkind value "
+        "SELECT 'relation|'||n.nspname||'|'||c.relname||'|'||c.relkind::text value "
         "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
         "WHERE n.nspname='public' AND c.relkind IN ('r','p','S','v','m') UNION ALL "
         "SELECT 'column|'||table_name||'|'||column_name||'|'||data_type||'|'||udt_name||'|'||"
         "is_nullable||'|'||coalesce(column_default,'') FROM information_schema.columns "
         "WHERE table_schema='public' UNION ALL "
-        "SELECT 'constraint|'||conrelid::regclass::text||'|'||conname||'|'||contype||'|'||"
+        "SELECT 'constraint|'||conrelid::regclass::text||'|'||conname||'|'||contype::text||'|'||"
         "pg_get_constraintdef(oid,true) FROM pg_constraint "
         "WHERE connamespace='public'::regnamespace UNION ALL "
         "SELECT 'index|'||tablename||'|'||indexname||'|'||indexdef FROM pg_indexes "

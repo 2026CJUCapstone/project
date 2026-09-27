@@ -186,3 +186,11 @@ def test_prepublic_smoke_uses_only_unauthenticated_gets():
     assert "post_json" not in source
     assert "request_json" in source
     assert "/api/v1/problems/" in source
+
+
+def test_schema_inventory_casts_postgres_internal_char_types_to_text():
+    release = load_release()
+    import inspect
+    source = inspect.getsource(release.schema_inventory)
+    assert "c.relkind::text" in source
+    assert "contype::text" in source
