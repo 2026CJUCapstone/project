@@ -223,6 +223,13 @@ def test_rehearsal_uses_the_restored_snapshot_as_its_migration_baseline(release)
     assert '_fingerprints("webcompiler-postgres", columns)' not in source
 
 
+def test_business_fingerprints_exclude_runtime_coordination_tables(release):
+    assert "execution_queue_lock" not in release.BUSINESS_TABLES
+    assert "execution_jobs" in release.BUSINESS_TABLES
+    assert "submissions" in release.BUSINESS_TABLES
+    assert "contest_submissions" in release.BUSINESS_TABLES
+
+
 def test_candidate_edge_configs_add_exact_upload_and_normal_api_limits(release):
     current = {
         "backend": "server {\n    location /api/ {\n        proxy_pass http://127.0.0.1:18003/api/;\n    }\n}\n",

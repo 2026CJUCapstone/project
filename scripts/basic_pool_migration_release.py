@@ -52,7 +52,6 @@ BUSINESS_TABLES = (
     "admin_audit_events",
     "compile_queue_jobs",
     "execution_jobs",
-    "execution_queue_lock",
     "problem_learning_records",
 )
 UNCHANGED_CONTRACTS = (
