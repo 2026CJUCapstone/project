@@ -489,7 +489,16 @@ class DockerCompilerRunner:
         return await asyncio.to_thread(self.cleanup_guard,action)
 
     async def _remove_workdir(self, directory):
-        return await self._cleanup(lambda:shutil.rmtree(directory,ignore_errors=True))
+        def remove():
+            try:
+                shutil.rmtree(directory)
+            except FileNotFoundError:
+                return
+            # A cleanup guard may execute on a delayed/remote filesystem. Do
+            # not publish a terminal receipt unless absence is observable.
+            if directory.exists():
+                raise RuntimeError('Sandbox work directory cleanup was not confirmed')
+        return await self._cleanup(remove)
 
     def _resolve_filename(self, language: str, source_code: str) -> str:
         if language == "java":
