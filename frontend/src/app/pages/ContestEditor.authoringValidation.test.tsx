@@ -68,6 +68,7 @@ describe('ContestEditor authoring validation wiring', () => {
   it('passes the persisted contest row to the private panel and strips it from the write body', async () => {
     render(<MemoryRouter initialEntries={['/contests/contest-1/edit']}><Routes><Route path="/contests/:contestId/edit" element={<ContestEditor />} /></Routes></MemoryRouter>);
 
+    fireEvent.click(await screen.findByRole('button', { name: 'A A 문제 편집' }));
     expect(await screen.findByText('기준 풀이 패널')).toBeInTheDocument();
     expect(mocks.validationProps).toHaveBeenLastCalledWith(expect.objectContaining({
       contestId: 'contest-1', contestProblemId: 'contest-problem-1', policy, authoring, isAdmin: true,

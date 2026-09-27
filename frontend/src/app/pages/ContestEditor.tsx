@@ -50,6 +50,7 @@ export function ContestEditor() {
   const [library,setLibrary] = useState<{id:string;title:string;points:number}[]>([]);
   const [libraryTotal,setLibraryTotal] = useState(0);
   const [selected,setSelected] = useState('');
+  const [activeProblemIndex,setActiveProblemIndex] = useState<number | null>(null);
   const [authoring,setAuthoring] = useState<NonNullable<ContestManage['authoring']>>({});
   const [savedValidation,setSavedValidation] = useState<Record<string, { policy: NewContestProblem['judgePolicy']; authoring?: NonNullable<ContestManage['authoring']>[string] }>>({});
   const [authorizedSession,setAuthorizedSession] = useState<string | null>(null);
@@ -68,7 +69,7 @@ export function ContestEditor() {
     submitControllerRef.current?.abort();
     // A route or account belongs to a separate private editing session. Never
     // allow the prior session's draft, library or authoring record to reappear.
-    setForm(newContestForm()); setLibrary([]); setLibraryTotal(0); setSelected(''); setAuthoring({}); setSavedValidation({});
+    setForm(newContestForm()); setLibrary([]); setLibraryTotal(0); setSelected(''); setActiveProblemIndex(null); setAuthoring({}); setSavedValidation({});
     setSaving(false); setUploadingTargets({}); setReady(false); setAuthorizedSession(null); setError('');
     const active = () => !cancelled && requestIsCurrent(epoch, authScope);
     void (async () => {
@@ -153,6 +154,26 @@ export function ContestEditor() {
       setLibrary(items=>[...items,...page.items]); setLibraryTotal(page.total);
     } catch(e) { if (requestIsCurrent(epoch, scope) && loadMoreControllerRef.current === controller && !(e instanceof DOMException && e.name === 'AbortError')) setError((e as Error).message); }
   };
+  const problemTitle = (problem: ContestWrite['problems'][number]) => problem.newProblem?.title || library.find(item => item.id === problem.problemId)?.title || problem.problemId || '제목 없는 신규 문제';
+  const activeProblem = activeProblemIndex === null ? undefined : form.problems[activeProblemIndex];
+  const removeProblem = (index: number) => {
+    setForm(current => ({...current, problems: current.problems.filter((_, itemIndex) => itemIndex !== index)}));
+    setActiveProblemIndex(null);
+  };
+  const addLibraryProblem = () => {
+    const problem = library.find(item => item.id === selected);
+    if (!problem || form.problems.length >= 26) return;
+    const nextIndex = form.problems.length;
+    setForm(current => ({...current, problems: [...current.problems, {problemId: problem.id, points: Math.max(1, problem.points)}]}));
+    setSelected('');
+    setActiveProblemIndex(nextIndex);
+  };
+  const addNewProblem = () => {
+    if (form.problems.length >= 26) return;
+    const nextIndex = form.problems.length;
+    setForm(current => ({...current, problems: [...current.problems, {points: 100, newProblem: newProblem()}]}));
+    setActiveProblemIndex(nextIndex);
+  };
   return <main className="h-full w-full min-w-0 overflow-y-auto bg-slate-50 p-6 text-slate-900 dark:bg-[#0d1118] dark:text-slate-100"><div className="mx-auto max-w-4xl space-y-6">
     <Link className="text-blue-500" to={contestId ? `/contests/${contestId}` : '/contests'}>← 돌아가기</Link><h1 className="text-3xl font-bold">{contestId ? '대회 관리' : '대회 만들기'}</h1>
     {error && <p role="alert" className="text-red-500">{error}</p>}
@@ -160,8 +181,10 @@ export function ContestEditor() {
       <label className="block">대회 제목<input required maxLength={120} className={inputClass} value={form.title} onChange={e => setForm({...form,title:e.target.value})} /></label>
       <label className="block">설명 및 규칙 (Markdown)<textarea rows={4} className={inputClass} value={form.description} onChange={e => setForm({...form,description:e.target.value})} /></label>
       <div className="grid gap-4 sm:grid-cols-2"><label>시작 시각 (KST)<input type="datetime-local" required className={inputClass} value={kstInput(form.startsAt)} onChange={e => { if(e.target.value) setForm({...form,startsAt:new Date(`${e.target.value}+09:00`).toISOString()}); }} /></label><label>종료 시각 (KST)<input type="datetime-local" required className={inputClass} value={kstInput(form.endsAt)} onChange={e => { if(e.target.value) setForm({...form,endsAt:new Date(`${e.target.value}+09:00`).toISOString()}); }} /></label></div>
-      <section className="space-y-4"><h2 className="text-xl font-semibold">문제 구성</h2><p className="text-sm text-slate-500">신규 문제는 시작 전 비공개이며, 종료 후 일반 문제 목록에 자동 공개됩니다.</p>
-        {form.problems.map((p,index) => {
+      <section className="space-y-4"><div><h2 className="text-xl font-semibold">문제 구성</h2><p className="mt-1 text-sm text-slate-500">문제 카드를 선택하면 해당 문제만 수정할 수 있습니다. 신규 문제는 시작 전 비공개이며, 종료 후 일반 문제 목록에 자동 공개됩니다.</p></div>
+        {activeProblem && activeProblemIndex !== null ? (() => {
+          const p = activeProblem;
+          const index = activeProblemIndex;
           const uploadTargetKey = hiddenUploadTarget(session, index, p);
           const appendStoredHiddenTest = (testCase: HiddenTestCase) => setForm(current => {
             const target = current.problems[index];
@@ -174,9 +197,9 @@ export function ContestEditor() {
             else delete next[uploadTargetKey];
             return next;
           });
-          return <article key={index} className="space-y-3 rounded-xl border border-slate-300 p-4 dark:border-slate-700">
-          <div className="flex flex-wrap items-center gap-3"><strong className="text-blue-500">{String.fromCharCode(65+index)}</strong><span>{p.newProblem ? '신규 문제' : library.find(q=>q.id===p.problemId)?.title || p.problemId}</span>
-            <button type="button" onClick={()=>move(index,-1)} disabled={index===0}>↑</button><button type="button" onClick={()=>move(index,1)} disabled={index===form.problems.length-1}>↓</button><button type="button" className="text-red-500" onClick={()=>setForm({...form,problems:form.problems.filter((_,i)=>i!==index)})}>제거</button></div>
+          const label = String.fromCharCode(65 + index);
+          return <article className="space-y-4 rounded-2xl border border-slate-300 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-950 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 dark:border-slate-800"><div className="flex min-w-0 items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-600 font-bold text-white">{label}</span><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{p.newProblem ? '신규 문제' : '기존 문제'}</p><h3 className="truncate text-lg font-semibold">{problemTitle(p)}</h3></div></div><div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700" onClick={()=>setActiveProblemIndex(null)}>← 문제 목록</button><button type="button" className="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-600 dark:border-red-900" onClick={()=>removeProblem(index)}>이 문제 제거</button></div></div>
           <label className="block">대회 배점<input type="number" min={1} max={100000} required className={inputClass} value={p.points} onChange={e=>setForm({...form,problems:form.problems.map((v,i)=>i===index?{...v,points:Number(e.target.value)}:v)})} /></label>
           {p.newProblem && <>
             <label className="block">문제 제목<input required className={inputClass} value={p.newProblem.title} onChange={e=>patchProblem(index,{title:e.target.value})} /></label>
@@ -190,8 +213,21 @@ export function ContestEditor() {
           {p.problemId ? <ProblemAuthoringPanel problemId={p.problemId} isAdmin={authorizedSession === session} initialRecord={authoring[p.problemId]} /> : <details className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-950"><summary className="cursor-pointer font-semibold">출처·검수 기록</summary><p className="mt-2 text-slate-600 dark:text-slate-300">신규 문제의 출처와 검수 기록은 대회를 저장해 문제 ID가 만들어진 뒤에 작성할 수 있습니다.</p></details>}
           <ReferenceSolutionValidationPanel contestId={contestId} contestProblemId={p.contestProblemId} policy={p.contestProblemId ? savedValidation[p.contestProblemId]?.policy : undefined} authoring={p.contestProblemId ? savedValidation[p.contestProblemId]?.authoring : undefined} isAdmin={authorizedSession === session} />
         </article>;
-        })}
-        <div className="flex flex-wrap gap-2"><select aria-label="기존 문제 선택" className={`${inputClass} max-w-md`} value={selected} onChange={e=>setSelected(e.target.value)}><option value="">기존 공개 문제 선택</option>{library.filter(p=>!form.problems.some(cp=>cp.problemId===p.id)).map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><button type="button" disabled={!selected || form.problems.length>=26} onClick={()=>{const p=library.find(p=>p.id===selected)!;setForm({...form,problems:[...form.problems,{problemId:p.id,points:Math.max(1,p.points)}]});setSelected('');}} className="rounded border px-3 py-2">기존 문제 추가</button>{library.length < libraryTotal && <button type="button" className="rounded border px-3 py-2" onClick={()=>void loadMore()}>문제 더 보기 ({library.length}/{libraryTotal})</button>}<button type="button" disabled={form.problems.length>=26} className="rounded border px-3 py-2" onClick={()=>setForm({...form,problems:[...form.problems,{points:100,newProblem:newProblem()}]})}>신규 문제 추가</button></div>
+        })() : <>
+          {form.problems.length ? <div className="grid gap-4 sm:grid-cols-2" aria-label="대회 문제 카드 목록">{form.problems.map((p,index) => {
+            const label = String.fromCharCode(65 + index);
+            const title = problemTitle(p);
+            const sampleCount = p.newProblem?.testCases.length;
+            const hiddenCount = p.newProblem?.hiddenTestCases.length;
+            return <article key={p.contestProblemId ?? p.problemId ?? `new-${index}`} className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm transition hover:border-blue-500 hover:shadow-md dark:border-slate-700 dark:bg-slate-950">
+              <button type="button" aria-label={`${label} ${title} 편집`} className="block w-full p-4 text-left sm:p-5" onClick={()=>setActiveProblemIndex(index)}>
+                <div className="flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-600 font-bold text-white">{label}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold text-slate-500">{p.newProblem ? '신규 문제' : '기존 문제'}</span><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">{p.points}점</span></div><h3 className="mt-2 break-words text-base font-semibold">{title}</h3>{p.newProblem && <p className="mt-2 text-xs text-slate-500">공개 예제 {sampleCount}개 · 숨김 테스트 {hiddenCount}개</p>}<p className="mt-3 text-sm font-medium text-blue-600 dark:text-blue-400">클릭하여 수정 →</p></div></div>
+              </button>
+              <div className="flex items-center justify-end gap-1 border-t border-slate-200 px-3 py-2 dark:border-slate-800"><button type="button" aria-label={`${label} 위로 이동`} className="rounded px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800" onClick={()=>move(index,-1)} disabled={index===0}>↑</button><button type="button" aria-label={`${label} 아래로 이동`} className="rounded px-3 py-1.5 text-sm hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800" onClick={()=>move(index,1)} disabled={index===form.problems.length-1}>↓</button><button type="button" aria-label={`${label} 문제 제거`} className="rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950" onClick={()=>removeProblem(index)}>제거</button></div>
+            </article>;
+          })}</div> : <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center text-sm text-slate-500 dark:border-slate-700">등록된 문제가 없습니다. 기존 문제를 추가하거나 새 문제를 만들어 주세요.</div>}
+          <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:flex-wrap"><select aria-label="기존 문제 선택" className={`${inputClass} sm:max-w-md`} value={selected} onChange={e=>setSelected(e.target.value)}><option value="">기존 공개 문제 선택</option>{library.filter(p=>!form.problems.some(cp=>cp.problemId===p.id)).map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select><button type="button" disabled={!selected || form.problems.length>=26} onClick={addLibraryProblem} className="rounded border px-3 py-2 disabled:opacity-50">기존 문제 추가</button>{library.length < libraryTotal && <button type="button" className="rounded border px-3 py-2" onClick={()=>void loadMore()}>문제 더 보기 ({library.length}/{libraryTotal})</button>}<button type="button" disabled={form.problems.length>=26} className="rounded bg-blue-600 px-3 py-2 font-semibold text-white disabled:opacity-50" onClick={addNewProblem}>신규 문제 추가</button></div>
+        </>}
       </section>
       <label className="flex items-center gap-2"><input type="checkbox" checked={form.published} onChange={e=>setForm({...form,published:e.target.checked})} />대회 공개 및 참가 신청 받기</label>
       <button disabled={saving || Object.keys(uploadingTargets).length > 0} className="rounded bg-blue-600 px-6 py-3 font-semibold text-white">{saving ? '저장 중…' : Object.keys(uploadingTargets).length ? '파일 업로드 완료 대기' : '대회 저장'}</button>

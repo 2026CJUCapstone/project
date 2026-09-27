@@ -152,6 +152,7 @@ describe('ContestEditor judge policy wiring', () => {
       .mockResolvedValueOnce({ id: 'contest-1' });
     render(<MemoryRouter initialEntries={['/contests/contest-1/edit']}><Routes><Route path="/contests/:contestId/edit" element={<ContestEditor />} /></Routes></MemoryRouter>);
 
+    fireEvent.click(await screen.findByRole('button', { name: 'A 숨김 참조 문제 편집' }));
     expect(await screen.findByText('숨겨진 테스트 1 · 저장 참조')).toBeInTheDocument();
     expect(screen.queryByLabelText('숨겨진 테스트 1 입력')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: '대회 제목' }), { target: { value: '바뀐 대회 제목' } });
