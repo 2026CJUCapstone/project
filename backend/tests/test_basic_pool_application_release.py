@@ -106,6 +106,7 @@ def test_candidate_preflight_is_networkless_and_validates_runtime_security():
     assert '"--user", "10001:10001"' in source
     assert 'environment.get("ENVIRONMENT") == "production"' in source
     assert "validate_runtime_security()" in source
+    assert '"python", "-I", "-c"' not in source
     assert "candidate-preflight.env" in source
 
 

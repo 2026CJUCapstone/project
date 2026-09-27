@@ -202,7 +202,7 @@ def preflight_candidate_configuration(state: dict) -> None:
             "--pids-limit", "64", "--user", "10001:10001",
             "--tmpfs", "/tmp:size=16m,mode=1777,noexec,nosuid",
             "--env-file", str(env_file), state["images"]["backend"],
-            "python", "-I", "-c",
+            "python", "-c",
             "from app.services.auth import validate_runtime_security; validate_runtime_security()",
             timeout=60,
         )
