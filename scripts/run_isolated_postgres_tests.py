@@ -46,6 +46,7 @@ RECENT_REGRESSION_TESTS = (
     'tests/test_judge_supervisor_record.py',
     'tests/test_contest_submit_resource_injection.py',
     'tests/test_practice_submit_resource_injection.py',
+    'tests/test_problem_delete_submit_race.py',
     'tests/test_freshman_measurement_summary.py',
     'tests/test_freshman_draft_summary.py',
 )

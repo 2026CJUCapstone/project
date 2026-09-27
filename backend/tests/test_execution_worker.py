@@ -532,3 +532,25 @@ async def test_measured_retry_uses_receipt_deadline_after_live_ceiling_decreases
     worker._execute.assert_awaited_once()
     assert deadlines==[7]
     assert queue.read(job_id,owner_key='test')['result']['verdict']=='system_error'
+
+
+@pytest.mark.asyncio
+async def test_unexpected_failure_logs_only_bounded_exception_types(queue,caplog):
+    secret='participant-source-or-hidden-input-must-not-be-logged'
+    queue.max_attempts=1
+    cause=PermissionError(secret)
+    failure=RuntimeError(secret)
+    failure.__cause__=cause
+    job_id=submit(queue)
+    pool=SimpleNamespace(labels=lambda *args:{},reap=lambda *args:None)
+    worker=ExecutionWorker(queue,pool=pool)
+
+    async def fail(_claim):
+        raise failure
+
+    worker._execute=fail
+    with caplog.at_level('WARNING',logger='app.services.execution_worker'):
+        assert await worker.run_once()
+    assert queue.read(job_id,owner_key='test')['result']['verdict']=='system_error'
+    assert 'RuntimeError <- PermissionError' in caplog.text
+    assert secret not in caplog.text

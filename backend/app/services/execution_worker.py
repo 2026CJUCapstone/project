@@ -421,9 +421,18 @@ class ExecutionWorker:
                 result = {'verdict':'canceled', 'message':'터미널 연결이 중단되었습니다. 자동으로 다시 실행하지 않습니다.'}
             except TerminalLimit as exc:
                 result = {'verdict':'runtime_error', 'message':str(exc)}
-            except Exception:
+            except Exception as exc:
                 # Raw exceptions may contain source paths, code, or hidden input.
-                logger.warning('Execution failed for job %s', claim.id)
+                # Log only bounded exception class names. This is enough to
+                # distinguish Docker/permission/configuration failures during
+                # an isolated acceptance run without leaking exception text.
+                exception_types=[]
+                current=exc
+                while current is not None and len(exception_types)<4:
+                    exception_types.append(type(current).__name__)
+                    current=current.__cause__
+                logger.warning('Execution failed for job %s (%s)', claim.id,
+                    ' <- '.join(exception_types))
                 result = {'verdict': 'system_error', 'message': '실행 서비스를 사용할 수 없습니다.'}
             # Even an apparently completed runner must confirm no old sandbox
             # remains before the global capacity can be released by finish().

@@ -473,7 +473,15 @@ def publish_problem(
 def delete_problem(id: str, db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
     if db.query(db_models.ContestProblem.id).filter_by(problem_id=id).first():
         raise HTTPException(409, "대회에서 사용하는 문제는 삭제할 수 없습니다.")
-    db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
+    # Practice acceptance freezes the same row under FOR UPDATE. Deletion must
+    # participate in that serialization so an acknowledged receipt is either
+    # committed before archival or rejected after archival, never interleaved.
+    db_problem = (
+        db.query(db_models.Problem)
+        .filter(db_models.Problem.id == id)
+        .with_for_update()
+        .first()
+    )
     if not db_problem:
         raise HTTPException(status_code=404, detail="Problem not found")
     if id in SYSTEM_BOARD_IDS:
