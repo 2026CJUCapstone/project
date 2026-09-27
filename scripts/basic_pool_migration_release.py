@@ -312,7 +312,6 @@ def rehearse(state: dict) -> None:
     dump = b.ROOT / "rehearsal-source.dump"
     _dump(dump, state["postgres_id"])
     columns = _columns("webcompiler-postgres")
-    before = _fingerprints("webcompiler-postgres", columns)
     suffix = uuid4().hex[:12]
     network = "webcompiler-migration-" + suffix
     postgres = "webcompiler-migration-postgres-" + suffix
@@ -347,7 +346,11 @@ def rehearse(state: dict) -> None:
         created_postgres = True
         _wait_for_stable_postgres(postgres)
         b.o.run("docker", "exec", "-i", postgres, "pg_restore", "-U", "compiler", "-d", "compiler", "--no-owner", data=dump.read_bytes(), timeout=180)
-        assert _fingerprints(postgres, columns) == before
+        # Production remains live while the rehearsal dump is restored, so its
+        # rows may legitimately change after pg_dump's snapshot.  The restored
+        # snapshot is the stable baseline for proving that both old and new
+        # initializers preserve every pre-existing business column.
+        before = _fingerprints(postgres, columns)
         _run_initialize(state["images"]["backend"], network, env_file)
         _run_initialize(state["images"]["backend"], network, env_file)
         assert _fingerprints(postgres, columns) == before

@@ -4,6 +4,7 @@ These tests only use temporary files. They never invoke Docker or SSH and do
 not load any production operator state.
 """
 import importlib.util
+import inspect
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -186,6 +187,16 @@ def test_postgres_readiness_times_out_without_a_stable_window(release, monkeypat
 
     with pytest.raises(AssertionError, match="stably ready"):
         release._wait_for_stable_postgres("rehearsal-postgres", timeout_seconds=4)
+
+
+def test_rehearsal_uses_the_restored_snapshot_as_its_migration_baseline(release):
+    source = inspect.getsource(release.rehearse)
+    restore = source.index('"pg_restore"')
+    baseline = source.index('before = _fingerprints(postgres, columns)')
+    first_initializer = source.index('_run_initialize(state["images"]["backend"]')
+
+    assert restore < baseline < first_initializer
+    assert '_fingerprints("webcompiler-postgres", columns)' not in source
 
 
 def test_candidate_edge_configs_add_exact_upload_and_normal_api_limits(release):
