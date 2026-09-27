@@ -1,0 +1,27 @@
+{
+  "scope": "isolated native candidate build, not a deployed or approved runtime",
+  "mode": "frontend",
+  "image": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "before": {
+    "availableMemoryBytes": 6267973632,
+    "freeDiskBytes": 5102399488
+  },
+  "owner": "fc0de9d3be7641c7bacb96b7db2a5c2f",
+  "containerId": "810b44c16048d15a3d8ff4e330cf5a7e649cfacd6bdd0b193f025d74bfef7b7d",
+  "scriptSha256": "0c7f248da03a7a1fb034f30dd66316b032f9eb9f2c46ca326bdf42648a6127f6",
+  "exitCode": 1,
+  "stdout": "{\"phase\": \"frontend-analysis\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-dump-ast\", \"--ast-no-std\", \"--ast-func\", \"main\", \"/work/candidate/src/main.bpp\"], \"timeoutSeconds\": 120, \"exitCode\": -9, \"wallSeconds\": 100.531, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 99.859}\n{\"scope\": \"bounded native compiler candidate, NOT approved image or contest acceptance\", \"mode\": \"frontend\", \"commit\": \"2d596233f45973394a5d951c40b11f78171c8870\", \"sourceArchiveSha256\": \"1dcc9ac5ace81fae5ec846d87064326a038f8adb700adb5f61386b26cc4002f4\", \"phases\": [{\"phase\": \"frontend-analysis\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-dump-ast\", \"--ast-no-std\", \"--ast-func\", \"main\", \"/work/candidate/src/main.bpp\"], \"timeoutSeconds\": 120, \"exitCode\": -9, \"wallSeconds\": 100.531, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 99.859}], \"passed\": false, \"bootstrapBinarySha256\": \"8cd02a03dd9f817bc50a644160dd06b70f4dfe8982abac9f61d6faebcfa9e960\", \"error\": \"Native compiler candidate phase failed: frontend-analysis\", \"cgroupCounters\": {\"cpu.stat\": \"usage_usec 100139631\\nuser_usec 99907953\\nsystem_usec 231677\\ncore_sched.force_idle_usec 0\\nnr_periods 1007\\nnr_throttled 36\\nthrottled_usec 37226\\nnr_bursts 0\\nburst_usec 0\\n\", \"memory.peak\": \"197279744\\n\", \"memory.events\": \"low 0\\nhigh 0\\nmax 0\\noom 0\\noom_kill 0\\noom_group_kill 0\\n\"}}\n",
+  "stderr": "",
+  "timedOut": false,
+  "containerState": {
+    "Status": "exited",
+    "Running": false,
+    "OOMKilled": false,
+    "ExitCode": 1,
+    "Error": ""
+  },
+  "after": {
+    "availableMemoryBytes": 6104055808,
+    "freeDiskBytes": 5101920256
+  }
+}

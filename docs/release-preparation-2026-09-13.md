@@ -1,8 +1,47 @@
 # 2026-09-13 배포 준비 및 검증
 
-현재 상태: **미배포**. 사용자 승인에 따라 기반 이미지 보안 수정과 DB 마이그레이션 검증을 진행했다. 운영은 `44b2af4ca104b1c343a577f75ce7880c928403f7`이며 변경하지 않았다. Git push/main 병합도 수행하지 않았다.
+현재 상태: **운영 배포 완료 — 샌드박스 보안 미해결 항목은 사용자 승인에 따른 이번 수동 배포의 예외로 기록**. 운영 앱 소스는 `653a1babb170deaaa4b571163f4c58601881a7b7`이다. Git push/main 병합은 수행하지 않았다.
 
-## 완료한 검증
+## 최종 배포 결과 (아래 중단 기록보다 우선)
+
+- 사용자가 남은 보안 항목을 보고받은 뒤 “뭐가 됐던 배포하라고”라고 명시적으로 지시했다. 아래 샌드박스 이미지ID와 보고서 해시에 한정된 수동 배포 예외를 기록하고 진행했다. 원본 스캔의 `policyPassed:false`를 유지했으며 저장소/CI의 보안 검사 정책은 변경하지 않았다.
+- 백업·기존 요청 drain 후 v11 마이그레이션과 백엔드2개/작업자/프런트 이미지 교체 완료. 기존 PostgreSQL·Redis·PgBouncer·API proxy 컨테이너는 교체하지 않았다. 기존 업무 테이블11개의 전체 행 fingerprint를 보존했고 학습 기록22개를 backfill했다.
+- 공개 전 6개 언어 실제 실행, 공개 HTTPS에서도 6개 언어 실제 실행 통과. 관리자 로그인, 문제·콘테스트·학습 과정·추천·복습 API 조회 통과.
+- 배포 후 소스의 기본 템플릿6개를 실제 실행하여 모두 `Hello, World!` 확인. B++ 전체 컴파일/잘못된 코드 진단, Python 사용자 입력40+2=42 확인. 업무 행 불변, 서비스7개 healthy, 미완료 작업0, 공개 릴리스 마커653 일치.
+- 실제 Codex 브라우저에서 새 홈 문구/문제 명칭, 설정390px, 프로필 독립 페이지의 비로그인 접근 안내, 학습7개 과정/문제 목록, IDE1440px 그래프 닫기·다시 열기/Python 선택 시 숨김,677px 도구 겹침 없음(`clientWidth=scrollWidth=677`) 확인. 이번 운영 브라우저 검증에서는 로그인 후 프로필 수정이나 메모 저장을 수행하지 않았다. 해당 쓰기 기능은 앞선 격리 API/로컬 브라우저 검증과 구분한다.
+- 첫 수동 적용은 `docker compose run`이 지원하지 않는 `--no-build` 옵션 때문에 초기화 실행 전에 중단됐다. 기존 이미지 복구에 성공했고 운영 데이터 변경은 없었다. 설치된 CLI help로 확인 후 해당 옵션만 제거했다. 기존 immutable 이미지/`--pull never`/`--build` 미지정 조건을 유지한 두 번째 적용은 성공했다. 첫 롤백 저널/백업도 보존했다.
+- 성공 저널: `/home/vulpo/webcompiler/.deploy/manual-learning-release-653a1bab-2`. `security-exception.json`은 정확한 승인 사유·이미지·보고서 해시·CRITICAL4/HIGH94 미해결을 기록한다. `pre-update-production.dump`는 비공개 백업이며, 이전 이미지로 되돌릴 수 있도록 보존한다.
+- 추가 증거: 작업 폴더의 `deployment-result.json` (`publicSmoke:true`, `securityPolicyPassed:false`), `postdeploy-checks.json`. 브라우저는 운영 홈페이지로 열어 두었고 임시 viewport는 원래대로 되돌렸다.
+- **미해결:** 샌드박스 보안 차단 항목98건은 수정 완료가 아니다. SMTP도 기존 제외 범위다. 배포 성공을 전체 보안 완료나 모든 기능/입력 조합의 재검증으로 표현하지 않는다.
+
+## 배포 전 중단 체크포인트 — 실제 이미지 검사와 운영 복제본 검증
+
+아래는 사용자의 최종 예외 승인 전 기록이다. 당시에는 **실행 이미지 보안 기준을 통과하지 못해 운영 교체를 수행하지 않았다**. 이후 승인과 배포 결과는 위 절을 따른다.
+
+- 로컬 커밋: `275b1002b0b3d685efbdfedc42c686391b606b9f`, 최종 앱 소스 `653a1babb170deaaa4b571163f4c58601881a7b7`. Git push/main 병합 없음.
+- 최종 소스의 실제 PostgreSQL/SQLite 학습 API·큐·마이그레이션 **52개 통과, 건너뜀 없음, 51.09초**. 관리자·시스템 게시물을 덮어쓰지 않는 `--skip-bootstrap`, 빈 설치에서의 거부/롤백을 포함한다.
+- 최종 백엔드 `sha256:d7ab3494aad02142fe7fc4abee8175283a2ce68e57cfc7bb24da034753065930`: 일반 사용자 UID10001의 `app.initialize` import 통과. 실제 application-scope Trivy **통과**, 156개 패키지, LOW6/MEDIUM53, HIGH/CRITICAL/UNKNOWN 없음.
+- 최종 프런트 `sha256:9fb2773f6e2c5e5d7fa4a03745b2451a632be09567bcd3f53cbb4705df2a6a40`: 실제 application-scope Trivy **통과**, 21개 패키지, 취약점 검출 없음. 빌드 기준 소스는 위 최종 앱 커밋이다.
+- 샌드박스 `sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1`: B++ 부트스트랩/자체 빌드 완료. 제한된 실제 컨테이너에서 **6개 언어 모두 출력42/종료0**. 소스 라벨은 `275b1002`이며 이후 `653a1bab`의 runtime 전체 파일 내용과 동일하다. 새 커밋으로 다시 빌드했다고 표시하지 않았다.
+- 위 샌드박스 보안 검사는 **실패**: CRITICAL4/HIGH94. `linux-libc-dev 7.0.0-31.31`에 90개 차단 항목(수정 버전 미제공), 기본 이미지의 `/usr/bin/pebble` Go1.26.5에 HIGH8. npm 번들의 기존 차단 항목은 남지 않았다. 헤더/패키지 목록 삭제나 제외 규칙은 적용하지 않았다.
+- 대안 검증: Debian bookworm-slim의 고정 이미지에 전체 컴파일 도구를 설치하고 apt upgrade한 **의존성 전용 후보**도 검사했다. 223개 패키지에서 CRITICAL17/HIGH340/UNKNOWN14로 **실패**했다. 이 후보를 제품 소스로 반영하거나 운영에 배포하지 않았다. 일부 CVE의 수정 여부만으로 전체 이미지가 통과한다고 추정할 수 없다.
+- **운영 DB 복제본 검증 통과**: 비공개 `pg_dump`를 internal network/tmpfs PostgreSQL에 복원하고, 최종 백엔드로 additive v11 마이그레이션을 두 번 실행했다. 11개 기존 업무 테이블의 전체 행 fingerprint 동일, 학습 기록 backfill의 최신 제출 선택/중복 방지, 이전 운영 이미지의 기존 데이터 조회와 이전 스키마 마커 호환성을 확인했다. 실제 운영 DB에는 적용하지 않았다.
+- 복제본 검증 중 배포 보조 스크립트의 private umask 문제가 재현됐다. 최초 백엔드 `4cec36fe...`는 소스 하위 디렉터리가700으로 복사되어 일반 사용자 import가 실패했다. 검증한 공개 소스 디렉터리만755/파일644+Git 실행 비트로 정규화하고, 새 이미지 빌드 후 non-root import 및 보안 검사를 다시 통과시켰다. 비밀/백업/작업 루트 권한은 넓히지 않았다. 최초 실패 이미지의 보안 보고서는 별도 보존한다.
+- 첫 복원 시 PostgreSQL 임시 초기화 소켓을 준비 완료로 판단하는 경합이 있었다. TCP127.0.0.1 준비 검사로 수정 후 동일한 보존 백업으로 전체 복제본 절차를 통과했다.
+- 종료 확인: 운영 SHA는 기존 `44b2af4c`, 7개 서비스 모두 healthy, 공개 HTTPS health 확인, 운영 학습 테이블/마이그레이션 없음. 격리 테스트 컨테이너·네트워크는 제거했고 작업 전용 builder는 중지했다. 실패한 **이번 작업의 Bookworm 실험 이미지만** 제거해 공간을 회수했다(소스/보고서로 재빌드 가능). 운영·롤백 이미지/데이터는 보존했다. 여유 공간 약6.57GiB.
+
+### 남은 차단 조건
+
+- 모든 이미지가 UNKNOWN/HIGH/CRITICAL 없는 기존 보안 기준을 통과해야 운영 교체를 진행한다. 현재 샌드박스는 충족하지 못한다.
+- Ubuntu의 해당 커널 소스 패키지에는 아직 미수정 항목이 있다. 예: [Canonical CVE-2026-74394](https://ubuntu.com/security/CVE-2026-74394). 이는 설치 패키지 기준 검사이며 호스트 커널에서의 실제 악용 가능성을 입증한 결과는 아니다.
+- 다른 배포판의 일부 패치 확인은 전체 통과 증거가 아니다. [Debian CVE-2026-80721](https://security-tracker.debian.org/tracker/CVE-2026-80721)은 bookworm을 비영향, trixie를 미수정으로 표시하지만, 실제 bookworm 전체 검사에는 위 다른 차단 항목들이 남았다.
+- 다음 작업은 실행 환경 의존성을 더 좁게 구성하는 재설계 또는 수정 패키지 확보와 전체 재검증이다. 단순히 배포판 이름만 바꾸는 반복 빌드, 보안 검사 무시, 기존 취약 실행 이미지로의 임의 배포는 하지 않는다. 운영 적용/공개 기능 검증은 여전히 미완료다.
+
+### 추가 증거
+
+서버 작업 폴더의 `runtime-smoke.json`, `sandbox-scan-275b1002/`, `backend-scan-653a1bab/`, `backend-scan-653a1bab-initial-permissions/`, `frontend-scan-653a1bab/`, `bookworm-scan/`, `pgtest-final.log`, `clone-rehearsal.json`, `blocked-checkpoint.json`. 각 스캔 manifest는 이미지ID/소스/역할/전체 SBOM hash/동일한 최신 취약점 DB 시각을 기록한다. 복원 백업과 진단은 비공개 서버 경로에만 보존하며 비밀/원본 사용자 데이터를 문서에 복사하지 않는다.
+
+## 초기 준비 단계 검증 (이하 과거 기록)
 
 - 프런트: Vitest 179개/32파일 통과, TypeScript 통과.
 - Ubuntu 24.04/Python 3.12/glibc 백엔드 의존성 후보: 기존 `requirements.lock`의 해시 검증 설치, `pip check`, 주요 네이티브 모듈 import 통과.

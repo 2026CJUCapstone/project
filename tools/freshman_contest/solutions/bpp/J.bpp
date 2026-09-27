@@ -1,0 +1,155 @@
+import std.io;
+
+// Periodic inversion formula proved in docs/banks-reference-proof-2026-09-26.md.
+var reader_buffer: [4096]u8;
+var reader_pos: u64 = 0;
+var reader_len: u64 = 0;
+var prefixes: [10000]i64;
+var sorted_prefixes: [10000]i64;
+var remainders: [10000]i64;
+var tree: [10000]i64;
+
+func next_byte() -> i64 {
+    if (reader_pos >= reader_len) {
+        var count: i64 = input_read(&reader_buffer[0], 4096);
+        if (count <= 0) { return -1; }
+        reader_len = (u64)count;
+        reader_pos = 0;
+    }
+    var value: i64 = (i64)reader_buffer[reader_pos];
+    reader_pos += 1;
+    return value;
+}
+
+func next_i64() -> i64 {
+    var current: i64 = next_byte();
+    while (current >= 0 && current <= 32) { current = next_byte(); }
+    var sign: i64 = 1;
+    if (current == 45) {
+        sign = -1;
+        current = next_byte();
+    } else if (current == 43) {
+        current = next_byte();
+    }
+    var value: i64 = 0;
+    while (current >= 48 && current <= 57) {
+        value = value * 10 + (current - 48);
+        current = next_byte();
+    }
+    return value * sign;
+}
+
+func sift_down(values: *i64, root: u64, count: u64) -> u64 {
+    while (true) {
+        var child: u64 = root * 2 + 1;
+        if (child >= count) { return 0; }
+        var largest: u64 = root;
+        if (values[largest] < values[child]) { largest = child; }
+        var right: u64 = child + 1;
+        if (right < count && values[largest] < values[right]) { largest = right; }
+        if (largest == root) { return 0; }
+        var temporary: i64 = values[root];
+        values[root] = values[largest];
+        values[largest] = temporary;
+        root = largest;
+    }
+}
+
+func heap_sort(values: *i64, count: u64) -> u64 {
+    var start: u64 = count / 2;
+    while (start > 0) {
+        start -= 1;
+        sift_down(values, start, count);
+    }
+    var end: u64 = count;
+    while (end > 1) {
+        end -= 1;
+        var temporary: i64 = values[0];
+        values[0] = values[end];
+        values[end] = temporary;
+        sift_down(values, 0, end);
+    }
+    return 0;
+}
+
+func lower_bound(values: *i64, count: u64, target: i64) -> u64 {
+    var low: u64 = 0;
+    var high: u64 = count;
+    while (low < high) {
+        var middle: u64 = low + (high - low) / 2;
+        if (values[middle] < target) { low = middle + 1; }
+        else { high = middle; }
+    }
+    return low;
+}
+
+func add(index: u64, count: u64) -> u64 {
+    while (index < count) {
+        tree[index] += 1;
+        index = index | (index + 1);
+    }
+    return 0;
+}
+
+func before(index: u64) -> i64 {
+    var result: i64 = 0;
+    while (index > 0) {
+        result += tree[index - 1];
+        index = index & (index - 1);
+    }
+    return result;
+}
+
+func residue(value: i64, total: i64) -> i64 {
+    var result: i64 = value % total;
+    if (result < 0) { result += total; }
+    return result;
+}
+
+func main() -> u64 {
+    var count: u64 = (u64)next_i64();
+    var total: i64 = 0;
+    var index: u64 = 0;
+    while (index < count) {
+        prefixes[index] = total;
+        sorted_prefixes[index] = total;
+        total += next_i64();
+        tree[index] = 0;
+        index += 1;
+    }
+    index = 0;
+    while (index < count) {
+        remainders[index] = residue(prefixes[index], total);
+        index += 1;
+    }
+    heap_sort(&remainders[0], count);
+    heap_sort(&sorted_prefixes[0], count);
+    var answer: i64 = 0;
+    var quotient_sum: i64 = 0;
+    index = 0;
+    while (index < count) {
+        var remainder: i64 = residue(sorted_prefixes[index], total);
+        // Subtract the nonnegative remainder before dividing: floor, not truncation.
+        var quotient: i64 = (sorted_prefixes[index] - remainder) / total;
+        var rank: u64 = lower_bound(&remainders[0], count, remainder);
+        answer += (i64)index * quotient - quotient_sum + before(rank);
+        quotient_sum += quotient;
+        add(rank, count);
+        index += 1;
+    }
+    index = 0;
+    while (index < count) {
+        tree[index] = 0;
+        index += 1;
+    }
+    index = 0;
+    while (index < count) {
+        var rank: u64 = lower_bound(&sorted_prefixes[0], count, prefixes[index]);
+        answer -= before(rank);
+        add(rank, count);
+        index += 1;
+    }
+    print_i64(answer);
+    print_nl();
+    return 0;
+}

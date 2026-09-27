@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "owner": "8a1cb5ea7859432b9e783675626d0fc0",
+  "suite": "mechanics",
+  "repetition": 1,
+  "language": "all",
+  "controllerTimeoutSeconds": 750,
+  "controllerTimeoutBasis": {
+    "kind": "frozen-suite-inner-deadlines-plus-reviewed-overhead",
+    "frozenInnerDeadlineSeconds": 690,
+    "reviewedNonJobOverheadSeconds": 60
+  },
+  "controllerElapsedSeconds": 47.5,
+  "timedOut": false,
+  "host": {
+    "system": "Linux",
+    "kernel": "6.8.0-111-generic",
+    "architecture": "x86_64",
+    "cpuCount": 4
+  },
+  "controllerImage": "sha256:d7ab3494aad02142fe7fc4abee8175283a2ce68e57cfc7bb24da034753065930",
+  "runtimeImage": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "sourceArchiveSha256": "2e18d203661ac3932f11b965b7ceb0abde190a607a1d27a61bac0b8911e70a68",
+  "scriptsSha256": {
+    "verify_runtime_matrix.py": "4e33c8b9f080c6c89f0794e5859d17e2a02e1093ed9152ce257f6522c3ea5565",
+    "run_isolated_runtime_matrix.py": "dcff454b525f6959c6dbabd2c6226f4c6b9909e1093297b6a795828a37e0edf3"
+  },
+  "versions": {
+    "c": {
+      "version": "gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+      "exit": 0
+    },
+    "cpp": {
+      "version": "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+      "exit": 0
+    },
+    "python": {
+      "version": "Python 3.14.4",
+      "exit": 0
+    },
+    "java": {
+      "version": "openjdk version \"25.0.4\" 2026-07-21",
+      "exit": 0
+    },
+    "javascript": {
+      "version": "v24.21.0",
+      "exit": 0
+    },
+    "bpp": {
+      "version": "binary-sha256:8cd02a03dd9f817bc50a644160dd06b70f4dfe8982abac9f61d6faebcfa9e960",
+      "exit": 0,
+      "launcherSha256": "44940bcd0cd23ec4495c55f6458ca95a4026b9542a98f87d1debb6f997923a3a",
+      "compilerPath": "/usr/local/libexec/bpp/v13_stage1"
+    },
+    "tools": {
+      "javac": true,
+      "nasm": true,
+      "ld": true
+    }
+  },
+  "capacityBefore": {
+    "availableMemoryBytes": 6440968192,
+    "freeDiskBytes": 5082816512
+  },
+  "capacityBeforeCleanup": {
+    "availableMemoryBytes": 6356348928,
+    "freeDiskBytes": 5081509888
+  },
+  "controllerExitCode": 0,
+  "stdout": "{\"language\": \"c\", \"case\": \"accepted\", \"expected\": \"accepted\", \"verdict\": \"accepted\", \"passed\": true, \"phaseCount\": 3, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 53412, \"wallNs\": 54705498, \"peakMemoryBytes\": 14262272, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 2941, \"wallNs\": 1783185, \"peakMemoryBytes\": 8593408, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 3878, \"wallNs\": 1965748, \"peakMemoryBytes\": 8593408, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"c\", \"case\": \"wrong_answer\", \"expected\": \"wrong_answer\", \"verdict\": \"wrong_answer\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 47661, \"wallNs\": 44374310, \"peakMemoryBytes\": 14086144, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 4018, \"wallNs\": 2434395, \"peakMemoryBytes\": 8626176, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"c\", \"case\": \"compile_error\", \"expected\": \"compile_error\", \"verdict\": \"compile_error\", \"passed\": true, \"phaseCount\": 1, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 1, \"failureReason\": null, \"cpuUsec\": 12258, \"wallNs\": 9867771, \"peakMemoryBytes\": 11558912, \"oomKills\": 0, \"outputBytes\": 339, \"treeReaped\": true}]}\n{\"language\": \"cpp\", \"case\": \"accepted\", \"expected\": \"accepted\", \"verdict\": \"accepted\", \"passed\": true, \"phaseCount\": 3, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 466369, \"wallNs\": 475032809, \"peakMemoryBytes\": 62341120, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 5617, \"wallNs\": 3168312, \"peakMemoryBytes\": 8564736, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 5615, \"wallNs\": 3195087, \"peakMemoryBytes\": 8773632, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"cpp\", \"case\": \"wrong_answer\", \"expected\": \"wrong_answer\", \"verdict\": \"wrong_answer\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 441137, \"wallNs\": 431351440, \"peakMemoryBytes\": 60768256, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 4408, \"wallNs\": 3875647, \"peakMemoryBytes\": 8134656, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"cpp\", \"case\": \"compile_error\", \"expected\": \"compile_error\", \"verdict\": \"compile_error\", \"passed\": true, \"phaseCount\": 1, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 1, \"failureReason\": null, \"cpuUsec\": 12443, \"wallNs\": 10038443, \"peakMemoryBytes\": 11468800, \"oomKills\": 0, \"outputBytes\": 338, \"treeReaped\": true}]}\n{\"language\": \"python\", \"case\": \"accepted\", \"expected\": \"accepted\", \"verdict\": \"accepted\", \"passed\": true, \"phaseCount\": 3, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 54793, \"wallNs\": 51467228, \"peakMemoryBytes\": 14442496, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 24622, \"wallNs\": 21629695, \"peakMemoryBytes\": 10633216, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 21906, \"wallNs\": 18897000, \"peakMemoryBytes\": 10596352, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"python\", \"case\": \"wrong_answer\", \"expected\": \"wrong_answer\", \"verdict\": \"wrong_answer\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 75879, \"wallNs\": 79385864, \"peakMemoryBytes\": 14446592, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 17529, \"wallNs\": 14796603, \"peakMemoryBytes\": 10936320, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"python\", \"case\": \"compile_error\", \"expected\": \"compile_error\", \"verdict\": \"compile_error\", \"passed\": true, \"phaseCount\": 1, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 1, \"failureReason\": null, \"cpuUsec\": 85115, \"wallNs\": 85353371, \"peakMemoryBytes\": 14712832, \"oomKills\": 0, \"outputBytes\": 1019, \"treeReaped\": true}]}\n{\"language\": \"java\", \"case\": \"accepted\", \"expected\": \"accepted\", \"verdict\": \"accepted\", \"passed\": true, \"phaseCount\": 3, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 1294195, \"wallNs\": 1265313429, \"peakMemoryBytes\": 55451648, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 46498, \"wallNs\": 34412652, \"peakMemoryBytes\": 25149440, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 49766, \"wallNs\": 49145194, \"peakMemoryBytes\": 25137152, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"java\", \"case\": \"wrong_answer\", \"expected\": \"wrong_answer\", \"verdict\": \"wrong_answer\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 1334405, \"wallNs\": 1285427451, \"peakMemoryBytes\": 55431168, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 43323, \"wallNs\": 35713122, \"peakMemoryBytes\": 25235456, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"java\", \"case\": \"compile_error\", \"expected\": \"compile_error\", \"verdict\": \"compile_error\", \"passed\": true, \"phaseCount\": 1, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 1, \"failureReason\": null, \"cpuUsec\": 1069121, \"wallNs\": 1019320432, \"peakMemoryBytes\": 52875264, \"oomKills\": 0, \"outputBytes\": 331, \"treeReaped\": true}]}\n{\"language\": \"javascript\", \"case\": \"accepted\", \"expected\": \"accepted\", \"verdict\": \"accepted\", \"passed\": true, \"phaseCount\": 3, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 41206, \"wallNs\": 36926243, \"peakMemoryBytes\": 16453632, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 48876, \"wallNs\": 43705210, \"peakMemoryBytes\": 17342464, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 52083, \"wallNs\": 46560299, \"peakMemoryBytes\": 17534976, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"javascript\", \"case\": \"wrong_answer\", \"expected\": \"wrong_answer\", \"verdict\": \"wrong_answer\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 40225, \"wallNs\": 35806750, \"peakMemoryBytes\": 16846848, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 57575, \"wallNs\": 53271469, \"peakMemoryBytes\": 17252352, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"javascript\", \"case\": \"compile_error\", \"expected\": \"compile_error\", \"verdict\": \"compile_error\", \"passed\": true, \"phaseCount\": 1, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 1, \"failureReason\": null, \"cpuUsec\": 40812, \"wallNs\": 36527476, \"peakMemoryBytes\": 17674240, \"oomKills\": 0, \"outputBytes\": 237, \"treeReaped\": true}]}\n{\"language\": \"bpp\", \"case\": \"accepted\", \"expected\": \"accepted\", \"verdict\": \"accepted\", \"passed\": true, \"phaseCount\": 3, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 2056383, \"wallNs\": 2045568596, \"peakMemoryBytes\": 53719040, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 4050, \"wallNs\": 2202462, \"peakMemoryBytes\": 8724480, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 4358, \"wallNs\": 4339821, \"peakMemoryBytes\": 8343552, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"bpp\", \"case\": \"wrong_answer\", \"expected\": \"wrong_answer\", \"verdict\": \"wrong_answer\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 2097094, \"wallNs\": 2086428917, \"peakMemoryBytes\": 53469184, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 3157, \"wallNs\": 1870275, \"peakMemoryBytes\": 8560640, \"oomKills\": 0, \"outputBytes\": 3, \"treeReaped\": true}]}\n{\"language\": \"bpp\", \"case\": \"compile_error\", \"expected\": \"compile_error\", \"verdict\": \"compile_error\", \"passed\": true, \"phaseCount\": 1, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 1, \"failureReason\": null, \"cpuUsec\": 1955332, \"wallNs\": 1945840429, \"peakMemoryBytes\": 52092928, \"oomKills\": 0, \"outputBytes\": 812, \"treeReaped\": true}]}\n{\"language\": \"python\", \"case\": \"cpu\", \"expected\": \"time_limit_exceeded\", \"verdict\": \"time_limit_exceeded\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 76459, \"wallNs\": 75457581, \"peakMemoryBytes\": 14454784, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": -9, \"failureReason\": \"time_limit_exceeded\", \"cpuUsec\": 102030, \"wallNs\": 95992091, \"peakMemoryBytes\": 10584064, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}]}\n{\"language\": \"python\", \"case\": \"wall\", \"expected\": \"time_limit_exceeded\", \"verdict\": \"time_limit_exceeded\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 50142, \"wallNs\": 46550171, \"peakMemoryBytes\": 14196736, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": -9, \"failureReason\": \"time_limit_exceeded\", \"cpuUsec\": 30295, \"wallNs\": 153715261, \"peakMemoryBytes\": 10461184, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}]}\n{\"language\": \"python\", \"case\": \"oom\", \"expected\": \"memory_limit_exceeded\", \"verdict\": \"memory_limit_exceeded\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 55271, \"wallNs\": 50999996, \"peakMemoryBytes\": 14180352, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": -9, \"failureReason\": \"memory_limit_exceeded\", \"cpuUsec\": 102554, \"wallNs\": 86515453, \"peakMemoryBytes\": 134217728, \"oomKills\": 1, \"outputBytes\": 0, \"treeReaped\": true}]}\n{\"language\": \"python\", \"case\": \"output\", \"expected\": \"output_limit_exceeded\", \"verdict\": \"output_limit_exceeded\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 48658, \"wallNs\": 44973964, \"peakMemoryBytes\": 14434304, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": -9, \"failureReason\": \"output_limit_exceeded\", \"cpuUsec\": 17828, \"wallNs\": 14746930, \"peakMemoryBytes\": 10821632, \"oomKills\": 0, \"outputBytes\": 1024, \"treeReaped\": true}]}\n{\"language\": \"python\", \"case\": \"exit137\", \"expected\": \"runtime_error\", \"verdict\": \"runtime_error\", \"passed\": true, \"phaseCount\": 2, \"compileCount\": 1, \"phases\": [{\"version\": 1, \"phase\": \"compile\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 49345, \"wallNs\": 45158323, \"peakMemoryBytes\": 14438400, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, {\"version\": 1, \"phase\": \"run\", \"exitCode\": 137, \"failureReason\": null, \"cpuUsec\": 21566, \"wallNs\": 20250743, \"peakMemoryBytes\": 10563584, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}]}\n{\"scope\": \"six-runtime adapter mechanics only; no DB-worker/benchmark acceptance\", \"image\": \"sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1\", \"launcherDigest\": \"sha256:908bb710244512ea3f655831a7aa84b4fb5d6ec370cd32e558f14944fbc0e505\", \"count\": 23, \"passed\": 23, \"distinctPhaseContainers\": 46, \"remainingSubmittedContainers\": 0, \"remainingJobDirectories\": 0}\n",
+  "stderr": "",
+  "cleanup": {
+    "attempted": true,
+    "discovered": [
+      "bc9a6125c2cb"
+    ],
+    "removed": [
+      "bc9a6125c2cb"
+    ],
+    "remaining": [],
+    "errors": [],
+    "complete": true
+  },
+  "capacityAfterCleanup": {
+    "availableMemoryBytes": 6353518592,
+    "freeDiskBytes": 5081620480
+  }
+}

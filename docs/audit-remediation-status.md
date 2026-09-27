@@ -1,5 +1,13 @@
 # 감사 후속 수정 진행표
 
+## 2026-09-27 최신 상태 — migration release와 최종 잔여 조건
+
+운영은 release `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`로 교체됐다. 운영 dump 복원 리허설과 추가형 migration, 실패 시 이전 application image rollback을 실제 수행했고 PostgreSQL·Redis·PgBouncer·API-proxy identity를 보존했다. API 2개, worker, frontend 및 상태 서비스는 healthy다. C/C++/Python/Java/JavaScript와 새 B++ 실행 `694bf991-357a-4cfa-9232-082c32fa9d03`이 stdout `42`로 완료됐고, CE·RE·TLE·MLE, 기록 필터와 public request-size 경계를 확인했다. 고유 read-only GET 12개는 두 API에 7/5로 분배됐으며 live proxy는 `least_conn`이다. 대기·실행 작업과 잔여 sandbox는 검증 뒤 0이다.
+
+새로 발견한 외부 `/webcompiler/ready`의 SPA fallback은 로컬 Nginx 두 설정과 회귀 테스트에서 수정했지만 아직 운영 재배포 전이다. 현재 증거를 A01–A25 전체 운영 수락으로 확대하지 않는다. 전용 non-default Docker daemon/VM에서의 cgroup·PID·OOM·6언어×A–J 반복 측정, 실제 PostgreSQL/Redis worker 장애 복구, HTTP·WebSocket 혼합 봇 부하, scale/drain/idempotent POST와 multi-host HA, SMTP, ingress TLS/HSTS 및 백업 보존 정책은 외부 인프라·운영 선택이 필요하다. A–J bundle은 `releaseReady=false`, `published=false`인 검토 초안으로 유지하며 일정·배점·J 순위 반영·출처 이용 조건·AI 규칙·종료 후 공개·최종 언어 정책 승인 전에는 업로드하지 않는다. Git 배포 ref는 어느 branch에도 포함되지 않았고 push/main 병합도 하지 않았다. 아래의 과거 checkpoint는 이 최신 상태를 덮어쓰지 않는다.
+
+현재 worktree의 최종 전체 회귀는 **backend 3,123 PASS/450 조건부 환경 SKIP/10 subtests PASS/실패 0(408.79초)**, **frontend 58 files/322 PASS**, TypeScript 검사와 production build PASS다. readiness 수정 집중 검사는 16 PASS, runtime/readiness/release 관련 묶음은 249 PASS/6 명시적 SKIP이다. `git diff --check`도 오류 없이 통과했고 줄바꿈 경고만 남았다. 450개 skip을 수락으로 바꾸지 않는다. 실제 Linux/cgroup/별도 Docker daemon/PostgreSQL/Redis/reverse-proxy·장애/부하 기능이 있는 격리 환경이 있어야 해당 조건을 실행할 수 있다.
+
 ## 최신 결과 — 기본 LB 운영 배포 완료
 
 사용자가 축소 승인한 기본2-API LB 범위는 운영 배포 및 HTTPS6언어 실행·로그인·목록·API1개 중지 후 신규 실행까지 확인했다. 최종 release는 `eef08f2486926bbf5eb1017886d0b88634eddb45`이며 두 API/worker가 healthy다. 일반/대회 전체 채점은 운영 복사본의 격리 환경에서 검증했다. 전환 중 익명 제출1개가 TTL로 삭제되어 백업에서 그 행만 복원했고, 자동 삭제를 비활성화한 뒤 원본9개 테이블을 다시 대조했다. [배포·검증·복구 기록](basic-load-balancing-release-2026-09-10.md)에 정확한 범위와 미완료를 기록한다. 아래 전체 감사/managed lifecycle 상태를 완료로 바꾸지 않는다.
@@ -561,3 +569,20 @@ inventory-v5 전체86700은1237 passed /20 host-tool skipped /2 subtests passed(
 - 다음 checkpoint: 실제 PG/Redis/Docker 전체 **165 passed**, opt-in skip 없이 실행. SIGTERM worker 재시작 시 두 DB에서 orphan sandbox 회수→다음 작업 성공, claim별 temp 정리도 검증. 기존 3개 backup fixture 실패는 noexec /tmp 때문이었고, 별도 test-only exec tmpfs에서 그대로 통과. 이는 아직 HTTP/WS durable 연결 완료를 의미하지 않는다.
 - 브라우저 두 탭 revision 충돌/명시 해결 1 passed, 1440/390px 로컬 Monaco 실제 편집·JS worker same-origin/CDN 0·가로 overflow 없음 2 passed. API는 mock으로 격리했다.
 - 실제 백업/복원은 테스트 PostgreSQL `audit_stage`→`audit_restore_t82h_verification`이며, `/tmp/audit-restore-glcEFD/stage.dump` 및 체크섬이 해당 테스트 컨테이너 안에 남아 있다. 운영 데이터를 복제하지 않았다.
+
+## 2026-09-27 운영 ref 재현 후보와 public readiness 후속
+
+- 운영 ref `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`의 detached 후보에서 readiness 수정과 검증 폐쇄를 다시 실행했다. 백엔드 **2,315 PASS/380 조건부 SKIP/8 subtests PASS**, 프런트 **58 files/322 PASS**, 타입 검사와 production build, diff-check가 통과했다. 임시 Git 저장소의 `core.autocrlf=true` fresh checkout과 archive round-trip도 launcher byte identity를 보존했다.
+- 운영 `/webcompiler/ready`의 HTML fallback 원인은 host include drift까지 포함한다. 일반 배포는 Git archive를 컨테이너에 반영할 뿐 `/etc/nginx/snippets/webcompiler.locations.conf`를 설치·reload하지 않는다. 따라서 A09/A25의 public readiness 완료는 container 배포와 별도의 승인된 host 단계가 필요하다.
+- host 설치기는 root-owned lock 아래 source/current 전체 해시 재검사, symlink·unsafe parent 거절, 원자 교체·fsync, Nginx syntax/reload, 외부 JSON/no-store/200 계약과 실패 rollback fingerprint를 검사한다. 로컬 회귀는 전체 후보 suite에 포함됐지만 운영 적용은 하지 않았다.
+- Windows checkout에서 byte-addressed launcher가 CRLF로 바뀌면 과거 영수증 재생이 실패하는 문제를 발견해 active/archive launcher의 LF 고정과 파일명 digest 회귀를 추가했다. 이는 A09/A18의 artifact 재현성 보강이며 실제 Linux archived-runtime 실행을 대체하지 않는다.
+- 실제 전용 daemon/cgroup 6언어, PostgreSQL·Redis 장애, 혼합 부하·replica failure·장시간 WebSocket·multi-host HA 조건은 계속 외부 수락 항목이다. 12건 read-only 7/5 분배를 그 결과로 확대하지 않는다.
+- 위 후보는 로컬 `codex/readiness-release-candidate-20260927` commit `3fb0e72e3f0a55324eebadd3b92a469d4b2f574d`로 고정했다. complete-history bundle SHA-256은 `d4a82ca5490f8818d00a6aa44cd1bb9a35d62c3dc5beab2bf923fe78f389b180`이며 `git bundle verify`를 통과했다. 이 기록은 로컬 패키징 증거일 뿐 push/main/deploy/host 적용 증거가 아니다.
+
+## 2026-09-27 최신 main 통합 준비
+
+- 원격 `main` SHA `269da3312a24ef5dd3f4b34a783237e5a7ff23ba`에 전체 검증 릴리스 계보를 별도 로컬 브랜치에서 merge했다. 충돌은 없었으며 merge 결과 tree는 검증된 `3fb0e72e...` tree와 정확히 같다.
+- 실제 merge 상태의 백엔드는 **2,315 PASS/380 조건부 SKIP/8 subtests PASS/실패 0/143.50초**, 프런트는 **58 files/322 tests PASS**, 타입 검사와 production build PASS, diff-check PASS다.
+- 로컬 merge commit은 `5623a7ecf8f5ab719fe69f460938b5b4122eb8ba`다. complete-history bundle은 `.sandbox-work/readiness-main-candidate-5623a7ec.bundle`, 58,968,162 bytes, SHA-256 `b5becb59cdd6d2ac269adc87aca326cfbb94a66424779e45e5d6df83b2f6de38`이며 `git bundle verify`를 통과했다.
+- 기계 판독 manifest `.sandbox-work/readiness-main-candidate-5623a7ec.json`도 commit/bundle/size/hash와 교차 검증했으며 SHA-256은 `7b22261553a11f096666e488883d4182fc14832bd1f5211916a46d53c55bacde`다.
+- 운영 반영 전 남은 외부 조건은 변함없다: 명시적 push/deploy 승인, host include 적용을 위한 대화형 root 인증, 전용 daemon/VM 기반 cgroup·6언어 수락, 격리 PostgreSQL/Redis 장애 복구, 혼합 부하·replica failure·장시간 WebSocket·multi-host HA, A–J 권리와 운영 일정·배점·공개/J 정책 결정. 이를 통과하지 않은 항목은 완료로 계산하지 않는다.

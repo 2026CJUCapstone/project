@@ -1,0 +1,27 @@
+{
+  "scope": "isolated native candidate build, not a deployed or approved runtime",
+  "mode": "frontend-reduction",
+  "image": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "before": {
+    "availableMemoryBytes": 6288515072,
+    "freeDiskBytes": 5101817856
+  },
+  "owner": "8ed9b1716ad44fc0ad5f8b34c9364f52",
+  "containerId": "a75948edb3b25133fdef852689210fa48e45b25b6ad90874a9b00f725d70a83b",
+  "scriptSha256": "d65c05fb364ad36537fb33129cb270de89770682520d13f5f48784256a64e1c4",
+  "exitCode": 0,
+  "stdout": "{\"phase\": \"empty-analysis\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-dump-ast\", \"--ast-no-std\", \"--ast-func\", \"main\", \"/work/candidate/src/probe_empty.bpp\"], \"timeoutSeconds\": 120, \"exitCode\": 0, \"wallSeconds\": 1.873, \"stdoutBytes\": 273, \"stdoutSha256\": \"985b03f3c71562c8f5d8a96950fb62401fdd944bd1ffa54c64498b1376ab83c0\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 1.842}\n{\"phase\": \"annotations-analysis\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-dump-ast\", \"--ast-no-std\", \"--ast-func\", \"main\", \"/work/candidate/src/probe_annotations.bpp\"], \"timeoutSeconds\": 120, \"exitCode\": 0, \"wallSeconds\": 62.154, \"stdoutBytes\": 273, \"stdoutSha256\": \"985b03f3c71562c8f5d8a96950fb62401fdd944bd1ffa54c64498b1376ab83c0\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 61.716}\n{\"scope\": \"bounded native compiler candidate, NOT approved image or contest acceptance\", \"mode\": \"frontend-reduction\", \"commit\": \"2d596233f45973394a5d951c40b11f78171c8870\", \"sourceArchiveSha256\": \"1dcc9ac5ace81fae5ec846d87064326a038f8adb700adb5f61386b26cc4002f4\", \"phases\": [{\"phase\": \"empty-analysis\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-dump-ast\", \"--ast-no-std\", \"--ast-func\", \"main\", \"/work/candidate/src/probe_empty.bpp\"], \"timeoutSeconds\": 120, \"exitCode\": 0, \"wallSeconds\": 1.873, \"stdoutBytes\": 273, \"stdoutSha256\": \"985b03f3c71562c8f5d8a96950fb62401fdd944bd1ffa54c64498b1376ab83c0\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 1.842}, {\"phase\": \"annotations-analysis\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-dump-ast\", \"--ast-no-std\", \"--ast-func\", \"main\", \"/work/candidate/src/probe_annotations.bpp\"], \"timeoutSeconds\": 120, \"exitCode\": 0, \"wallSeconds\": 62.154, \"stdoutBytes\": 273, \"stdoutSha256\": \"985b03f3c71562c8f5d8a96950fb62401fdd944bd1ffa54c64498b1376ab83c0\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 61.716}], \"passed\": true, \"bootstrapBinarySha256\": \"8cd02a03dd9f817bc50a644160dd06b70f4dfe8982abac9f61d6faebcfa9e960\", \"compiledExecutable\": false, \"controls\": [{\"name\": \"empty\", \"sourceSha256\": \"27fbbcc4ff07bc876fb5f93f5814e7f4e78c4a71b536b361b169ced27a85f7d9\"}, {\"name\": \"annotations\", \"sourceSha256\": \"96fdd26d0b51322f4f0623d454787ef258b7c93b6807853419f96ad97336fa7e\"}], \"frontendCompleted\": true, \"cgroupCounters\": {\"cpu.stat\": \"usage_usec 63800252\\nuser_usec 63504802\\nsystem_usec 295450\\ncore_sched.force_idle_usec 0\\nnr_periods 642\\nnr_throttled 29\\nthrottled_usec 16565\\nnr_bursts 0\\nburst_usec 0\\n\", \"memory.peak\": \"361336832\\n\", \"memory.events\": \"low 0\\nhigh 0\\nmax 0\\noom 0\\noom_kill 0\\noom_group_kill 0\\n\"}}\n",
+  "stderr": "",
+  "timedOut": false,
+  "containerState": {
+    "Status": "exited",
+    "Running": false,
+    "OOMKilled": false,
+    "ExitCode": 0,
+    "Error": ""
+  },
+  "after": {
+    "availableMemoryBytes": 5942968320,
+    "freeDiskBytes": 5101432832
+  }
+}

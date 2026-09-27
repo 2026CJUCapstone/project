@@ -266,11 +266,13 @@ async def test_unfinished_private_problems_are_absent_from_ordinary_surfaces(env
             admin_headers = _headers(env.admin)
             admin_detail = await client.get(f"/api/v1/problems/{private_id}", headers=admin_headers)
             assert admin_detail.status_code == 200
+            assert admin_detail.headers["cache-control"] == "no-store"
             assert admin_detail.json()["title"] == fixture.title
             assert admin_detail.json()["description"] == fixture.description
             assert admin_detail.json()["hiddenTestCases"][0]["input"] == fixture.hidden_input
 
             admin_listing = await client.get("/api/v1/problems/", headers=admin_headers)
+            assert admin_listing.headers["cache-control"] == "no-store"
             assert private_id in _public_id_set(admin_listing)
             admin_problem = next(item for item in admin_listing.json() if item["id"] == private_id)
             assert admin_problem["hiddenTestCases"][0]["input"] == fixture.hidden_input
@@ -383,6 +385,7 @@ async def test_ended_private_problem_enters_public_surfaces_without_hidden_tests
 
         admin_detail = await client.get(f"/api/v1/problems/{private_id}", headers=_headers(env.admin))
         assert admin_detail.status_code == 200
+        assert admin_detail.headers["cache-control"] == "no-store"
         assert admin_detail.json()["hiddenTestCases"][0]["input"] == fixture.hidden_input
 
 

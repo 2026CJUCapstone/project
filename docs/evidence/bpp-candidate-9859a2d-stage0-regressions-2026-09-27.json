@@ -1,0 +1,32 @@
+{
+  "scope": "isolated native candidate build, not a deployed or approved runtime",
+  "mode": "regressions",
+  "image": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "before": {
+    "availableMemoryBytes": 6301356032,
+    "freeDiskBytes": 5063430144
+  },
+  "budget": {
+    "memory": "512m",
+    "timeout": 240,
+    "minimumAvailable": 2147483648
+  },
+  "owner": "c8fecd887ce346d59024e50078c672df",
+  "containerId": "01e644b93949056802f2512b5e9101f4f406c58ecf60b4359d9c44d5c48eb3b7",
+  "scriptSha256": "b48d61dc42cd56fb6cda8b036764d346b274e5ab130999e408715abe45e2d1d2",
+  "exitCode": 0,
+  "stdout": "{\"scope\": \"bounded native compiler candidate, NOT approved image or contest acceptance\", \"mode\": \"regressions\", \"commit\": \"9859a2dc783c9346be2ab9447e1569218bcc5093\", \"sourceArchiveSha256\": \"010e9abd3e2469b6bd1b4ee006ed142e695ecf8ee8af0b81b62fac764d2355bf\", \"phases\": [], \"passed\": true, \"bootstrapBinarySha256\": \"8cd02a03dd9f817bc50a644160dd06b70f4dfe8982abac9f61d6faebcfa9e960\", \"candidateBinarySha256\": \"2e29c5077bd1a7b299ea1d06e80dcb871429a594c92bc79fac57121be19dff6a\", \"gateScriptSha256\": \"5f1930b62c565755856f1118427acee6f6d29c753b45dbda4a7973b354edaef9\", \"regressions\": [{\"name\": \"large-local-frame\", \"sourceSha256\": \"aa0530c9091ba5b596b40850b22413756029263f620862a53255877b87d28f7d\", \"passed\": true, \"assemblySha256\": \"05235064c3deac79bcb61adafb46b0ae43cb475e58c6d2d186ad08b3c54df634\", \"stdinSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"expectedSha256\": \"084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0\"}, {\"name\": \"pointer-parameter-gc\", \"sourceSha256\": \"75d7a071de9c65474dfb3c3175bc132df753b23d1c5ac28bdd62ed5fa1c486ef\", \"passed\": true, \"assemblySha256\": \"999c5f8812ee0023ed693433983eaaa6de5e73147ce0a049e8b2826689f14347\", \"stdinSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"expectedSha256\": \"084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0\"}, {\"name\": \"reference_G\", \"sourceSha256\": \"621021dbfce96ffc3f3b3e7d3a0ab5c24b41bfe439e7effd389d8d2be56b9610\", \"passed\": true, \"assemblySha256\": \"1f9fead74e8c6b19385da0576f7812d6f02390ad554b9c5641a369492f9cfd5d\", \"stdinSha256\": \"c72e95a6898a9ce2f7ab9cb8c795d687c69aae4a8f39828f13e8e669d097357d\", \"expectedSha256\": \"83c02ac2d48c863dab2ccf6870455aadfc2cec073b8db269b517c879d76aa6d9\"}, {\"name\": \"reference_J\", \"sourceSha256\": \"74bf3e8f2fd8074474afee58103e1db4355f03003ff30b7eb6708e7335e7f2f6\", \"passed\": true, \"assemblySha256\": \"039aa098e98c1851c1820de77d38a14382d6b42bb8be5a2a98aaf0606383af21\", \"stdinSha256\": \"6e301db537815f2c47b83fae186f32aa698f97b7c57bed7d5836a515de7172eb\", \"expectedSha256\": \"f0b5c2c2211c8d67ed15e75e656c7862d086e9245420892a7de62cd9ec582a06\"}], \"cgroupCounters\": {\"cpu.stat\": \"usage_usec 4654355\\nuser_usec 4458928\\nsystem_usec 195427\\ncore_sched.force_idle_usec 0\\nnr_periods 48\\nnr_throttled 13\\nthrottled_usec 10383\\nnr_bursts 0\\nburst_usec 0\\n\", \"memory.peak\": \"90382336\\n\", \"memory.events\": \"low 0\\nhigh 0\\nmax 0\\noom 0\\noom_kill 0\\noom_group_kill 0\\n\"}}\n",
+  "stderr": "",
+  "timedOut": false,
+  "containerState": {
+    "Status": "exited",
+    "Running": false,
+    "OOMKilled": false,
+    "ExitCode": 0,
+    "Error": ""
+  },
+  "after": {
+    "availableMemoryBytes": 6172516352,
+    "freeDiskBytes": 5063311360
+  }
+}

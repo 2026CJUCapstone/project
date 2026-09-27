@@ -1,0 +1,3440 @@
+{
+  "scope": "Isolated reference descriptor measurements only",
+  "policyApproved": false,
+  "tenPassDatasetComplete": false,
+  "combinationCount": 50,
+  "recordCount": 50,
+  "limitations": [
+    "Not a final reviewed test suite",
+    "No slow-solution separation evidence",
+    "No normal-concurrency or cold-start attribution",
+    "No DB/queue/worker restart acceptance",
+    "Source/tier/schedule/scoring/publication approvals remain external"
+  ],
+  "artifacts": [
+    {
+      "path": "F:\\01_Programming\\01_Project\\03_Study\\Capstone\\project\\docs\\evidence\\freshman-reference-c-r1-2026-09-26.json",
+      "sha256": "587dd9841324a5e01c1bf3fe4339900a53479ec9c5ba51d88e9917bdb7205e9d"
+    },
+    {
+      "path": "F:\\01_Programming\\01_Project\\03_Study\\Capstone\\project\\docs\\evidence\\freshman-reference-cpp-r1-2026-09-26.json",
+      "sha256": "1334474c9f8b88403e3a2d5ca9fd890d643921b6838c8980c6b5b0b2a5e265d9"
+    },
+    {
+      "path": "F:\\01_Programming\\01_Project\\03_Study\\Capstone\\project\\docs\\evidence\\freshman-reference-java-r1-2026-09-26.json",
+      "sha256": "2f626bc4203f71a0727cdbe14decf326db89e315f0462411376e05dc1f5c6305"
+    },
+    {
+      "path": "F:\\01_Programming\\01_Project\\03_Study\\Capstone\\project\\docs\\evidence\\freshman-reference-javascript-r1-2026-09-26.json",
+      "sha256": "be654fa7408e036cd038fb622800c5055fe2c6d534449dbda8d7dd9a4526f429"
+    },
+    {
+      "path": "F:\\01_Programming\\01_Project\\03_Study\\Capstone\\project\\docs\\evidence\\freshman-reference-python-r1-2026-09-26.json",
+      "sha256": "1d51a8052452e9597c81faae2afd9a578fe33946a34c9750d7b9d5467c9c9188"
+    }
+  ],
+  "measurements": [
+    {
+      "language": "c",
+      "letter": "A",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 54277,
+        "maxWallNs": 57736632,
+        "peakMemoryBytes": 17743872,
+        "minCpuUsec": 54277,
+        "minWallNs": 57736632
+      },
+      "run": {
+        "maxCpuUsec": 4145,
+        "maxWallNs": 2414912,
+        "peakMemoryBytes": 8830976,
+        "minCpuUsec": 2926,
+        "minWallNs": 1920727
+      },
+      "cases": [
+        {
+          "name": "a-minimum-groups",
+          "maxCpuUsec": 4145,
+          "maxWallNs": 2414912,
+          "peakMemoryBytes": 8830976,
+          "minCpuUsec": 4145,
+          "minWallNs": 2414912
+        },
+        {
+          "name": "a-maximum-groups",
+          "maxCpuUsec": 2926,
+          "maxWallNs": 1920727,
+          "peakMemoryBytes": 8544256,
+          "minCpuUsec": 2926,
+          "minWallNs": 1920727
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "B",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 64598,
+        "maxWallNs": 60881214,
+        "peakMemoryBytes": 14598144,
+        "minCpuUsec": 64598,
+        "minWallNs": 60881214
+      },
+      "run": {
+        "maxCpuUsec": 5368,
+        "maxWallNs": 2863418,
+        "peakMemoryBytes": 8785920,
+        "minCpuUsec": 3216,
+        "minWallNs": 1905883
+      },
+      "cases": [
+        {
+          "name": "b-minimum-triple",
+          "maxCpuUsec": 3216,
+          "maxWallNs": 1953585,
+          "peakMemoryBytes": 8646656,
+          "minCpuUsec": 3216,
+          "minWallNs": 1953585
+        },
+        {
+          "name": "b-maximum-triple",
+          "maxCpuUsec": 5368,
+          "maxWallNs": 2863418,
+          "peakMemoryBytes": 8785920,
+          "minCpuUsec": 5368,
+          "minWallNs": 2863418
+        },
+        {
+          "name": "b-pair-and-largest-distinct",
+          "maxCpuUsec": 3731,
+          "maxWallNs": 1905883,
+          "peakMemoryBytes": 8540160,
+          "minCpuUsec": 3731,
+          "minWallNs": 1905883
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "C",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 54476,
+        "maxWallNs": 50281241,
+        "peakMemoryBytes": 13967360,
+        "minCpuUsec": 54476,
+        "minWallNs": 50281241
+      },
+      "run": {
+        "maxCpuUsec": 74888,
+        "maxWallNs": 69613918,
+        "peakMemoryBytes": 8880128,
+        "minCpuUsec": 3566,
+        "minWallNs": 2143239
+      },
+      "cases": [
+        {
+          "name": "c-single-minimum",
+          "maxCpuUsec": 3566,
+          "maxWallNs": 2143239,
+          "peakMemoryBytes": 8699904,
+          "minCpuUsec": 3566,
+          "minWallNs": 2143239
+        },
+        {
+          "name": "c-maximum-extrema-negative-repetitions",
+          "maxCpuUsec": 74888,
+          "maxWallNs": 69613918,
+          "peakMemoryBytes": 8880128,
+          "minCpuUsec": 74888,
+          "minWallNs": 69613918
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "D",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 64641,
+        "maxWallNs": 60426909,
+        "peakMemoryBytes": 14036992,
+        "minCpuUsec": 64641,
+        "minWallNs": 60426909
+      },
+      "run": {
+        "maxCpuUsec": 9841,
+        "maxWallNs": 6430907,
+        "peakMemoryBytes": 8757248,
+        "minCpuUsec": 3198,
+        "minWallNs": 1842963
+      },
+      "cases": [
+        {
+          "name": "d-minimum-repeat-and-length",
+          "maxCpuUsec": 3198,
+          "maxWallNs": 1842963,
+          "peakMemoryBytes": 8757248,
+          "minCpuUsec": 3198,
+          "minWallNs": 1842963
+        },
+        {
+          "name": "d-maximum-case-count-repeat-and-length",
+          "maxCpuUsec": 9841,
+          "maxWallNs": 6430907,
+          "peakMemoryBytes": 8597504,
+          "minCpuUsec": 9841,
+          "minWallNs": 6430907
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "E",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 69153,
+        "maxWallNs": 65200078,
+        "peakMemoryBytes": 14684160,
+        "minCpuUsec": 69153,
+        "minWallNs": 65200078
+      },
+      "run": {
+        "maxCpuUsec": 11384,
+        "maxWallNs": 8929146,
+        "peakMemoryBytes": 8773632,
+        "minCpuUsec": 3121,
+        "minWallNs": 1934451
+      },
+      "cases": [
+        {
+          "name": "e-single-lowercase-letter",
+          "maxCpuUsec": 3121,
+          "maxWallNs": 1934451,
+          "peakMemoryBytes": 8773632,
+          "minCpuUsec": 3121,
+          "minWallNs": 1934451
+        },
+        {
+          "name": "e-maximum-case-insensitive-tie",
+          "maxCpuUsec": 11384,
+          "maxWallNs": 8476859,
+          "peakMemoryBytes": 8744960,
+          "minCpuUsec": 11384,
+          "minWallNs": 8476859
+        },
+        {
+          "name": "e-maximum-case-insensitive-winner",
+          "maxCpuUsec": 11039,
+          "maxWallNs": 8929146,
+          "peakMemoryBytes": 8753152,
+          "minCpuUsec": 11039,
+          "minWallNs": 8929146
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "F",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 72347,
+        "maxWallNs": 69909407,
+        "peakMemoryBytes": 15028224,
+        "minCpuUsec": 72347,
+        "minWallNs": 69909407
+      },
+      "run": {
+        "maxCpuUsec": 55702,
+        "maxWallNs": 45686985,
+        "peakMemoryBytes": 9150464,
+        "minCpuUsec": 4263,
+        "minWallNs": 3660587
+      },
+      "cases": [
+        {
+          "name": "f-small-extrema-duplicate-membership",
+          "maxCpuUsec": 4263,
+          "maxWallNs": 3660587,
+          "peakMemoryBytes": 8806400,
+          "minCpuUsec": 4263,
+          "minWallNs": 3660587
+        },
+        {
+          "name": "f-maximum-registrations-and-queries-extrema-duplicates-absence",
+          "maxCpuUsec": 55702,
+          "maxWallNs": 45686985,
+          "peakMemoryBytes": 9150464,
+          "minCpuUsec": 55702,
+          "minWallNs": 45686985
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "G",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 79451,
+        "maxWallNs": 78127467,
+        "peakMemoryBytes": 14094336,
+        "minCpuUsec": 79451,
+        "minWallNs": 78127467
+      },
+      "run": {
+        "maxCpuUsec": 4351,
+        "maxWallNs": 2426209,
+        "peakMemoryBytes": 8638464,
+        "minCpuUsec": 3060,
+        "minWallNs": 1963077
+      },
+      "cases": [
+        {
+          "name": "g-single-largest-duration",
+          "maxCpuUsec": 4351,
+          "maxWallNs": 2426209,
+          "peakMemoryBytes": 8613888,
+          "minCpuUsec": 4351,
+          "minWallNs": 2426209
+        },
+        {
+          "name": "g-maximum-count-all-largest-durations",
+          "maxCpuUsec": 3123,
+          "maxWallNs": 1963077,
+          "peakMemoryBytes": 8638464,
+          "minCpuUsec": 3123,
+          "minWallNs": 1963077
+        },
+        {
+          "name": "g-maximum-count-reverse-durations",
+          "maxCpuUsec": 3060,
+          "maxWallNs": 2003339,
+          "peakMemoryBytes": 8531968,
+          "minCpuUsec": 3060,
+          "minWallNs": 2003339
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "H",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 72771,
+        "maxWallNs": 68880722,
+        "peakMemoryBytes": 15220736,
+        "minCpuUsec": 72771,
+        "minWallNs": 68880722
+      },
+      "run": {
+        "maxCpuUsec": 4698,
+        "maxWallNs": 2781558,
+        "peakMemoryBytes": 8663040,
+        "minCpuUsec": 3736,
+        "minWallNs": 2129309
+      },
+      "cases": [
+        {
+          "name": "h-small-open-grid",
+          "maxCpuUsec": 3736,
+          "maxWallNs": 2129309,
+          "peakMemoryBytes": 8503296,
+          "minCpuUsec": 3736,
+          "minWallNs": 2129309
+        },
+        {
+          "name": "h-maximum-open-grid",
+          "maxCpuUsec": 4698,
+          "maxWallNs": 2781558,
+          "peakMemoryBytes": 8609792,
+          "minCpuUsec": 4698,
+          "minWallNs": 2781558
+        },
+        {
+          "name": "h-maximum-serpentine-detour",
+          "maxCpuUsec": 3765,
+          "maxWallNs": 2243841,
+          "peakMemoryBytes": 8663040,
+          "minCpuUsec": 3765,
+          "minWallNs": 2243841
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "I",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 85791,
+        "maxWallNs": 79210953,
+        "peakMemoryBytes": 14848000,
+        "minCpuUsec": 85791,
+        "minWallNs": 79210953
+      },
+      "run": {
+        "maxCpuUsec": 133939,
+        "maxWallNs": 130643648,
+        "peakMemoryBytes": 15736832,
+        "minCpuUsec": 2836,
+        "minWallNs": 1904672
+      },
+      "cases": [
+        {
+          "name": "i-small-multi-source",
+          "maxCpuUsec": 3415,
+          "maxWallNs": 2048347,
+          "peakMemoryBytes": 8622080,
+          "minCpuUsec": 3415,
+          "minWallNs": 2048347
+        },
+        {
+          "name": "i-small-unreachable",
+          "maxCpuUsec": 2836,
+          "maxWallNs": 1904672,
+          "peakMemoryBytes": 8650752,
+          "minCpuUsec": 2836,
+          "minWallNs": 1904672
+        },
+        {
+          "name": "i-maximum-single-source-frontier",
+          "maxCpuUsec": 133939,
+          "maxWallNs": 130643648,
+          "peakMemoryBytes": 15736832,
+          "minCpuUsec": 133939,
+          "minWallNs": 130643648
+        }
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "J",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 8,
+      "compile": {
+        "maxCpuUsec": 125589,
+        "maxWallNs": 117506597,
+        "peakMemoryBytes": 16416768,
+        "minCpuUsec": 125589,
+        "minWallNs": 117506597
+      },
+      "run": {
+        "maxCpuUsec": 9463,
+        "maxWallNs": 7338445,
+        "peakMemoryBytes": 8851456,
+        "minCpuUsec": 3206,
+        "minWallNs": 1939183
+      },
+      "cases": [
+        {
+          "name": "j-single-bank-positive-total",
+          "maxCpuUsec": 3206,
+          "maxWallNs": 1939183,
+          "peakMemoryBytes": 8536064,
+          "minCpuUsec": 3206,
+          "minWallNs": 1939183
+        },
+        {
+          "name": "j-two-bank-duplicate-circular-neighbor",
+          "maxCpuUsec": 4055,
+          "maxWallNs": 2430142,
+          "peakMemoryBytes": 8757248,
+          "minCpuUsec": 4055,
+          "minWallNs": 2430142
+        },
+        {
+          "name": "j-equal-prefixes-nonnegative",
+          "maxCpuUsec": 4037,
+          "maxWallNs": 2439129,
+          "peakMemoryBytes": 8585216,
+          "minCpuUsec": 4037,
+          "minWallNs": 2439129
+        },
+        {
+          "name": "j-negative-prefix-floor-remainder",
+          "maxCpuUsec": 3784,
+          "maxWallNs": 2399018,
+          "peakMemoryBytes": 8552448,
+          "minCpuUsec": 3784,
+          "minWallNs": 2399018
+        },
+        {
+          "name": "j-signed-minimum-balance-unit-total",
+          "maxCpuUsec": 3857,
+          "maxWallNs": 2137652,
+          "peakMemoryBytes": 8597504,
+          "minCpuUsec": 3857,
+          "minWallNs": 2137652
+        },
+        {
+          "name": "j-maximum-all-positive-balances",
+          "maxCpuUsec": 9463,
+          "maxWallNs": 7338445,
+          "peakMemoryBytes": 8683520,
+          "minCpuUsec": 9463,
+          "minWallNs": 7338445
+        },
+        {
+          "name": "j-maximum-nonnegative-unit-total",
+          "maxCpuUsec": 6908,
+          "maxWallNs": 5780114,
+          "peakMemoryBytes": 8851456,
+          "minCpuUsec": 6908,
+          "minWallNs": 5780114
+        },
+        {
+          "name": "j-maximum-unit-total-long-positive-negative-blocks-int64",
+          "maxCpuUsec": 6692,
+          "maxWallNs": 4659262,
+          "peakMemoryBytes": 8552448,
+          "minCpuUsec": 6692,
+          "minWallNs": 4659262
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "A",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 465998,
+        "maxWallNs": 459436982,
+        "peakMemoryBytes": 64724992,
+        "minCpuUsec": 465998,
+        "minWallNs": 459436982
+      },
+      "run": {
+        "maxCpuUsec": 5756,
+        "maxWallNs": 3321539,
+        "peakMemoryBytes": 8531968,
+        "minCpuUsec": 5157,
+        "minWallNs": 3190484
+      },
+      "cases": [
+        {
+          "name": "a-minimum-groups",
+          "maxCpuUsec": 5756,
+          "maxWallNs": 3190484,
+          "peakMemoryBytes": 8531968,
+          "minCpuUsec": 5756,
+          "minWallNs": 3190484
+        },
+        {
+          "name": "a-maximum-groups",
+          "maxCpuUsec": 5157,
+          "maxWallNs": 3321539,
+          "peakMemoryBytes": 8519680,
+          "minCpuUsec": 5157,
+          "minWallNs": 3321539
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "B",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 448095,
+        "maxWallNs": 442107532,
+        "peakMemoryBytes": 61829120,
+        "minCpuUsec": 448095,
+        "minWallNs": 442107532
+      },
+      "run": {
+        "maxCpuUsec": 5622,
+        "maxWallNs": 4063386,
+        "peakMemoryBytes": 8867840,
+        "minCpuUsec": 4379,
+        "minWallNs": 2993914
+      },
+      "cases": [
+        {
+          "name": "b-minimum-triple",
+          "maxCpuUsec": 5265,
+          "maxWallNs": 3168844,
+          "peakMemoryBytes": 8867840,
+          "minCpuUsec": 5265,
+          "minWallNs": 3168844
+        },
+        {
+          "name": "b-maximum-triple",
+          "maxCpuUsec": 4379,
+          "maxWallNs": 2993914,
+          "peakMemoryBytes": 8691712,
+          "minCpuUsec": 4379,
+          "minWallNs": 2993914
+        },
+        {
+          "name": "b-pair-and-largest-distinct",
+          "maxCpuUsec": 5622,
+          "maxWallNs": 4063386,
+          "peakMemoryBytes": 8609792,
+          "minCpuUsec": 5622,
+          "minWallNs": 4063386
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "C",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 532699,
+        "maxWallNs": 526132805,
+        "peakMemoryBytes": 65351680,
+        "minCpuUsec": 532699,
+        "minWallNs": 526132805
+      },
+      "run": {
+        "maxCpuUsec": 170359,
+        "maxWallNs": 162225268,
+        "peakMemoryBytes": 8761344,
+        "minCpuUsec": 5342,
+        "minWallNs": 3621984
+      },
+      "cases": [
+        {
+          "name": "c-single-minimum",
+          "maxCpuUsec": 5342,
+          "maxWallNs": 3621984,
+          "peakMemoryBytes": 8761344,
+          "minCpuUsec": 5342,
+          "minWallNs": 3621984
+        },
+        {
+          "name": "c-maximum-extrema-negative-repetitions",
+          "maxCpuUsec": 170359,
+          "maxWallNs": 162225268,
+          "peakMemoryBytes": 8585216,
+          "minCpuUsec": 170359,
+          "minWallNs": 162225268
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "D",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 460835,
+        "maxWallNs": 451564235,
+        "peakMemoryBytes": 62468096,
+        "minCpuUsec": 460835,
+        "minWallNs": 451564235
+      },
+      "run": {
+        "maxCpuUsec": 21483,
+        "maxWallNs": 12154018,
+        "peakMemoryBytes": 8847360,
+        "minCpuUsec": 7762,
+        "minWallNs": 8038343
+      },
+      "cases": [
+        {
+          "name": "d-minimum-repeat-and-length",
+          "maxCpuUsec": 7762,
+          "maxWallNs": 8038343,
+          "peakMemoryBytes": 8634368,
+          "minCpuUsec": 7762,
+          "minWallNs": 8038343
+        },
+        {
+          "name": "d-maximum-case-count-repeat-and-length",
+          "maxCpuUsec": 21483,
+          "maxWallNs": 12154018,
+          "peakMemoryBytes": 8847360,
+          "minCpuUsec": 21483,
+          "minWallNs": 12154018
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "E",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 452151,
+        "maxWallNs": 444315736,
+        "peakMemoryBytes": 62214144,
+        "minCpuUsec": 452151,
+        "minWallNs": 444315736
+      },
+      "run": {
+        "maxCpuUsec": 26328,
+        "maxWallNs": 24292993,
+        "peakMemoryBytes": 10117120,
+        "minCpuUsec": 4530,
+        "minWallNs": 2851181
+      },
+      "cases": [
+        {
+          "name": "e-single-lowercase-letter",
+          "maxCpuUsec": 4530,
+          "maxWallNs": 2851181,
+          "peakMemoryBytes": 8769536,
+          "minCpuUsec": 4530,
+          "minWallNs": 2851181
+        },
+        {
+          "name": "e-maximum-case-insensitive-tie",
+          "maxCpuUsec": 22734,
+          "maxWallNs": 20004042,
+          "peakMemoryBytes": 10035200,
+          "minCpuUsec": 22734,
+          "minWallNs": 20004042
+        },
+        {
+          "name": "e-maximum-case-insensitive-winner",
+          "maxCpuUsec": 26328,
+          "maxWallNs": 24292993,
+          "peakMemoryBytes": 10117120,
+          "minCpuUsec": 26328,
+          "minWallNs": 24292993
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "F",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 703306,
+        "maxWallNs": 694908558,
+        "peakMemoryBytes": 74612736,
+        "minCpuUsec": 703306,
+        "minWallNs": 694908558
+      },
+      "run": {
+        "maxCpuUsec": 362058,
+        "maxWallNs": 344690909,
+        "peakMemoryBytes": 9371648,
+        "minCpuUsec": 5769,
+        "minWallNs": 3682721
+      },
+      "cases": [
+        {
+          "name": "f-small-extrema-duplicate-membership",
+          "maxCpuUsec": 5769,
+          "maxWallNs": 3682721,
+          "peakMemoryBytes": 8908800,
+          "minCpuUsec": 5769,
+          "minWallNs": 3682721
+        },
+        {
+          "name": "f-maximum-registrations-and-queries-extrema-duplicates-absence",
+          "maxCpuUsec": 362058,
+          "maxWallNs": 344690909,
+          "peakMemoryBytes": 9371648,
+          "minCpuUsec": 362058,
+          "minWallNs": 344690909
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "G",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 651402,
+        "maxWallNs": 647048469,
+        "peakMemoryBytes": 73703424,
+        "minCpuUsec": 651402,
+        "minWallNs": 647048469
+      },
+      "run": {
+        "maxCpuUsec": 6364,
+        "maxWallNs": 4083712,
+        "peakMemoryBytes": 8785920,
+        "minCpuUsec": 5842,
+        "minWallNs": 3433818
+      },
+      "cases": [
+        {
+          "name": "g-single-largest-duration",
+          "maxCpuUsec": 5842,
+          "maxWallNs": 3433818,
+          "peakMemoryBytes": 8617984,
+          "minCpuUsec": 5842,
+          "minWallNs": 3433818
+        },
+        {
+          "name": "g-maximum-count-all-largest-durations",
+          "maxCpuUsec": 6364,
+          "maxWallNs": 3917734,
+          "peakMemoryBytes": 8785920,
+          "minCpuUsec": 6364,
+          "minWallNs": 3917734
+        },
+        {
+          "name": "g-maximum-count-reverse-durations",
+          "maxCpuUsec": 6021,
+          "maxWallNs": 4083712,
+          "peakMemoryBytes": 8753152,
+          "minCpuUsec": 6021,
+          "minWallNs": 4083712
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "H",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 715965,
+        "maxWallNs": 703548674,
+        "peakMemoryBytes": 76406784,
+        "minCpuUsec": 715965,
+        "minWallNs": 703548674
+      },
+      "run": {
+        "maxCpuUsec": 5009,
+        "maxWallNs": 3223856,
+        "peakMemoryBytes": 8761344,
+        "minCpuUsec": 4627,
+        "minWallNs": 2867280
+      },
+      "cases": [
+        {
+          "name": "h-small-open-grid",
+          "maxCpuUsec": 4639,
+          "maxWallNs": 2867280,
+          "peakMemoryBytes": 8540160,
+          "minCpuUsec": 4639,
+          "minWallNs": 2867280
+        },
+        {
+          "name": "h-maximum-open-grid",
+          "maxCpuUsec": 5009,
+          "maxWallNs": 3223856,
+          "peakMemoryBytes": 8658944,
+          "minCpuUsec": 5009,
+          "minWallNs": 3223856
+        },
+        {
+          "name": "h-maximum-serpentine-detour",
+          "maxCpuUsec": 4627,
+          "maxWallNs": 3107719,
+          "peakMemoryBytes": 8761344,
+          "minCpuUsec": 4627,
+          "minWallNs": 3107719
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "I",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 688862,
+        "maxWallNs": 685035621,
+        "peakMemoryBytes": 73793536,
+        "minCpuUsec": 688862,
+        "minWallNs": 685035621
+      },
+      "run": {
+        "maxCpuUsec": 190936,
+        "maxWallNs": 184645151,
+        "peakMemoryBytes": 12062720,
+        "minCpuUsec": 4229,
+        "minWallNs": 2801796
+      },
+      "cases": [
+        {
+          "name": "i-small-multi-source",
+          "maxCpuUsec": 5581,
+          "maxWallNs": 3874263,
+          "peakMemoryBytes": 8675328,
+          "minCpuUsec": 5581,
+          "minWallNs": 3874263
+        },
+        {
+          "name": "i-small-unreachable",
+          "maxCpuUsec": 4229,
+          "maxWallNs": 2801796,
+          "peakMemoryBytes": 8581120,
+          "minCpuUsec": 4229,
+          "minWallNs": 2801796
+        },
+        {
+          "name": "i-maximum-single-source-frontier",
+          "maxCpuUsec": 190936,
+          "maxWallNs": 184645151,
+          "peakMemoryBytes": 12062720,
+          "minCpuUsec": 190936,
+          "minWallNs": 184645151
+        }
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "J",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 8,
+      "compile": {
+        "maxCpuUsec": 862924,
+        "maxWallNs": 851503935,
+        "peakMemoryBytes": 79015936,
+        "minCpuUsec": 862924,
+        "minWallNs": 851503935
+      },
+      "run": {
+        "maxCpuUsec": 10026,
+        "maxWallNs": 7428573,
+        "peakMemoryBytes": 8704000,
+        "minCpuUsec": 4259,
+        "minWallNs": 2806274
+      },
+      "cases": [
+        {
+          "name": "j-single-bank-positive-total",
+          "maxCpuUsec": 4259,
+          "maxWallNs": 2806274,
+          "peakMemoryBytes": 8589312,
+          "minCpuUsec": 4259,
+          "minWallNs": 2806274
+        },
+        {
+          "name": "j-two-bank-duplicate-circular-neighbor",
+          "maxCpuUsec": 5157,
+          "maxWallNs": 2954559,
+          "peakMemoryBytes": 8704000,
+          "minCpuUsec": 5157,
+          "minWallNs": 2954559
+        },
+        {
+          "name": "j-equal-prefixes-nonnegative",
+          "maxCpuUsec": 4815,
+          "maxWallNs": 3016152,
+          "peakMemoryBytes": 8642560,
+          "minCpuUsec": 4815,
+          "minWallNs": 3016152
+        },
+        {
+          "name": "j-negative-prefix-floor-remainder",
+          "maxCpuUsec": 4797,
+          "maxWallNs": 2881228,
+          "peakMemoryBytes": 8646656,
+          "minCpuUsec": 4797,
+          "minWallNs": 2881228
+        },
+        {
+          "name": "j-signed-minimum-balance-unit-total",
+          "maxCpuUsec": 6466,
+          "maxWallNs": 4096685,
+          "peakMemoryBytes": 8663040,
+          "minCpuUsec": 6466,
+          "minWallNs": 4096685
+        },
+        {
+          "name": "j-maximum-all-positive-balances",
+          "maxCpuUsec": 10026,
+          "maxWallNs": 7096998,
+          "peakMemoryBytes": 8601600,
+          "minCpuUsec": 10026,
+          "minWallNs": 7096998
+        },
+        {
+          "name": "j-maximum-nonnegative-unit-total",
+          "maxCpuUsec": 7498,
+          "maxWallNs": 5121978,
+          "peakMemoryBytes": 8617984,
+          "minCpuUsec": 7498,
+          "minWallNs": 5121978
+        },
+        {
+          "name": "j-maximum-unit-total-long-positive-negative-blocks-int64",
+          "maxCpuUsec": 9249,
+          "maxWallNs": 7428573,
+          "peakMemoryBytes": 8704000,
+          "minCpuUsec": 9249,
+          "minWallNs": 7428573
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "A",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 47461,
+        "maxWallNs": 44238735,
+        "peakMemoryBytes": 14290944,
+        "minCpuUsec": 47461,
+        "minWallNs": 44238735
+      },
+      "run": {
+        "maxCpuUsec": 26156,
+        "maxWallNs": 30879908,
+        "peakMemoryBytes": 10600448,
+        "minCpuUsec": 23074,
+        "minWallNs": 20159589
+      },
+      "cases": [
+        {
+          "name": "a-minimum-groups",
+          "maxCpuUsec": 23074,
+          "maxWallNs": 20159589,
+          "peakMemoryBytes": 10600448,
+          "minCpuUsec": 23074,
+          "minWallNs": 20159589
+        },
+        {
+          "name": "a-maximum-groups",
+          "maxCpuUsec": 26156,
+          "maxWallNs": 30879908,
+          "peakMemoryBytes": 10518528,
+          "minCpuUsec": 26156,
+          "minWallNs": 30879908
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "B",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 49613,
+        "maxWallNs": 45849525,
+        "peakMemoryBytes": 14417920,
+        "minCpuUsec": 49613,
+        "minWallNs": 45849525
+      },
+      "run": {
+        "maxCpuUsec": 25493,
+        "maxWallNs": 22752675,
+        "peakMemoryBytes": 10682368,
+        "minCpuUsec": 17506,
+        "minWallNs": 15248797
+      },
+      "cases": [
+        {
+          "name": "b-minimum-triple",
+          "maxCpuUsec": 17506,
+          "maxWallNs": 15248797,
+          "peakMemoryBytes": 10575872,
+          "minCpuUsec": 17506,
+          "minWallNs": 15248797
+        },
+        {
+          "name": "b-maximum-triple",
+          "maxCpuUsec": 25493,
+          "maxWallNs": 22752675,
+          "peakMemoryBytes": 10313728,
+          "minCpuUsec": 25493,
+          "minWallNs": 22752675
+        },
+        {
+          "name": "b-pair-and-largest-distinct",
+          "maxCpuUsec": 22035,
+          "maxWallNs": 20250614,
+          "peakMemoryBytes": 10682368,
+          "minCpuUsec": 22035,
+          "minWallNs": 20250614
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "C",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 51893,
+        "maxWallNs": 47225971,
+        "peakMemoryBytes": 14336000,
+        "minCpuUsec": 51893,
+        "minWallNs": 47225971
+      },
+      "run": {
+        "maxCpuUsec": 331680,
+        "maxWallNs": 325298535,
+        "peakMemoryBytes": 118665216,
+        "minCpuUsec": 18426,
+        "minWallNs": 15394679
+      },
+      "cases": [
+        {
+          "name": "c-single-minimum",
+          "maxCpuUsec": 18426,
+          "maxWallNs": 15394679,
+          "peakMemoryBytes": 10571776,
+          "minCpuUsec": 18426,
+          "minWallNs": 15394679
+        },
+        {
+          "name": "c-maximum-extrema-negative-repetitions",
+          "maxCpuUsec": 331680,
+          "maxWallNs": 325298535,
+          "peakMemoryBytes": 118665216,
+          "minCpuUsec": 331680,
+          "minWallNs": 325298535
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "D",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 50042,
+        "maxWallNs": 46433318,
+        "peakMemoryBytes": 14229504,
+        "minCpuUsec": 50042,
+        "minWallNs": 46433318
+      },
+      "run": {
+        "maxCpuUsec": 32919,
+        "maxWallNs": 37659964,
+        "peakMemoryBytes": 11149312,
+        "minCpuUsec": 22033,
+        "minWallNs": 18727080
+      },
+      "cases": [
+        {
+          "name": "d-minimum-repeat-and-length",
+          "maxCpuUsec": 22033,
+          "maxWallNs": 18727080,
+          "peakMemoryBytes": 10584064,
+          "minCpuUsec": 22033,
+          "minWallNs": 18727080
+        },
+        {
+          "name": "d-maximum-case-count-repeat-and-length",
+          "maxCpuUsec": 32919,
+          "maxWallNs": 37659964,
+          "peakMemoryBytes": 11149312,
+          "minCpuUsec": 32919,
+          "minWallNs": 37659964
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "E",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 54707,
+        "maxWallNs": 49955686,
+        "peakMemoryBytes": 14356480,
+        "minCpuUsec": 54707,
+        "minWallNs": 49955686
+      },
+      "run": {
+        "maxCpuUsec": 218660,
+        "maxWallNs": 210514750,
+        "peakMemoryBytes": 12509184,
+        "minCpuUsec": 15976,
+        "minWallNs": 14155702
+      },
+      "cases": [
+        {
+          "name": "e-single-lowercase-letter",
+          "maxCpuUsec": 15976,
+          "maxWallNs": 14155702,
+          "peakMemoryBytes": 10395648,
+          "minCpuUsec": 15976,
+          "minWallNs": 14155702
+        },
+        {
+          "name": "e-maximum-case-insensitive-tie",
+          "maxCpuUsec": 208401,
+          "maxWallNs": 201636492,
+          "peakMemoryBytes": 12509184,
+          "minCpuUsec": 208401,
+          "minWallNs": 201636492
+        },
+        {
+          "name": "e-maximum-case-insensitive-winner",
+          "maxCpuUsec": 218660,
+          "maxWallNs": 210514750,
+          "peakMemoryBytes": 12238848,
+          "minCpuUsec": 218660,
+          "minWallNs": 210514750
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "F",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 70836,
+        "maxWallNs": 65732648,
+        "peakMemoryBytes": 14176256,
+        "minCpuUsec": 70836,
+        "minWallNs": 65732648
+      },
+      "run": {
+        "maxCpuUsec": 78750,
+        "maxWallNs": 74551302,
+        "peakMemoryBytes": 31260672,
+        "minCpuUsec": 23497,
+        "minWallNs": 20776974
+      },
+      "cases": [
+        {
+          "name": "f-small-extrema-duplicate-membership",
+          "maxCpuUsec": 23497,
+          "maxWallNs": 20776974,
+          "peakMemoryBytes": 10440704,
+          "minCpuUsec": 23497,
+          "minWallNs": 20776974
+        },
+        {
+          "name": "f-maximum-registrations-and-queries-extrema-duplicates-absence",
+          "maxCpuUsec": 78750,
+          "maxWallNs": 74551302,
+          "peakMemoryBytes": 31260672,
+          "minCpuUsec": 78750,
+          "minWallNs": 74551302
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "G",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 64640,
+        "maxWallNs": 60073834,
+        "peakMemoryBytes": 14438400,
+        "minCpuUsec": 64640,
+        "minWallNs": 60073834
+      },
+      "run": {
+        "maxCpuUsec": 25251,
+        "maxWallNs": 28777366,
+        "peakMemoryBytes": 10616832,
+        "minCpuUsec": 17348,
+        "minWallNs": 14500068
+      },
+      "cases": [
+        {
+          "name": "g-single-largest-duration",
+          "maxCpuUsec": 17348,
+          "maxWallNs": 14500068,
+          "peakMemoryBytes": 10608640,
+          "minCpuUsec": 17348,
+          "minWallNs": 14500068
+        },
+        {
+          "name": "g-maximum-count-all-largest-durations",
+          "maxCpuUsec": 25251,
+          "maxWallNs": 28777366,
+          "peakMemoryBytes": 10452992,
+          "minCpuUsec": 25251,
+          "minWallNs": 28777366
+        },
+        {
+          "name": "g-maximum-count-reverse-durations",
+          "maxCpuUsec": 20248,
+          "maxWallNs": 17943506,
+          "peakMemoryBytes": 10616832,
+          "minCpuUsec": 20248,
+          "minWallNs": 17943506
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "H",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 52778,
+        "maxWallNs": 47497583,
+        "peakMemoryBytes": 14237696,
+        "minCpuUsec": 52778,
+        "minWallNs": 47497583
+      },
+      "run": {
+        "maxCpuUsec": 45839,
+        "maxWallNs": 42287236,
+        "peakMemoryBytes": 11300864,
+        "minCpuUsec": 20354,
+        "minWallNs": 17724816
+      },
+      "cases": [
+        {
+          "name": "h-small-open-grid",
+          "maxCpuUsec": 20354,
+          "maxWallNs": 17724816,
+          "peakMemoryBytes": 11190272,
+          "minCpuUsec": 20354,
+          "minWallNs": 17724816
+        },
+        {
+          "name": "h-maximum-open-grid",
+          "maxCpuUsec": 45839,
+          "maxWallNs": 42287236,
+          "peakMemoryBytes": 11243520,
+          "minCpuUsec": 45839,
+          "minWallNs": 42287236
+        },
+        {
+          "name": "h-maximum-serpentine-detour",
+          "maxCpuUsec": 44455,
+          "maxWallNs": 40107438,
+          "peakMemoryBytes": 11300864,
+          "minCpuUsec": 44455,
+          "minWallNs": 40107438
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "I",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 70347,
+        "maxWallNs": 65870809,
+        "peakMemoryBytes": 14336000,
+        "minCpuUsec": 70347,
+        "minWallNs": 65870809
+      },
+      "run": {
+        "maxCpuUsec": 2420724,
+        "maxWallNs": 2417878315,
+        "peakMemoryBytes": 29106176,
+        "minCpuUsec": 22183,
+        "minWallNs": 19084057
+      },
+      "cases": [
+        {
+          "name": "i-small-multi-source",
+          "maxCpuUsec": 22183,
+          "maxWallNs": 19084057,
+          "peakMemoryBytes": 11010048,
+          "minCpuUsec": 22183,
+          "minWallNs": 19084057
+        },
+        {
+          "name": "i-small-unreachable",
+          "maxCpuUsec": 31225,
+          "maxWallNs": 36368179,
+          "peakMemoryBytes": 10702848,
+          "minCpuUsec": 31225,
+          "minWallNs": 36368179
+        },
+        {
+          "name": "i-maximum-single-source-frontier",
+          "maxCpuUsec": 2420724,
+          "maxWallNs": 2417878315,
+          "peakMemoryBytes": 29106176,
+          "minCpuUsec": 2420724,
+          "minWallNs": 2417878315
+        }
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "J",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 8,
+      "compile": {
+        "maxCpuUsec": 52886,
+        "maxWallNs": 48192191,
+        "peakMemoryBytes": 14438400,
+        "minCpuUsec": 52886,
+        "minWallNs": 48192191
+      },
+      "run": {
+        "maxCpuUsec": 70379,
+        "maxWallNs": 64979410,
+        "peakMemoryBytes": 13729792,
+        "minCpuUsec": 17435,
+        "minWallNs": 14564858
+      },
+      "cases": [
+        {
+          "name": "j-single-bank-positive-total",
+          "maxCpuUsec": 23363,
+          "maxWallNs": 20086797,
+          "peakMemoryBytes": 10608640,
+          "minCpuUsec": 23363,
+          "minWallNs": 20086797
+        },
+        {
+          "name": "j-two-bank-duplicate-circular-neighbor",
+          "maxCpuUsec": 24391,
+          "maxWallNs": 22077171,
+          "peakMemoryBytes": 10461184,
+          "minCpuUsec": 24391,
+          "minWallNs": 22077171
+        },
+        {
+          "name": "j-equal-prefixes-nonnegative",
+          "maxCpuUsec": 17740,
+          "maxWallNs": 15447200,
+          "peakMemoryBytes": 10465280,
+          "minCpuUsec": 17740,
+          "minWallNs": 15447200
+        },
+        {
+          "name": "j-negative-prefix-floor-remainder",
+          "maxCpuUsec": 17435,
+          "maxWallNs": 14564858,
+          "peakMemoryBytes": 10448896,
+          "minCpuUsec": 17435,
+          "minWallNs": 14564858
+        },
+        {
+          "name": "j-signed-minimum-balance-unit-total",
+          "maxCpuUsec": 24855,
+          "maxWallNs": 27539105,
+          "peakMemoryBytes": 10485760,
+          "minCpuUsec": 24855,
+          "minWallNs": 27539105
+        },
+        {
+          "name": "j-maximum-all-positive-balances",
+          "maxCpuUsec": 70379,
+          "maxWallNs": 64979410,
+          "peakMemoryBytes": 13729792,
+          "minCpuUsec": 70379,
+          "minWallNs": 64979410
+        },
+        {
+          "name": "j-maximum-nonnegative-unit-total",
+          "maxCpuUsec": 52493,
+          "maxWallNs": 56728555,
+          "peakMemoryBytes": 10964992,
+          "minCpuUsec": 52493,
+          "minWallNs": 56728555
+        },
+        {
+          "name": "j-maximum-unit-total-long-positive-negative-blocks-int64",
+          "maxCpuUsec": 46553,
+          "maxWallNs": 43275923,
+          "peakMemoryBytes": 12427264,
+          "minCpuUsec": 46553,
+          "minWallNs": 43275923
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "A",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 1536815,
+        "maxWallNs": 1539258900,
+        "peakMemoryBytes": 55656448,
+        "minCpuUsec": 1536815,
+        "minWallNs": 1539258900
+      },
+      "run": {
+        "maxCpuUsec": 40263,
+        "maxWallNs": 31162526,
+        "peakMemoryBytes": 25391104,
+        "minCpuUsec": 39801,
+        "minWallNs": 30374251
+      },
+      "cases": [
+        {
+          "name": "a-minimum-groups",
+          "maxCpuUsec": 39801,
+          "maxWallNs": 30374251,
+          "peakMemoryBytes": 25022464,
+          "minCpuUsec": 39801,
+          "minWallNs": 30374251
+        },
+        {
+          "name": "a-maximum-groups",
+          "maxCpuUsec": 40263,
+          "maxWallNs": 31162526,
+          "peakMemoryBytes": 25391104,
+          "minCpuUsec": 40263,
+          "minWallNs": 31162526
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "B",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 1414280,
+        "maxWallNs": 1396738589,
+        "peakMemoryBytes": 55640064,
+        "minCpuUsec": 1414280,
+        "minWallNs": 1396738589
+      },
+      "run": {
+        "maxCpuUsec": 44945,
+        "maxWallNs": 35039155,
+        "peakMemoryBytes": 25456640,
+        "minCpuUsec": 39373,
+        "minWallNs": 30326299
+      },
+      "cases": [
+        {
+          "name": "b-minimum-triple",
+          "maxCpuUsec": 39373,
+          "maxWallNs": 30326299,
+          "peakMemoryBytes": 25280512,
+          "minCpuUsec": 39373,
+          "minWallNs": 30326299
+        },
+        {
+          "name": "b-maximum-triple",
+          "maxCpuUsec": 42223,
+          "maxWallNs": 31684258,
+          "peakMemoryBytes": 25456640,
+          "minCpuUsec": 42223,
+          "minWallNs": 31684258
+        },
+        {
+          "name": "b-pair-and-largest-distinct",
+          "maxCpuUsec": 44945,
+          "maxWallNs": 35039155,
+          "peakMemoryBytes": 25296896,
+          "minCpuUsec": 44945,
+          "minWallNs": 35039155
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "C",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 1441814,
+        "maxWallNs": 1437855874,
+        "peakMemoryBytes": 56832000,
+        "minCpuUsec": 1441814,
+        "minWallNs": 1437855874
+      },
+      "run": {
+        "maxCpuUsec": 137367,
+        "maxWallNs": 128638057,
+        "peakMemoryBytes": 26824704,
+        "minCpuUsec": 54516,
+        "minWallNs": 40695477
+      },
+      "cases": [
+        {
+          "name": "c-single-minimum",
+          "maxCpuUsec": 54516,
+          "maxWallNs": 40695477,
+          "peakMemoryBytes": 26009600,
+          "minCpuUsec": 54516,
+          "minWallNs": 40695477
+        },
+        {
+          "name": "c-maximum-extrema-negative-repetitions",
+          "maxCpuUsec": 137367,
+          "maxWallNs": 128638057,
+          "peakMemoryBytes": 26824704,
+          "minCpuUsec": 137367,
+          "minWallNs": 128638057
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "D",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 1414512,
+        "maxWallNs": 1382175662,
+        "peakMemoryBytes": 56332288,
+        "minCpuUsec": 1414512,
+        "minWallNs": 1382175662
+      },
+      "run": {
+        "maxCpuUsec": 126825,
+        "maxWallNs": 100212968,
+        "peakMemoryBytes": 29241344,
+        "minCpuUsec": 46857,
+        "minWallNs": 36025488
+      },
+      "cases": [
+        {
+          "name": "d-minimum-repeat-and-length",
+          "maxCpuUsec": 46857,
+          "maxWallNs": 36025488,
+          "peakMemoryBytes": 25243648,
+          "minCpuUsec": 46857,
+          "minWallNs": 36025488
+        },
+        {
+          "name": "d-maximum-case-count-repeat-and-length",
+          "maxCpuUsec": 126825,
+          "maxWallNs": 100212968,
+          "peakMemoryBytes": 29241344,
+          "minCpuUsec": 126825,
+          "minWallNs": 100212968
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "E",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 1417812,
+        "maxWallNs": 1403197560,
+        "peakMemoryBytes": 56430592,
+        "minCpuUsec": 1417812,
+        "minWallNs": 1403197560
+      },
+      "run": {
+        "maxCpuUsec": 125039,
+        "maxWallNs": 97150006,
+        "peakMemoryBytes": 28930048,
+        "minCpuUsec": 52011,
+        "minWallNs": 46047893
+      },
+      "cases": [
+        {
+          "name": "e-single-lowercase-letter",
+          "maxCpuUsec": 52011,
+          "maxWallNs": 46047893,
+          "peakMemoryBytes": 25223168,
+          "minCpuUsec": 52011,
+          "minWallNs": 46047893
+        },
+        {
+          "name": "e-maximum-case-insensitive-tie",
+          "maxCpuUsec": 125039,
+          "maxWallNs": 97150006,
+          "peakMemoryBytes": 28794880,
+          "minCpuUsec": 125039,
+          "minWallNs": 97150006
+        },
+        {
+          "name": "e-maximum-case-insensitive-winner",
+          "maxCpuUsec": 124283,
+          "maxWallNs": 83930862,
+          "peakMemoryBytes": 28930048,
+          "minCpuUsec": 124283,
+          "minWallNs": 83930862
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "F",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 1555048,
+        "maxWallNs": 1491793380,
+        "peakMemoryBytes": 58408960,
+        "minCpuUsec": 1555048,
+        "minWallNs": 1491793380
+      },
+      "run": {
+        "maxCpuUsec": 167519,
+        "maxWallNs": 134972995,
+        "peakMemoryBytes": 36020224,
+        "minCpuUsec": 42670,
+        "minWallNs": 32994388
+      },
+      "cases": [
+        {
+          "name": "f-small-extrema-duplicate-membership",
+          "maxCpuUsec": 42670,
+          "maxWallNs": 32994388,
+          "peakMemoryBytes": 25583616,
+          "minCpuUsec": 42670,
+          "minWallNs": 32994388
+        },
+        {
+          "name": "f-maximum-registrations-and-queries-extrema-duplicates-absence",
+          "maxCpuUsec": 167519,
+          "maxWallNs": 134972995,
+          "peakMemoryBytes": 36020224,
+          "minCpuUsec": 167519,
+          "minWallNs": 134972995
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "G",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 1384767,
+        "maxWallNs": 1348241993,
+        "peakMemoryBytes": 56455168,
+        "minCpuUsec": 1384767,
+        "minWallNs": 1348241993
+      },
+      "run": {
+        "maxCpuUsec": 51834,
+        "maxWallNs": 40483479,
+        "peakMemoryBytes": 25829376,
+        "minCpuUsec": 43997,
+        "minWallNs": 37696156
+      },
+      "cases": [
+        {
+          "name": "g-single-largest-duration",
+          "maxCpuUsec": 51834,
+          "maxWallNs": 40483479,
+          "peakMemoryBytes": 25829376,
+          "minCpuUsec": 51834,
+          "minWallNs": 40483479
+        },
+        {
+          "name": "g-maximum-count-all-largest-durations",
+          "maxCpuUsec": 43997,
+          "maxWallNs": 38354917,
+          "peakMemoryBytes": 25489408,
+          "minCpuUsec": 43997,
+          "minWallNs": 38354917
+        },
+        {
+          "name": "g-maximum-count-reverse-durations",
+          "maxCpuUsec": 46602,
+          "maxWallNs": 37696156,
+          "peakMemoryBytes": 25309184,
+          "minCpuUsec": 46602,
+          "minWallNs": 37696156
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "H",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 1435296,
+        "maxWallNs": 1428326370,
+        "peakMemoryBytes": 57036800,
+        "minCpuUsec": 1435296,
+        "minWallNs": 1428326370
+      },
+      "run": {
+        "maxCpuUsec": 55827,
+        "maxWallNs": 41192003,
+        "peakMemoryBytes": 25755648,
+        "minCpuUsec": 48338,
+        "minWallNs": 37877119
+      },
+      "cases": [
+        {
+          "name": "h-small-open-grid",
+          "maxCpuUsec": 48338,
+          "maxWallNs": 41192003,
+          "peakMemoryBytes": 25010176,
+          "minCpuUsec": 48338,
+          "minWallNs": 41192003
+        },
+        {
+          "name": "h-maximum-open-grid",
+          "maxCpuUsec": 55827,
+          "maxWallNs": 39171095,
+          "peakMemoryBytes": 25673728,
+          "minCpuUsec": 55827,
+          "minWallNs": 39171095
+        },
+        {
+          "name": "h-maximum-serpentine-detour",
+          "maxCpuUsec": 54433,
+          "maxWallNs": 37877119,
+          "peakMemoryBytes": 25755648,
+          "minCpuUsec": 54433,
+          "minWallNs": 37877119
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "I",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 1384429,
+        "maxWallNs": 1339259736,
+        "peakMemoryBytes": 56508416,
+        "minCpuUsec": 1384429,
+        "minWallNs": 1339259736
+      },
+      "run": {
+        "maxCpuUsec": 170547,
+        "maxWallNs": 155211209,
+        "peakMemoryBytes": 34824192,
+        "minCpuUsec": 44585,
+        "minWallNs": 34450919
+      },
+      "cases": [
+        {
+          "name": "i-small-multi-source",
+          "maxCpuUsec": 54725,
+          "maxWallNs": 45033446,
+          "peakMemoryBytes": 25128960,
+          "minCpuUsec": 54725,
+          "minWallNs": 45033446
+        },
+        {
+          "name": "i-small-unreachable",
+          "maxCpuUsec": 44585,
+          "maxWallNs": 34450919,
+          "peakMemoryBytes": 25247744,
+          "minCpuUsec": 44585,
+          "minWallNs": 34450919
+        },
+        {
+          "name": "i-maximum-single-source-frontier",
+          "maxCpuUsec": 170547,
+          "maxWallNs": 155211209,
+          "peakMemoryBytes": 34824192,
+          "minCpuUsec": 170547,
+          "minWallNs": 155211209
+        }
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "J",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 8,
+      "compile": {
+        "maxCpuUsec": 1555716,
+        "maxWallNs": 1533755627,
+        "peakMemoryBytes": 57794560,
+        "minCpuUsec": 1555716,
+        "minWallNs": 1533755627
+      },
+      "run": {
+        "maxCpuUsec": 83307,
+        "maxWallNs": 67475123,
+        "peakMemoryBytes": 26570752,
+        "minCpuUsec": 53044,
+        "minWallNs": 39953433
+      },
+      "cases": [
+        {
+          "name": "j-single-bank-positive-total",
+          "maxCpuUsec": 55964,
+          "maxWallNs": 42899286,
+          "peakMemoryBytes": 25796608,
+          "minCpuUsec": 55964,
+          "minWallNs": 42899286
+        },
+        {
+          "name": "j-two-bank-duplicate-circular-neighbor",
+          "maxCpuUsec": 59520,
+          "maxWallNs": 45996379,
+          "peakMemoryBytes": 25841664,
+          "minCpuUsec": 59520,
+          "minWallNs": 45996379
+        },
+        {
+          "name": "j-equal-prefixes-nonnegative",
+          "maxCpuUsec": 53044,
+          "maxWallNs": 39953433,
+          "peakMemoryBytes": 25919488,
+          "minCpuUsec": 53044,
+          "minWallNs": 39953433
+        },
+        {
+          "name": "j-negative-prefix-floor-remainder",
+          "maxCpuUsec": 63809,
+          "maxWallNs": 50995285,
+          "peakMemoryBytes": 25821184,
+          "minCpuUsec": 63809,
+          "minWallNs": 50995285
+        },
+        {
+          "name": "j-signed-minimum-balance-unit-total",
+          "maxCpuUsec": 57819,
+          "maxWallNs": 47114262,
+          "peakMemoryBytes": 25739264,
+          "minCpuUsec": 57819,
+          "minWallNs": 47114262
+        },
+        {
+          "name": "j-maximum-all-positive-balances",
+          "maxCpuUsec": 83307,
+          "maxWallNs": 67475123,
+          "peakMemoryBytes": 26570752,
+          "minCpuUsec": 83307,
+          "minWallNs": 67475123
+        },
+        {
+          "name": "j-maximum-nonnegative-unit-total",
+          "maxCpuUsec": 61151,
+          "maxWallNs": 40918894,
+          "peakMemoryBytes": 26423296,
+          "minCpuUsec": 61151,
+          "minWallNs": 40918894
+        },
+        {
+          "name": "j-maximum-unit-total-long-positive-negative-blocks-int64",
+          "maxCpuUsec": 72280,
+          "maxWallNs": 46931138,
+          "peakMemoryBytes": 26509312,
+          "minCpuUsec": 72280,
+          "minWallNs": 46931138
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "A",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 43911,
+        "maxWallNs": 43920581,
+        "peakMemoryBytes": 16527360,
+        "minCpuUsec": 43911,
+        "minWallNs": 43920581
+      },
+      "run": {
+        "maxCpuUsec": 50453,
+        "maxWallNs": 50621703,
+        "peakMemoryBytes": 17522688,
+        "minCpuUsec": 46767,
+        "minWallNs": 41538075
+      },
+      "cases": [
+        {
+          "name": "a-minimum-groups",
+          "maxCpuUsec": 50453,
+          "maxWallNs": 50621703,
+          "peakMemoryBytes": 17408000,
+          "minCpuUsec": 50453,
+          "minWallNs": 50621703
+        },
+        {
+          "name": "a-maximum-groups",
+          "maxCpuUsec": 46767,
+          "maxWallNs": 41538075,
+          "peakMemoryBytes": 17522688,
+          "minCpuUsec": 46767,
+          "minWallNs": 41538075
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "B",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 45406,
+        "maxWallNs": 43521209,
+        "peakMemoryBytes": 16416768,
+        "minCpuUsec": 45406,
+        "minWallNs": 43521209
+      },
+      "run": {
+        "maxCpuUsec": 50265,
+        "maxWallNs": 53108910,
+        "peakMemoryBytes": 17711104,
+        "minCpuUsec": 40751,
+        "minWallNs": 37975430
+      },
+      "cases": [
+        {
+          "name": "b-minimum-triple",
+          "maxCpuUsec": 50265,
+          "maxWallNs": 53108910,
+          "peakMemoryBytes": 17592320,
+          "minCpuUsec": 50265,
+          "minWallNs": 53108910
+        },
+        {
+          "name": "b-maximum-triple",
+          "maxCpuUsec": 48753,
+          "maxWallNs": 44563388,
+          "peakMemoryBytes": 17395712,
+          "minCpuUsec": 48753,
+          "minWallNs": 44563388
+        },
+        {
+          "name": "b-pair-and-largest-distinct",
+          "maxCpuUsec": 40751,
+          "maxWallNs": 37975430,
+          "peakMemoryBytes": 17711104,
+          "minCpuUsec": 40751,
+          "minWallNs": 37975430
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "C",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 46374,
+        "maxWallNs": 41659471,
+        "peakMemoryBytes": 16850944,
+        "minCpuUsec": 46374,
+        "minWallNs": 41659471
+      },
+      "run": {
+        "maxCpuUsec": 101040,
+        "maxWallNs": 79907916,
+        "peakMemoryBytes": 30642176,
+        "minCpuUsec": 53693,
+        "minWallNs": 48426193
+      },
+      "cases": [
+        {
+          "name": "c-single-minimum",
+          "maxCpuUsec": 53693,
+          "maxWallNs": 48426193,
+          "peakMemoryBytes": 17281024,
+          "minCpuUsec": 53693,
+          "minWallNs": 48426193
+        },
+        {
+          "name": "c-maximum-extrema-negative-repetitions",
+          "maxCpuUsec": 101040,
+          "maxWallNs": 79907916,
+          "peakMemoryBytes": 30642176,
+          "minCpuUsec": 101040,
+          "minWallNs": 79907916
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "D",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 57321,
+        "maxWallNs": 51483637,
+        "peakMemoryBytes": 16596992,
+        "minCpuUsec": 57321,
+        "minWallNs": 51483637
+      },
+      "run": {
+        "maxCpuUsec": 66625,
+        "maxWallNs": 48528015,
+        "peakMemoryBytes": 23822336,
+        "minCpuUsec": 41718,
+        "minWallNs": 37614885
+      },
+      "cases": [
+        {
+          "name": "d-minimum-repeat-and-length",
+          "maxCpuUsec": 41718,
+          "maxWallNs": 37614885,
+          "peakMemoryBytes": 17424384,
+          "minCpuUsec": 41718,
+          "minWallNs": 37614885
+        },
+        {
+          "name": "d-maximum-case-count-repeat-and-length",
+          "maxCpuUsec": 66625,
+          "maxWallNs": 48528015,
+          "peakMemoryBytes": 23822336,
+          "minCpuUsec": 66625,
+          "minWallNs": 48528015
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "E",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 35266,
+        "maxWallNs": 31240982,
+        "peakMemoryBytes": 16699392,
+        "minCpuUsec": 35266,
+        "minWallNs": 31240982
+      },
+      "run": {
+        "maxCpuUsec": 63049,
+        "maxWallNs": 52803276,
+        "peakMemoryBytes": 19169280,
+        "minCpuUsec": 49327,
+        "minWallNs": 43756584
+      },
+      "cases": [
+        {
+          "name": "e-single-lowercase-letter",
+          "maxCpuUsec": 49327,
+          "maxWallNs": 43756584,
+          "peakMemoryBytes": 17158144,
+          "minCpuUsec": 49327,
+          "minWallNs": 43756584
+        },
+        {
+          "name": "e-maximum-case-insensitive-tie",
+          "maxCpuUsec": 61100,
+          "maxWallNs": 51866750,
+          "peakMemoryBytes": 19169280,
+          "minCpuUsec": 61100,
+          "minWallNs": 51866750
+        },
+        {
+          "name": "e-maximum-case-insensitive-winner",
+          "maxCpuUsec": 63049,
+          "maxWallNs": 52803276,
+          "peakMemoryBytes": 19148800,
+          "minCpuUsec": 63049,
+          "minWallNs": 52803276
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "F",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 2,
+      "compile": {
+        "maxCpuUsec": 35310,
+        "maxWallNs": 31211491,
+        "peakMemoryBytes": 16875520,
+        "minCpuUsec": 35310,
+        "minWallNs": 31211491
+      },
+      "run": {
+        "maxCpuUsec": 115297,
+        "maxWallNs": 103656218,
+        "peakMemoryBytes": 32079872,
+        "minCpuUsec": 50012,
+        "minWallNs": 45647186
+      },
+      "cases": [
+        {
+          "name": "f-small-extrema-duplicate-membership",
+          "maxCpuUsec": 50012,
+          "maxWallNs": 45647186,
+          "peakMemoryBytes": 17215488,
+          "minCpuUsec": 50012,
+          "minWallNs": 45647186
+        },
+        {
+          "name": "f-maximum-registrations-and-queries-extrema-duplicates-absence",
+          "maxCpuUsec": 115297,
+          "maxWallNs": 103656218,
+          "peakMemoryBytes": 32079872,
+          "minCpuUsec": 115297,
+          "minWallNs": 103656218
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "G",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 43653,
+        "maxWallNs": 39905334,
+        "peakMemoryBytes": 16642048,
+        "minCpuUsec": 43653,
+        "minWallNs": 39905334
+      },
+      "run": {
+        "maxCpuUsec": 53989,
+        "maxWallNs": 46834594,
+        "peakMemoryBytes": 17567744,
+        "minCpuUsec": 46715,
+        "minWallNs": 40991943
+      },
+      "cases": [
+        {
+          "name": "g-single-largest-duration",
+          "maxCpuUsec": 51200,
+          "maxWallNs": 46127029,
+          "peakMemoryBytes": 17567744,
+          "minCpuUsec": 51200,
+          "minWallNs": 46127029
+        },
+        {
+          "name": "g-maximum-count-all-largest-durations",
+          "maxCpuUsec": 46715,
+          "maxWallNs": 40991943,
+          "peakMemoryBytes": 17539072,
+          "minCpuUsec": 46715,
+          "minWallNs": 40991943
+        },
+        {
+          "name": "g-maximum-count-reverse-durations",
+          "maxCpuUsec": 53989,
+          "maxWallNs": 46834594,
+          "peakMemoryBytes": 17444864,
+          "minCpuUsec": 53989,
+          "minWallNs": 46834594
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "H",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 44450,
+        "maxWallNs": 39771463,
+        "peakMemoryBytes": 16752640,
+        "minCpuUsec": 44450,
+        "minWallNs": 39771463
+      },
+      "run": {
+        "maxCpuUsec": 75680,
+        "maxWallNs": 62139860,
+        "peakMemoryBytes": 19988480,
+        "minCpuUsec": 45453,
+        "minWallNs": 40925752
+      },
+      "cases": [
+        {
+          "name": "h-small-open-grid",
+          "maxCpuUsec": 45453,
+          "maxWallNs": 40925752,
+          "peakMemoryBytes": 17637376,
+          "minCpuUsec": 45453,
+          "minWallNs": 40925752
+        },
+        {
+          "name": "h-maximum-open-grid",
+          "maxCpuUsec": 60469,
+          "maxWallNs": 44113526,
+          "peakMemoryBytes": 19988480,
+          "minCpuUsec": 60469,
+          "minWallNs": 44113526
+        },
+        {
+          "name": "h-maximum-serpentine-detour",
+          "maxCpuUsec": 75680,
+          "maxWallNs": 62139860,
+          "peakMemoryBytes": 19816448,
+          "minCpuUsec": 75680,
+          "minWallNs": 62139860
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "I",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 3,
+      "compile": {
+        "maxCpuUsec": 46166,
+        "maxWallNs": 42216476,
+        "peakMemoryBytes": 16449536,
+        "minCpuUsec": 46166,
+        "minWallNs": 42216476
+      },
+      "run": {
+        "maxCpuUsec": 117214,
+        "maxWallNs": 93019863,
+        "peakMemoryBytes": 28090368,
+        "minCpuUsec": 52633,
+        "minWallNs": 48390290
+      },
+      "cases": [
+        {
+          "name": "i-small-multi-source",
+          "maxCpuUsec": 52633,
+          "maxWallNs": 48390290,
+          "peakMemoryBytes": 17367040,
+          "minCpuUsec": 52633,
+          "minWallNs": 48390290
+        },
+        {
+          "name": "i-small-unreachable",
+          "maxCpuUsec": 61665,
+          "maxWallNs": 56490637,
+          "peakMemoryBytes": 17526784,
+          "minCpuUsec": 61665,
+          "minWallNs": 56490637
+        },
+        {
+          "name": "i-maximum-single-source-frontier",
+          "maxCpuUsec": 117214,
+          "maxWallNs": 93019863,
+          "peakMemoryBytes": 28090368,
+          "minCpuUsec": 117214,
+          "minWallNs": 93019863
+        }
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "J",
+      "repetitions": 1,
+      "repetitionIndices": [
+        1
+      ],
+      "caseCount": 8,
+      "compile": {
+        "maxCpuUsec": 42700,
+        "maxWallNs": 38004528,
+        "peakMemoryBytes": 16924672,
+        "minCpuUsec": 42700,
+        "minWallNs": 38004528
+      },
+      "run": {
+        "maxCpuUsec": 98745,
+        "maxWallNs": 83030709,
+        "peakMemoryBytes": 23150592,
+        "minCpuUsec": 40199,
+        "minWallNs": 35954871
+      },
+      "cases": [
+        {
+          "name": "j-single-bank-positive-total",
+          "maxCpuUsec": 55807,
+          "maxWallNs": 57014892,
+          "peakMemoryBytes": 16982016,
+          "minCpuUsec": 55807,
+          "minWallNs": 57014892
+        },
+        {
+          "name": "j-two-bank-duplicate-circular-neighbor",
+          "maxCpuUsec": 52462,
+          "maxWallNs": 47201821,
+          "peakMemoryBytes": 17453056,
+          "minCpuUsec": 52462,
+          "minWallNs": 47201821
+        },
+        {
+          "name": "j-equal-prefixes-nonnegative",
+          "maxCpuUsec": 47154,
+          "maxWallNs": 42505445,
+          "peakMemoryBytes": 17559552,
+          "minCpuUsec": 47154,
+          "minWallNs": 42505445
+        },
+        {
+          "name": "j-negative-prefix-floor-remainder",
+          "maxCpuUsec": 52633,
+          "maxWallNs": 53414437,
+          "peakMemoryBytes": 17518592,
+          "minCpuUsec": 52633,
+          "minWallNs": 53414437
+        },
+        {
+          "name": "j-signed-minimum-balance-unit-total",
+          "maxCpuUsec": 40199,
+          "maxWallNs": 35954871,
+          "peakMemoryBytes": 17326080,
+          "minCpuUsec": 40199,
+          "minWallNs": 35954871
+        },
+        {
+          "name": "j-maximum-all-positive-balances",
+          "maxCpuUsec": 98745,
+          "maxWallNs": 74914956,
+          "peakMemoryBytes": 23150592,
+          "minCpuUsec": 98745,
+          "minWallNs": 74914956
+        },
+        {
+          "name": "j-maximum-nonnegative-unit-total",
+          "maxCpuUsec": 91940,
+          "maxWallNs": 64998549,
+          "peakMemoryBytes": 21250048,
+          "minCpuUsec": 91940,
+          "minWallNs": 64998549
+        },
+        {
+          "name": "j-maximum-unit-total-long-positive-negative-blocks-int64",
+          "maxCpuUsec": 98336,
+          "maxWallNs": 83030709,
+          "peakMemoryBytes": 22327296,
+          "minCpuUsec": 98336,
+          "minWallNs": 83030709
+        }
+      ]
+    }
+  ],
+  "missing": [
+    {
+      "language": "c",
+      "letter": "A",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "B",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "C",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "D",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "E",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "F",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "G",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "H",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "I",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "c",
+      "letter": "J",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "A",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "B",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "C",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "D",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "E",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "F",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "G",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "H",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "I",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "cpp",
+      "letter": "J",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "A",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "B",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "C",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "D",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "E",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "F",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "G",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "H",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "I",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "python",
+      "letter": "J",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "A",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "B",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "C",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "D",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "E",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "F",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "G",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "H",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "I",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "java",
+      "letter": "J",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "A",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "B",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "C",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "D",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "E",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "F",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "G",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "H",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "I",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "javascript",
+      "letter": "J",
+      "repetitions": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "A",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "B",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "C",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "D",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "E",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "F",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "G",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "H",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "I",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "language": "bpp",
+      "letter": "J",
+      "repetitions": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    }
+  ]
+}

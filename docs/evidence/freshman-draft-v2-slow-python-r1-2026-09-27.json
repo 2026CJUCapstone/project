@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "owner": "0288719217724ef08dd7e87969bab99c",
+  "suite": "freshman-slow",
+  "repetition": 1,
+  "timedOut": false,
+  "host": {
+    "system": "Linux",
+    "kernel": "6.8.0-111-generic",
+    "architecture": "x86_64",
+    "cpuCount": 4
+  },
+  "controllerImage": "sha256:d7ab3494aad02142fe7fc4abee8175283a2ce68e57cfc7bb24da034753065930",
+  "runtimeImage": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "sourceArchiveSha256": "2e18d203661ac3932f11b965b7ceb0abde190a607a1d27a61bac0b8911e70a68",
+  "scriptsSha256": {
+    "verify_freshman_slow.py": "18f802bd8de7a48c15a2bda5a11fde117fded2b3dd257b8fed7b48be7f4608a2",
+    "verify_runtime_matrix.py": "1ec07f67238e63478bdba4fcf3fa2f0ef8b51477590a473f8074d5a17d040fdc",
+    "run_isolated_runtime_matrix.py": "fd8fb2c7083884043816927b89a6ef789838a8d7632b8d63c60bb66038fbfacc",
+    "verify_freshman_measurements.py": "31900d65ae519b61437aa6c1b2a5bb1144dcdef826bef2446ba64db793e0617b"
+  },
+  "versions": {
+    "c": {
+      "version": "gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+      "exit": 0
+    },
+    "cpp": {
+      "version": "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+      "exit": 0
+    },
+    "python": {
+      "version": "Python 3.14.4",
+      "exit": 0
+    },
+    "java": {
+      "version": "openjdk version \"25.0.4\" 2026-07-21",
+      "exit": 0
+    },
+    "javascript": {
+      "version": "v24.21.0",
+      "exit": 0
+    },
+    "bpp": {
+      "version": "binary-sha256:8cd02a03dd9f817bc50a644160dd06b70f4dfe8982abac9f61d6faebcfa9e960",
+      "exit": 0,
+      "launcherSha256": "44940bcd0cd23ec4495c55f6458ca95a4026b9542a98f87d1debb6f997923a3a",
+      "compilerPath": "/usr/local/libexec/bpp/v13_stage1"
+    },
+    "tools": {
+      "javac": true,
+      "nasm": true,
+      "ld": true
+    }
+  },
+  "before": {
+    "availableMemoryBytes": 6540668928,
+    "freeDiskBytes": 5107613696
+  },
+  "after": {
+    "availableMemoryBytes": 6529064960,
+    "freeDiskBytes": 5105938432
+  },
+  "controllerExitCode": 0,
+  "stdout": "{\"letter\": \"F\", \"case\": {\"name\": \"f-linear-scan-discriminator-mostly-absent-queries\", \"visibility\": \"hidden\", \"provenance\": \"coverage-v1\", \"inputBytes\": 1288904, \"inputHash\": \"sha256:8f9d2e590254e5e70d2d6566c9d9cef34ae8eab95cfe591f21c944f518387ee4\", \"expectedBytes\": 199999, \"expectedHash\": \"sha256:2c8b56e4e8872ce65bba1ddd210acfff004f59fd4837ee4cbba7490cf628da6b\"}, \"corpusManifestHash\": \"sha256:e5213ca9d1aaf3691c91db22aa021870b532b653c015c58c4bf90fff8a8539fc\", \"fastSourceHash\": \"sha256:26f3c44ea418810a4b5490244a4efeccac58b5b63b676732034aed1f55aafe73\", \"slowSourceHash\": \"sha256:33415aea19d1193568a1bfd396b829fa1bedda12c2c0e3622e2f013eceb1474a\", \"contract\": {\"kind\": \"measured-v1\", \"policyId\": \"isolated-slow-F\", \"revision\": 1, \"policyHash\": \"sha256:3a676308044d3422950e3fa42e4934c4bc456515b28b077a8ed277a29bad235d\", \"language\": \"python\", \"testSuiteHash\": \"sha256:19d245b44413d5f4256b485dc790ca4370cfa7be035612be74a32c5d48515219\", \"profile\": {\"runtimeId\": \"isolated-python\", \"runtimeVersion\": \"Python 3.14.4\", \"imageDigest\": \"sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1\", \"workerClass\": \"isolated-freshman-slow-comparison\", \"toolchainProfile\": \"cpython-pyc-v1\", \"launcherDigest\": \"sha256:908bb710244512ea3f655831a7aa84b4fb5d6ec370cd32e558f14944fbc0e505\", \"compile\": {\"cpuMs\": 8000, \"wallMs\": 10000, \"memoryBytes\": 536870912, \"outputBytes\": 524288, \"pids\": 64, \"tmpBytes\": 67108864}, \"run\": {\"cpuMs\": 5000, \"wallMs\": 8000, \"memoryBytes\": 536870912, \"outputBytes\": 524288, \"pids\": 64, \"tmpBytes\": 16777216}}, \"jobDeadlineMs\": 23000, \"reservationBytes\": 536870912}, \"startedAt\": \"2026-09-26T19:08:28.144870+00:00\", \"fastVerdict\": \"accepted\", \"slowVerdict\": \"time_limit_exceeded\", \"separates\": true, \"limitAxis\": \"cpu\", \"fastRun\": {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 78086, \"wallNs\": 72214544, \"peakMemoryBytes\": 32215040, \"oomKills\": 0, \"outputBytes\": 200000, \"treeReaped\": true}, \"slowRun\": {\"version\": 1, \"phase\": \"run\", \"exitCode\": -9, \"failureReason\": \"time_limit_exceeded\", \"cpuUsec\": 5004694, \"wallNs\": 4998699262, \"peakMemoryBytes\": 32624640, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, \"finishedAt\": \"2026-09-26T19:08:36.243018+00:00\"}\n{\"letter\": \"I\", \"case\": {\"name\": \"i-maximum-many-sources-front-delete-discriminator\", \"visibility\": \"hidden\", \"provenance\": \"coverage-v1\", \"inputBytes\": 2000010, \"inputHash\": \"sha256:6a00849fcafed149d247dc078c3c241edd08aba2a2fed8b1c704f28d88674ce5\", \"expectedBytes\": 1, \"expectedHash\": \"sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b\"}, \"corpusManifestHash\": \"sha256:e5213ca9d1aaf3691c91db22aa021870b532b653c015c58c4bf90fff8a8539fc\", \"fastSourceHash\": \"sha256:6a30f29b6471a90f24be43de6594d091db870b9e047d3d74a256fa025d793151\", \"slowSourceHash\": \"sha256:cfbf02504680fe763bc482860a5cf5e4f633b2806e4e61dd5ff1c9d17dc2c282\", \"contract\": {\"kind\": \"measured-v1\", \"policyId\": \"isolated-slow-I\", \"revision\": 1, \"policyHash\": \"sha256:3a676308044d3422950e3fa42e4934c4bc456515b28b077a8ed277a29bad235d\", \"language\": \"python\", \"testSuiteHash\": \"sha256:0e8dd68630e0327a8cd7504908458b17cc33c0f8465e154cf1414e021d28bd62\", \"profile\": {\"runtimeId\": \"isolated-python\", \"runtimeVersion\": \"Python 3.14.4\", \"imageDigest\": \"sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1\", \"workerClass\": \"isolated-freshman-slow-comparison\", \"toolchainProfile\": \"cpython-pyc-v1\", \"launcherDigest\": \"sha256:908bb710244512ea3f655831a7aa84b4fb5d6ec370cd32e558f14944fbc0e505\", \"compile\": {\"cpuMs\": 8000, \"wallMs\": 10000, \"memoryBytes\": 536870912, \"outputBytes\": 524288, \"pids\": 64, \"tmpBytes\": 67108864}, \"run\": {\"cpuMs\": 5000, \"wallMs\": 8000, \"memoryBytes\": 536870912, \"outputBytes\": 524288, \"pids\": 64, \"tmpBytes\": 16777216}}, \"jobDeadlineMs\": 23000, \"reservationBytes\": 536870912}, \"startedAt\": \"2026-09-26T19:08:38.473010+00:00\", \"fastVerdict\": \"accepted\", \"slowVerdict\": \"time_limit_exceeded\", \"separates\": true, \"limitAxis\": \"cpu\", \"fastRun\": {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 2332905, \"wallNs\": 2326170762, \"peakMemoryBytes\": 67842048, \"oomKills\": 0, \"outputBytes\": 2, \"treeReaped\": true}, \"slowRun\": {\"version\": 1, \"phase\": \"run\", \"exitCode\": -9, \"failureReason\": \"time_limit_exceeded\", \"cpuUsec\": 5012179, \"wallNs\": 5008352876, \"peakMemoryBytes\": 68956160, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, \"finishedAt\": \"2026-09-26T19:08:48.992932+00:00\"}\n{\"letter\": \"J\", \"case\": {\"name\": \"j-maximum-unit-total-long-positive-negative-blocks-int64\", \"visibility\": \"hidden\", \"provenance\": \"banks-stress-v1\", \"inputBytes\": 64994, \"inputHash\": \"sha256:fa98a71dce21a581e837f89c0754b11288ddf18071dcc6f2f41b7622c38f1d1a\", \"expectedBytes\": 16, \"expectedHash\": \"sha256:f17ddb8dfe5e55efc4c8d409c883012a2ee57e3edf8fee8ea564292d52f723ce\"}, \"corpusManifestHash\": \"sha256:e5213ca9d1aaf3691c91db22aa021870b532b653c015c58c4bf90fff8a8539fc\", \"fastSourceHash\": \"sha256:48066202e98a963cd54243063496f1af14439f02794784016db7a3227c20dadd\", \"slowSourceHash\": \"sha256:19f3b78dfd026f7c62251751ed567367323dee2c27203f6df45e86a262dbbd99\", \"contract\": {\"kind\": \"measured-v1\", \"policyId\": \"isolated-slow-J\", \"revision\": 1, \"policyHash\": \"sha256:3a676308044d3422950e3fa42e4934c4bc456515b28b077a8ed277a29bad235d\", \"language\": \"python\", \"testSuiteHash\": \"sha256:fbaa53fd62d2ef5f3490ca7032d5ebab79cd1bc4087497e1885e9d8e8e011944\", \"profile\": {\"runtimeId\": \"isolated-python\", \"runtimeVersion\": \"Python 3.14.4\", \"imageDigest\": \"sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1\", \"workerClass\": \"isolated-freshman-slow-comparison\", \"toolchainProfile\": \"cpython-pyc-v1\", \"launcherDigest\": \"sha256:908bb710244512ea3f655831a7aa84b4fb5d6ec370cd32e558f14944fbc0e505\", \"compile\": {\"cpuMs\": 8000, \"wallMs\": 10000, \"memoryBytes\": 536870912, \"outputBytes\": 524288, \"pids\": 64, \"tmpBytes\": 67108864}, \"run\": {\"cpuMs\": 5000, \"wallMs\": 8000, \"memoryBytes\": 536870912, \"outputBytes\": 524288, \"pids\": 64, \"tmpBytes\": 16777216}}, \"jobDeadlineMs\": 23000, \"reservationBytes\": 536870912}, \"startedAt\": \"2026-09-26T19:08:49.078940+00:00\", \"fastVerdict\": \"accepted\", \"slowVerdict\": \"time_limit_exceeded\", \"separates\": true, \"limitAxis\": \"cpu\", \"fastRun\": {\"version\": 1, \"phase\": \"run\", \"exitCode\": 0, \"failureReason\": null, \"cpuUsec\": 83837, \"wallNs\": 79282849, \"peakMemoryBytes\": 12193792, \"oomKills\": 0, \"outputBytes\": 17, \"treeReaped\": true}, \"slowRun\": {\"version\": 1, \"phase\": \"run\", \"exitCode\": -9, \"failureReason\": \"time_limit_exceeded\", \"cpuUsec\": 5005752, \"wallNs\": 4995894681, \"peakMemoryBytes\": 11878400, \"oomKills\": 0, \"outputBytes\": 0, \"treeReaped\": true}, \"finishedAt\": \"2026-09-26T19:08:57.124528+00:00\"}\n{\"scope\": \"Fixed F/I/J slow-vs-fast draft diagnostics only; not final limits\", \"pairs\": 3, \"separated\": 3, \"corpusManifestHash\": \"sha256:e5213ca9d1aaf3691c91db22aa021870b532b653c015c58c4bf90fff8a8539fc\", \"phaseContainers\": 12, \"remainingSubmittedContainers\": 0, \"remainingJobDirectories\": 0}\n",
+  "stderr": "",
+  "referenceArchiveSha256": "a90de99a98085194e3d6cd371f76c74fa3727efc60c8f31c1f35aec9fcc596a0"
+}

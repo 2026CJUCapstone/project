@@ -1,5 +1,7 @@
 # 준비 상태에 따른 API 로드밸런싱
 
+2026-09-27 현재 운영 상태: migration-aware release `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`는 basic pool의 API 2개와 별도 worker, Redis, PgBouncer, API proxy로 정상 기동했고 내부 `:18003/ready` 및 proxy `:18000/ready`는 준비 상태 JSON을 반환한다. 고유 토큰을 붙인 순차 read-only GET 12개는 실제 두 API 로그에 7/5로 나뉘었고 live proxy는 `least_conn`을 사용한다. 다만 외부 `/webcompiler/ready`가 SPA fallback으로 HTML을 반환하는 설정 드리프트를 실측했다. `frontend/nginx.conf`와 운영 include에 exact readiness location을 추가하고 소스 회귀를 통과했으나 아직 재배포하지 않았다. 현재 운영 증거는 HTTP·WebSocket 혼합 봇 부하, API/worker 증감, 전 drain·retry·멱등 POST 및 다중 호스트 장애 전환까지 증명하지 않는다. 이 문서 아래의 managed blue/green controller 검증과 현재 basic pool 배포를 같은 완료 증거로 합치지 않는다.
+
 2026-09-10 연결된 구현 기록. 기준은 `site-audit-2026-09-09.md` 5.4절이다. `deploy_server.sh`는 managed pool과 함께 `edge_deploy.py`의 preflight·prepare·candidate·switch adapter를 호출하지만, 실제 운영 전환은 실행·승인되지 않았다. 트랜잭션형 전환의 전체 end-to-end 검증·rollback·drain 등 아래 잔여 조건 때문에 배포 준비 완료로 보지 않는다. 운영 배포·main push·운영 데이터 변경 없이 격리 서버에서 검증한다.
 
 ## 구현한 흐름
@@ -25,6 +27,8 @@ worker와 개발 모드 내장 worker는 시작할 때 private 디렉터리에 �
 `WORKER_STATE_DIRECTORY`는 비어 있으면 container-local 임시 경로를 설정 scope로 나눠 사용한다. 지정할 때는 절대 경로여야 하며 POSIX 디렉터리/파일은 해당 UID 소유의 0700/0600이어야 한다. worker와 그 health CLI에는 같은 설정을 전달한다. 같은 호스트에서 동일 runtime worker를 여러 프로세스로 실행하려면 서로 다른 디렉터리를 명시한다. hostname과 이 설정 scope를 합친 stable slot이 Redis 소유권을 구분한다. 이 경로를 사용자 코드 sandbox에 mount하지 않는다.
 
 `workers-v2` 준비 상태는 `slot:epoch`와 만료 시각을 저장하고 별도 owner hash가 현재 epoch를 정한다. 시작 시 이전 epoch를 교체하고 기존 준비 상태를 제거한 뒤 Docker probe를 수행한다. 보고/정리는 예상 epoch가 일치할 때만 유효하며, API 조회도 owner와 준비 상태를 같은 Lua 읽기에서 대조한다. 종료는 진행 중인 보고를 기다린 뒤 epoch를 revoke하므로 늦은 보고가 준비 상태를 다시 만들지 못한다. Redis 손실 후에는 재등록과 새 probe/보고가 필요하다. process crash나 Redis 연결 실패에 따른 외부 API의 감지 지연은 heartbeat 유효 기간(30초)에 제한되며, 이 지연을 0초라고 주장하지 않는다. 실제 CLI는 PID와 수명 잠금도 확인한다.
+
+2026-09-27 격리 후속에서는 실제 Uvicorn `/ready`가 워커 SIGKILL 직후 **200으로 남는 구간**을 확인했다. 재등록 없이 기다리면 30초 heartbeat 만료 후 503, 새 워커가 준비되면 200, SIGTERM drain 후 503이었다. [원시 결과와 범위](judge-postgres-integration-2026-09-27.md)를 참조한다. 이는 Docker 실행 lane과 공개 프록시까지 통과했다는 뜻이 아니며, 운영에서 허용할 장애 감지 지연은 아직 확정되지 않았다.
 
 종료 시에는 긴 claim 완료를 기다리기 전에 준비 상태부터 revoke한다. 이때 process marker의 수명 잠금은 실제 종료까지 유지하되, 그 프로세스의 후속 등록·보고는 금지한다. owner hash만 유실되고 ready entry가 남은 경우도 재등록 중 이전 entry를 제거해 새 probe 이전에는 준비 완료가 되지 않게 한다. 이 두 경계를 포함한 process-epoch-v2 전체 격리 검사는 943 passed /20 host-tool skipped /2 subtests passed(637.54초)이며, 같은 소스의 별도 호스트 검사로 생략된 20개도 통과했다. 이 결과는 아래 후속 API 수명 변경을 포함하지 않는다.
 
@@ -132,3 +136,11 @@ Docker 조회는 변경 없는 명령만 허용하며 subprocess 출력1MiB/20�
 - membership 변동 시 reload는 최대 5초마다 수행하고 이전 worker 종료 상한은 150초다. 확인되지 않은 generation은 503으로 닫는다. 이 전환 구간의 지연·오류율과 오래 유지되는 WS worker의 메모리는 혼합 부하 시험에서 측정·개선해야 한다. 정상 사용자 수용 성능을 아직 보장하지 않는다.
 
 근거: [Nginx reload 동작](https://nginx.org/en/docs/control.html), [auth_request 판정](https://nginx.org/en/docs/http/ngx_http_auth_request_module.html), [Docker Compose 서비스 격리 설정](https://docs.docker.com/reference/compose-file/services/).
+
+## 2026-09-27 public readiness host include 경계
+
+운영 backend/API proxy의 `/ready`는 정상이나 public `/webcompiler/ready`는 host Nginx include에 exact location이 없어 SPA HTML로 떨어졌다. 저장소의 frontend/deploy Nginx 후보는 exact root/subpath readiness를 SPA fallback 앞에 두도록 수정했지만, `deploy_server.sh`의 SHA archive 경로는 `/etc/nginx/snippets/webcompiler.locations.conf`를 설치하거나 Nginx를 reload하지 않는다.
+
+따라서 public readiness 반영은 [운영 Nginx readiness 경로 갱신 절차](host-nginx-readiness-deployment-2026-09-27.md)의 별도 승인 단계다. 설치기는 현재 운영 include 전체 SHA-256 `9a83b7a5621a2cc521986401df0f9f5056e23ed27a090e68f73188d0c857ddc8`과 승인 후보 해시를 잠금 뒤 다시 비교하고, 원자 교체·문법 검사·reload·외부 HTTPS JSON/no-store/200을 확인한다. 실패하면 원본 bytes·metadata를 복구하고 적용 전 공개 응답 fingerprint까지 비교한다. 이 절차는 아직 실행되지 않았다.
+
+깨끗한 운영-ref 후보의 결과는 backend **2,315 PASS/380 조건부 SKIP/8 subtests**, frontend **58 files/322 PASS**, typecheck/build PASS다. 콘텐츠 주소형 launcher에는 LF 고정, digest 검사와 `core.autocrlf=true` fresh checkout/archive round-trip 회귀도 포함한다. 이는 public host 설정 적용이나 실제 replica failure/혼합 부하/장시간 WebSocket/multi-host HA의 운영 증거가 아니다.

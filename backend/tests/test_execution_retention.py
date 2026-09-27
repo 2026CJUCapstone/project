@@ -74,9 +74,9 @@ def test_cutoff_active_uncertain_contest_and_unknown_jobs_are_preserved(replicas
         completed(replicas[0], sandbox_operation={'kind': 'cleanup', 'id': 'pending'}),
         completed(replicas[0], finished_at=None),
     ]
-    for kind in ('run', 'compile', 'practice', 'terminal'):
+    for kind in ('run', 'compile', 'practice', 'terminal', 'authoring-validation-v1'):
         completed(replicas[0], kind=kind, status='failed')
-    assert expire(replicas[1]) == 4
+    assert expire(replicas[1]) == 5
     with replicas[0]() as db:
         for job_id, _ in protected:
             job = db.get(m.ExecutionJob, job_id)

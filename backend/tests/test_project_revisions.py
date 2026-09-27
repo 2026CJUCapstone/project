@@ -31,6 +31,7 @@ async def test_project_compare_and_swap_and_utc_timestamps(project_owner):
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated', headers=project_owner) as client:
         created = await client.put('/api/v1/projects/main', json={'code':'v1'})
         assert created.status_code == 200
+        assert created.headers['cache-control'] == 'no-store'
         revision = created.json()['revision']
         assert created.json()['createdAt'].endswith('Z')
         assert created.json()['updatedAt'].endswith('Z')
@@ -40,7 +41,12 @@ async def test_project_compare_and_swap_and_utc_timestamps(project_owner):
         assert updated.status_code == 200
         assert updated.json()['revision'] != revision
         assert (await client.put('/api/v1/projects/main', json={'code':'stale', 'expectedRevision':revision})).status_code == 409
-        assert (await client.get('/api/v1/projects/main')).json()['code'] == 'v2'
+        detail = await client.get('/api/v1/projects/main')
+        assert detail.headers['cache-control'] == 'no-store'
+        assert detail.json()['code'] == 'v2'
+        listing = await client.get('/api/v1/projects/')
+        assert listing.headers['cache-control'] == 'no-store'
+        assert listing.json()[0]['code'] == 'v2'
 
 
 @pytest.mark.asyncio

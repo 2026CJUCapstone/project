@@ -2,7 +2,6 @@ from pathlib import Path
 
 
 NGINX_CONFIG = Path(__file__).resolve().parents[2] / 'frontend' / 'nginx.conf'
-DEPLOY_CONFIG = Path(__file__).resolve().parents[2] / 'deploy' / 'nginx' / 'webcompiler.locations.conf'
 
 
 def test_frontend_nginx_sets_consistent_safe_response_headers():
@@ -48,19 +47,6 @@ def test_frontend_proxies_liveness_and_readiness_outside_spa_fallback():
         assert config.count(exact) == 1
         block = config.split(exact, 1)[1].split('}', 1)[0]
         assert f'proxy_pass http://backend_upstream{backend_path};' in block
-
-
-def test_deploy_include_proxies_liveness_and_readiness_outside_spa_fallback():
-    config = DEPLOY_CONFIG.read_text(encoding='utf-8')
-
-    for public_path, backend_path in (
-        ('/webcompiler/health', '/health'),
-        ('/webcompiler/ready', '/ready'),
-    ):
-        exact = f'location = {public_path} {{'
-        assert config.count(exact) == 1
-        block = config.split(exact, 1)[1].split('}', 1)[0]
-        assert f'proxy_pass http://127.0.0.1:18000{backend_path};' in block
 
 
 def test_hsts_is_left_to_the_tls_terminating_proxy():

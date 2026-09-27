@@ -82,6 +82,8 @@ http {
     uwsgi_temp_path /tmp/uwsgi;
     scgi_temp_path /tmp/scgi;
     map $http_upgrade $connection_upgrade { default upgrade; '' ''; }
+    limit_conn_zone $binary_remote_addr zone=judge_upload_ip:64k;
+    limit_conn_zone $server_name zone=judge_upload_total:32k;
     client_max_body_size 512k;
     client_header_timeout 10s;
     client_body_timeout 10s;
@@ -120,6 +122,24 @@ http {
     servers = []
     for port, fallback in ((layout.api_port,'color_api'),(layout.frontend_port,'color_frontend')):
         locations = '''
+        location ^~ /api/v1/admin/judge-test-data/ {
+            client_max_body_size 16m;
+            limit_conn judge_upload_ip 2;
+            limit_conn judge_upload_total 8;
+            limit_conn_status 429;
+            proxy_request_buffering off;
+            proxy_next_upstream off;
+            proxy_pass http://color_api;
+        }
+        location ^~ /webcompiler/api/v1/admin/judge-test-data/ {
+            client_max_body_size 16m;
+            limit_conn judge_upload_ip 2;
+            limit_conn judge_upload_total 8;
+            limit_conn_status 429;
+            proxy_request_buffering off;
+            proxy_next_upstream off;
+            proxy_pass http://color_api/api/v1/admin/judge-test-data/;
+        }
         location /webcompiler/api/ { proxy_pass http://color_api/api/; }
         location /api/ { proxy_pass http://color_api; }
         location /webcompiler/ws/terminal { proxy_pass http://color_api/ws/terminal; proxy_read_timeout 3600s; }

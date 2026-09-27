@@ -188,6 +188,7 @@ fi
         (project/'scripts/verify_build_builder.py').write_text("print('a'*64)\n")
         (project/'runtime/docker/Dockerfile').write_text('FROM scratch\n')
         (project/'runtime/sandbox/run.sh').write_text('# fixture\n')
+        (project/'runtime/sandbox/verify_bpp_runtime.py').write_text('# fixture\n')
         (project/'runtime/bpp-ref.txt').write_text(self.first+'\n')
         # Trusted CLI fakes only: a Git lookup would fail, and no real Docker
         # executable or daemon is reachable through this fixture invocation.

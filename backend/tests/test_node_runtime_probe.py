@@ -19,12 +19,21 @@ class NodeProbeContract(unittest.TestCase):
         actual = probe.dockerfile_prefix(source)
         prefix = source.split('\nARG BPP_REPO=')[0]
         tail = '\nWORKDIR /sandbox\n' + source.split('\nWORKDIR /sandbox\n', 1)[1]
+        tail=tail.replace('COPY sandbox/verify_bpp_runtime.py /usr/local/share/verify_bpp_runtime.py\n','')
+        tail=tail.replace('RUN python3 -I /usr/local/share/verify_bpp_runtime.py\n','')
         self.assertTrue(actual.startswith(prefix + tail))
+        self.assertNotIn('/usr/local/share/verify_bpp_runtime.py',actual)
         self.assertNotIn('git clone', actual)
         self.assertIn('USER sandboxuser', actual)
         self.assertIn('RUN --network=none /bin/bash /audit/smoke.sh', actual)
         self.assertIn('ENTRYPOINT ["/usr/local/bin/run.sh"]', actual)
         self.assertNotIn('/bin/bash /usr/local/bin/run.sh', probe.SMOKE)
+
+    def test_node_only_probe_rejects_bpp_gate_drift(self):
+        source=(ROOT/'runtime/docker/Dockerfile').read_text()
+        for old in ('COPY sandbox/verify_bpp_runtime.py','RUN python3 -I /usr/local/share/verify_bpp_runtime.py'):
+            with self.subTest(instruction=old), self.assertRaises(ValueError):
+                probe.dockerfile_prefix(source.replace(old,'# changed '+old,1))
 
     def test_rejects_missing_or_ambiguous_packaging(self):
         source = (ROOT / 'runtime/docker/Dockerfile').read_text(encoding='utf-8')

@@ -1,0 +1,26 @@
+{
+  "scope": "isolated native candidate build, not a deployed or approved runtime",
+  "image": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "before": {
+    "availableMemoryBytes": 6552371200,
+    "freeDiskBytes": 5105995776
+  },
+  "owner": "7647c739d3294ba697dd2d154bf9c74b",
+  "containerId": "4c4ace95b0ae4545bd5441f3ed30f872c6041ba48ef26cda60806c9f7209268e",
+  "scriptSha256": "3e58a79a51df8363f50fe5a303729cf0bf8db17e8df45ac34686909730f885f9",
+  "exitCode": 1,
+  "stdout": "{\"phase\": \"stage0-compile\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-asm\", \"/work/candidate/src/main.bpp\"], \"timeoutSeconds\": 60, \"exitCode\": -9, \"wallSeconds\": 40.217, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\"}\n{\"scope\": \"bounded native compiler candidate, NOT approved image or contest acceptance\", \"commit\": \"9859a2dc783c9346be2ab9447e1569218bcc5093\", \"sourceArchiveSha256\": \"010e9abd3e2469b6bd1b4ee006ed142e695ecf8ee8af0b81b62fac764d2355bf\", \"phases\": [{\"phase\": \"stage0-compile\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-asm\", \"/work/candidate/src/main.bpp\"], \"timeoutSeconds\": 60, \"exitCode\": -9, \"wallSeconds\": 40.217, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\"}], \"passed\": false, \"bootstrapBinarySha256\": \"8cd02a03dd9f817bc50a644160dd06b70f4dfe8982abac9f61d6faebcfa9e960\", \"error\": \"Native compiler candidate phase failed: stage0-compile\"}\n",
+  "stderr": "",
+  "timedOut": false,
+  "containerState": {
+    "Status": "exited",
+    "Running": false,
+    "OOMKilled": false,
+    "ExitCode": 1,
+    "Error": ""
+  },
+  "after": {
+    "availableMemoryBytes": 6148362240,
+    "freeDiskBytes": 5105639424
+  }
+}

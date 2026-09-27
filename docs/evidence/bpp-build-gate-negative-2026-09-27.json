@@ -1,0 +1,38 @@
+{
+  "scope": "Negative build-gate test against existing, unrepaired compiler image. Not proof of repair.",
+  "runtimeImage": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "probeSha256": "f747ed05aa119e89d736cfc849e55c852530795893019ed1657f58087e7a0d24",
+  "containerExitCode": 1,
+  "containerLimits": {
+    "memoryBytes": 268435456,
+    "cpuCores": 1,
+    "pids": 32,
+    "tmpBytes": 67108864,
+    "network": "none",
+    "readOnlyRoot": true,
+    "user": "65534:65534"
+  },
+  "output": {
+    "scope": "B++ native-O1 build regressions; NOT performance approval",
+    "results": [
+      {
+        "name": "large-local-frame",
+        "sourceSha256": "aa0530c9091ba5b596b40850b22413756029263f620862a53255877b87d28f7d",
+        "passed": false,
+        "assemblySha256": "83a1e79cece107291f1e46ec19ba97f7251f5798beedfca2a05c10683cb50c01",
+        "phase": "run",
+        "exitCode": 17,
+        "diagnostic": ""
+      },
+      {
+        "name": "pointer-parameter-gc",
+        "sourceSha256": "75d7a071de9c65474dfb3c3175bc132df753b23d1c5ac28bdd62ed5fa1c486ef",
+        "passed": false,
+        "assemblySha256": "c853120e56af0479881b2004c6596f02e6d5f908ca6ed94c47eefc83379e7594",
+        "phase": "assemble",
+        "exitCode": 1,
+        "diagnostic": "/tmp/bpp-runtime-regression-rhh2bqim/pointer-parameter-gc.asm:6017: error: symbol `std_mem__bpp_gc_root_slot_remove' not defined\n/tmp/bpp-runtime-regression-rhh2bqim/pointer-parameter-gc.asm:6025: error: symbol `std_mem__bpp_gc_root_slot_remove' not defined\n"
+      }
+    ]
+  }
+}
