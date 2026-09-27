@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from docker.errors import NotFound
+from docker.errors import ImageNotFound, NotFound
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -246,6 +246,50 @@ async def test_unavailable_daemon_still_registers_lane_without_claiming(queue):
     assert queue.worker_status(worker.identity)['draining'] is True
     # Repeated registration after drain cannot reach even the unavailable probe.
     assert await worker.run_once() is False
+
+
+@pytest.mark.asyncio
+async def test_definitive_missing_image_settles_create_and_removes_workdir(queue,tmp_path,monkeypatch):
+    from app.core.config import settings
+    from app.models.database import ExecutionJob
+
+    sandbox=tmp_path/'missing-image-sandbox'
+    sandbox.mkdir()
+    monkeypatch.setattr(settings,'SANDBOX_WORKDIR_ROOT',str(sandbox))
+    monkeypatch.setattr(settings,'SANDBOX_IMAGE','sha256:'+'f'*64)
+    monkeypatch.setattr(settings,'SANDBOX_POOL_ID','missing-image-test')
+    queue.max_attempts=1
+    job_id=submit(queue)
+
+    class Containers:
+        @staticmethod
+        def create(**_kwargs):
+            raise ImageNotFound('authoritative fixture response')
+
+        @staticmethod
+        def list(*_args,**_kwargs):
+            return []
+
+    class Client:
+        containers=Containers()
+
+        @staticmethod
+        def info():
+            return {'ID':'fixture-daemon'}
+
+        @staticmethod
+        def close():
+            pass
+
+    client=Client()
+    pool=SandboxPool(lambda:client,pool_id='missing-image-test')
+    worker=ExecutionWorker(queue,pool=pool)
+    assert await worker.run_once()
+    with queue.sessions() as db:
+        job=db.get(ExecutionJob,job_id)
+        assert job.status=='completed' and job.result['verdict']=='system_error'
+        assert job.sandbox_operation is None
+    assert list(sandbox.iterdir())==[]
 
 
 @pytest.mark.asyncio

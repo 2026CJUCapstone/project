@@ -102,11 +102,12 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
         'CORS_ORIGINS':'http://audit-lb.test'}
     env['DEPLOYMENT_SHA'] = '0123456789abcdef0123456789abcdef01234567'
 
-    def start(image, role, command, *, worker=False):
+    def start(image, role, command, *, worker=False, environment=None):
         mounts = {'/var/run/docker.sock':{'bind':'/var/run/docker.sock','mode':'rw'},
             sandbox:{'bind':sandbox,'mode':'rw'}} if worker else {}
         container = client.containers.run(image.id, command=command, entrypoint=[],
-            name=prefix+'-'+role, labels={'webcompiler.audit':run_id}, environment=env,
+            name=prefix+'-'+role, labels={'webcompiler.audit':run_id},
+            environment=env if environment is None else environment,
             network=network, detach=True,
             networking_config={network:client.api.create_endpoint_config(aliases=[prefix+'-api'])} if role.startswith('api-') else None,
             user=f'{os.stat(sandbox).st_uid}:{os.stat(sandbox).st_gid}' if worker else '10001:10001',
@@ -366,6 +367,34 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
             await asyncio.to_thread(worker.stop,timeout=15)
             await wait_http(http,url+'/ready',status=503)
             assert proxy.exec_run(['wget','-q','-O','/dev/null','http://127.0.0.1:8080/ready']).exit_code != 0
+            # A definitive Docker ImageNotFound response must settle the exact
+            # create journal and remove every per-attempt work directory. It is
+            # safe to retry as a system error, but it must not retain capacity
+            # or require an impossible observation of a container that never
+            # existed.
+            assert list(Path(sandbox).iterdir()) == []
+            keys = list(store.scan_iter(match=prefix+':rate_limit:*'))
+            if keys:
+                store.delete(*keys)
+            missing_receipt = await http.post(url+'/api/v1/executions',json=payload,
+                headers={'X-Request-ID':str(uuid4())})
+            assert missing_receipt.status_code == 202
+            missing_job = missing_receipt.json()['id']
+            missing_env = {**env,'SANDBOX_IMAGE':'sha256:'+'0'*64}
+            missing_worker = await asyncio.to_thread(start,app_image,'missing-worker',
+                ['python','-m','app.worker'],worker=True,environment=missing_env)
+            async with asyncio.timeout(35):
+                while True:
+                    failed = await http.get(url+'/api/v1/executions/'+missing_job)
+                    if failed.status_code == 200 and failed.json()['status'] == 'completed':
+                        break
+                    await asyncio.sleep(.2)
+            assert failed.json()['result']['verdict'] == 'system_error'
+            with replicas[0]() as db:
+                missing_row = db.get(m.ExecutionJob,missing_job)
+                assert missing_row.attempts == 3 and missing_row.sandbox_operation is None
+            await asyncio.to_thread(missing_worker.stop,timeout=15)
+            assert list(Path(sandbox).iterdir()) == []
     except Exception:
         # These are newly-created test services only. Redact even the isolated
         # credentials before showing bounded startup diagnostics on failure.

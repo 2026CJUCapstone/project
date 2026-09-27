@@ -12,7 +12,7 @@ from threading import Event
 from uuid import uuid4
 from pathlib import Path
 
-from docker.errors import NotFound
+from docker.errors import ImageNotFound, NotFound
 
 from app.core.config import settings
 from app.services.compiler import DockerCompilerRunner
@@ -244,7 +244,19 @@ class ExecutionWorker:
             def bounded_action(operation):
                 if self.pool.daemon_identity() != daemon_id:
                     raise RuntimeError('Sandbox daemon changed before execution')
-                value = action(operation)
+                try:
+                    value = action(operation)
+                except ImageNotFound:
+                    # Docker's typed 404 is an authoritative negative create
+                    # response, unlike a transport exception. Bind it to the
+                    # same daemon before clearing the intent so workdir cleanup
+                    # and retry accounting cannot remain fenced forever.
+                    if kind!='create' or self.pool.daemon_identity()!=daemon_id:
+                        raise
+                    if not self.queue.settle_sandbox_operation_no_effect(
+                            claim.id,claim.token,operation,daemon_id=daemon_id):
+                        raise RuntimeError('Sandbox no-effect receipt is stale')
+                    raise
                 if self.pool.daemon_identity() != daemon_id:
                     raise RuntimeError('Sandbox daemon changed during execution')
                 return value

@@ -405,6 +405,31 @@ class DurableQueue:
             db.commit()
         return result
 
+    def settle_sandbox_operation_no_effect(self, job_id, token, operation, *, daemon_id):
+        """Clear an exact operation after an authoritative no-effect response.
+
+        This is narrower than generic exception recovery: the trusted caller
+        must have received a definitive response from the claim's unchanged
+        Docker daemon proving that the create could not have produced a
+        container. Transport failures remain unresolved for reconciliation.
+        """
+        if (not isinstance(operation,dict) or operation.get('version')!=1
+                or operation.get('kind')!='create' or operation.get('lease_token')!=token
+                or not isinstance(operation.get('id'),str)
+                or not re.fullmatch('[a-f0-9]{32}',operation['id'])
+                or not isinstance(daemon_id,str) or not daemon_id):
+            raise ValueError('Exact no-effect sandbox receipt required')
+        with self.sessions() as db:
+            self._lock(db)
+            job=db.get(ExecutionJob,job_id)
+            if (job is None or job.status!='running' or job.lease_token!=token
+                    or job.sandbox_daemon_id!=daemon_id
+                    or job.sandbox_operation!=operation):
+                return False
+            job.sandbox_operation=None
+            db.commit()
+            return True
+
     def renew(self, job_id, token, *, at=None):
         with self.sessions() as db:
             self._lock(db)
