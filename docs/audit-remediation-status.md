@@ -586,3 +586,13 @@ inventory-v5 전체86700은1237 passed /20 host-tool skipped /2 subtests passed(
 - 로컬 merge commit은 `5623a7ecf8f5ab719fe69f460938b5b4122eb8ba`다. complete-history bundle은 `.sandbox-work/readiness-main-candidate-5623a7ec.bundle`, 58,968,162 bytes, SHA-256 `b5becb59cdd6d2ac269adc87aca326cfbb94a66424779e45e5d6df83b2f6de38`이며 `git bundle verify`를 통과했다.
 - 기계 판독 manifest `.sandbox-work/readiness-main-candidate-5623a7ec.json`도 commit/bundle/size/hash와 교차 검증했으며 SHA-256은 `7b22261553a11f096666e488883d4182fc14832bd1f5211916a46d53c55bacde`다.
 - 운영 반영 전 남은 외부 조건은 변함없다: 명시적 push/deploy 승인, host include 적용을 위한 대화형 root 인증, 전용 daemon/VM 기반 cgroup·6언어 수락, 격리 PostgreSQL/Redis 장애 복구, 혼합 부하·replica failure·장시간 WebSocket·multi-host HA, A–J 권리와 운영 일정·배점·공개/J 정책 결정. 이를 통과하지 않은 항목은 완료로 계산하지 않는다.
+
+## 2026-09-27 전체 기능·신입생 대회 통합 후보
+
+- 기존 최신-main 통합 후보에 원본 작업 트리의 온라인 저지 확장, 언어별 자원 정책, 컴파일 기록 필터, 일반 문제·대회 문제 검수/공개 게이트, 재채점, 숨김 테스트 저장, A~J 비공개 신입생 대회 작성 도구와 회귀를 빠짐없이 추가했다. `node_modules`, 빌드 산출물, 문서 압축본과 보고서 편집 자산은 후보에서 제외했다. 검증 근거로 문서에서 직접 참조하는 `docs/evidence` 영수증은 포함했다.
+- Windows의 자동 줄바꿈 변환이 고정된 A~J corpus와 실행기 해시를 깨뜨리던 문제를 재현해 관련 Python·문제 문서·대회 도구를 LF로 고정했다. `corpus-manifest-draft-v2.json` 검증은 `sha256:e5213ca9d1aaf3691c91db22aa021870b532b653c015c58c4bf90fff8a8539fc`, 문제별 테스트 수 A5/B12/C7/D5/E7/F6/G7/H7/I11/J12로 통과했다.
+- 공개 예시의 고정 `SECRET_KEY`를 제거하고 운영 모드에서 과거 공개 예시 키도 거부한다. 저장소 비밀 패턴 점검에서 실제 private key나 운영 비밀은 발견되지 않았다. 테스트 fixture의 가짜 SMTP 값과 예시 DB URL은 운영 비밀로 계산하지 않는다.
+- 깨끗한 Git worktree에서 백엔드 전체 **3,148 PASS/454 조건부 SKIP/10 subtests PASS/실패 0/645.85초**, 핵심 A~J·실행기·비공개 import 묶음 **107 PASS/10 조건부 SKIP**, 프런트 전체 **58 files/322 tests PASS**, 타입 검사와 production build PASS다. 제출 기록 필터 회귀는 드롭다운과 결과 배지의 같은 문구 때문에 비동기 목록보다 먼저 통과할 수 있던 경쟁 조건을 발견해 실제 결과 배지를 기다리도록 수정했다.
+- 조건부 skip은 성공으로 세지 않는다. 현재 저장소에 포함되지 않는 `.deploy` 측정/컴파일러 아카이브, 실제 PostgreSQL·Redis, POSIX/Linux, 별도 Docker daemon/cgroup 및 설치된 언어 런타임이 필요한 항목은 외부 검증 조건으로 분리했다. 로컬 부재를 제품 실패나 허위 통과로 처리하지 않는다.
+- A~J 패키지는 의도적으로 `draft-unapproved`이며 builder도 `releaseReady: false`를 반환한다. 문제 권리·최종 지문과 J 정답 증명, 제목·일정·배점·난이도·태그·종료 후 공개 여부·AI 정책, 실측 한도, 관리자 토큰과 운영 import 승인이 확정되기 전에는 공개·등록·배포하지 않는다.
+- 운영 데이터 변경, Git push/main 변경, 서버 전송, 배포와 host Nginx 적용은 수행하지 않았다. 실제 격리 PostgreSQL/Redis 장애 복구, 전용 daemon의 6언어/cgroup 자원 판정, 혼합 부하·replica failure·장시간 WebSocket·multi-host HA와 공개 readiness host include는 여전히 별도 승인·인프라가 필요한 수락 항목이다.
