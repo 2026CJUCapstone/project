@@ -36,6 +36,7 @@ export interface AuthUser {
   tagProficiencies?: TagProficiency[];
   avatarUrl?: string | null;
   role: 'user' | 'admin' | string;
+  publicProfileEnabled?: boolean;
 }
 
 export interface PasswordResetResponse {

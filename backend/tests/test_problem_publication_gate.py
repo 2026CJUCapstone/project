@@ -9,6 +9,7 @@ from app.main import app
 from app.models import database as m
 from app.services import problem_authoring
 from app.services.execution_results import publish_result
+from app.services.public_identity import public_problem_id
 from app.services.judge_policy import content_hash, freeze_stored_submission
 from app.services.rating import difficulty_value, solved_count_bonus
 from app.core.config import settings
@@ -179,8 +180,10 @@ async def test_generic_problem_requires_current_reviews_and_exact_reference_atte
         assert published.status_code == 200, published.text
         assert published.json()['publicationStatus'] == 'published'
         assert (await client.get(f'/api/v1/problems/{problem_id}')).status_code == 200
+        with env.factory() as db:
+            expected_public_id = public_problem_id(db.get(m.Problem, problem_id))
         assert any(
-            item['id'] == problem_id
+            item['id'] == expected_public_id
             for item in (await client.get('/api/v1/problems/')).json()
         )
 

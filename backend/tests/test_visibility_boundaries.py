@@ -339,6 +339,7 @@ async def test_ended_private_problem_enters_public_surfaces_without_hidden_tests
 
     fixture = env.contests["ended"]
     private_id = fixture.problem.id
+    public_id = fixture.problem.public_id
     root = f"/api/v1/contests/{fixture.contest.id}"
     detail_url = f"{root}/problems/{fixture.contest_problem.id}"
     identities = [("anonymous", None), ("outsider", env.outsider), ("participant", env.participant)]
@@ -354,8 +355,8 @@ async def test_ended_private_problem_enters_public_surfaces_without_hidden_tests
             assert fixture.hidden_input not in detail.text
 
             listing = await client.get("/api/v1/problems/", headers=headers)
-            assert private_id in _public_id_set(listing)
-            listed = next(item for item in listing.json() if item["id"] == private_id)
+            assert public_id in _public_id_set(listing)
+            listed = next(item for item in listing.json() if item["id"] == public_id)
             assert listed["hiddenTestCases"] == []
             assert fixture.hidden_input not in listing.text
 
@@ -365,7 +366,7 @@ async def test_ended_private_problem_enters_public_surfaces_without_hidden_tests
             assert fixture.hidden_input not in posts.text
 
             counts = await client.post("/api/v1/community/posts/counts", json={"problemIds": [private_id]})
-            assert counts.json() == {private_id: 1}
+            assert counts.json() == {public_id: 1}
 
             history = await client.get("/api/v1/problems/submissions", params={"problemId": private_id}, headers=headers)
             assert history.status_code == 200
@@ -394,6 +395,7 @@ async def test_deleted_problem_blocks_new_access_but_preserves_safe_history(env)
     """Soft deletion hides the problem while retaining minimal history metadata."""
 
     problem_id = env.deleted.problem.id
+    public_id = env.deleted.problem.public_id
     identities = [("anonymous", None), ("outsider", env.outsider), ("admin", env.admin)]
     leaks = []
 
@@ -433,7 +435,7 @@ async def test_deleted_problem_blocks_new_access_but_preserves_safe_history(env)
                 leaks.append((identity, body))
                 continue
             item = retained[0]
-            assert item["problemId"] == problem_id
+            assert item["problemId"] == public_id
             assert item["problemTitle"] == env.deleted.title
             assert item["verdict"] == "accepted"
             assert item["awardedPoints"] == 90

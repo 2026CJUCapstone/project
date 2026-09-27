@@ -8,6 +8,7 @@ from app.api.routes.community import get_post_counts
 from app.core.database import Base
 from app.models import database as models
 from app.models import schemas
+from app.services.public_identity import public_problem_id
 
 
 @pytest.fixture
@@ -53,14 +54,14 @@ def counts_for(db, problem_ids):
 
 
 def test_post_counts_groups_many_comments_and_keeps_zero_counts(db):
-    add_problem(db, 'busy')
-    add_problem(db, 'quiet')
+    busy = add_problem(db, 'busy')
+    quiet = add_problem(db, 'quiet')
     add_comments(db, 'busy', 6)
     db.commit()
 
     assert counts_for(db, ['busy', 'quiet', 'missing']) == {
-        'busy': 6,
-        'quiet': 0,
+        public_problem_id(busy): 6,
+        public_problem_id(quiet): 0,
         'missing': 0,
     }
 
@@ -70,7 +71,7 @@ def test_post_counts_returns_empty_response_for_an_empty_problem_list(db):
 
 
 def test_post_counts_does_not_leak_private_or_archived_problem_counts(db):
-    add_problem(db, 'public')
+    public = add_problem(db, 'public')
     add_problem(db, 'private')
     add_problem(db, 'archived', archived=True)
     db.add(models.Contest(
@@ -96,4 +97,6 @@ def test_post_counts_does_not_leak_private_or_archived_problem_counts(db):
     add_comments(db, 'archived', 4)
     db.commit()
 
-    assert counts_for(db, ['public', 'private', 'archived']) == {'public': 2}
+    assert counts_for(db, ['public', 'private', 'archived']) == {
+        public_problem_id(public): 2
+    }

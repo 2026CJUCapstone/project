@@ -154,6 +154,22 @@ class RuntimeRegistry:
         launcher_source(entry.launcher_digest)
         return entry
 
+    def admission_registration(self, language, worker_class):
+        """Return the sole current operator-approved runtime for compatibility jobs."""
+        matches = [entry for entry in self._entries.values() if (
+            entry.language == language and entry.worker_class == worker_class
+            and entry.admit_new and entry.toolchain_profile == TOOLCHAINS[language]
+            and entry.launcher_digest == launcher_digest()
+        )]
+        if len(matches) != 1:
+            raise ValueError('Exactly one current runtime registration is required')
+        entry = matches[0]
+        adapter = trusted_adapter(language, entry.toolchain_profile)
+        verified_contract(adapter.artifact_contract)
+        verified_container_contract(adapter.container_contract)
+        launcher_source(entry.launcher_digest)
+        return entry
+
     def replay_snapshots(self, worker_class):
         """Preload trusted scripts before queue locking; unavailable entries stay queued."""
         result={}

@@ -27,6 +27,7 @@ interface Challenge {
   testCases?: TestCase[];
   judgeLimits?: PublicJudgeLimits | null;
   judgePolicyLegacy?: boolean;
+  judgePolicyCompatibility?: boolean;
 }
 
 interface Props {
@@ -152,6 +153,7 @@ export function ChallengePanel({ challenge, code, onClose, contest }: Props) {
             policy={challenge.judgeLimits ?? null}
             selectedLanguage={language}
             legacy={challenge.judgePolicyLegacy === true}
+            compatibility={challenge.judgePolicyCompatibility === true}
           />
         </div>
 

@@ -1,7 +1,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_current_user, get_optional_current_user
@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
 from app.services.contest_access import require_public_problem, private_problem_ids
+from app.services.public_identity import public_display_name, public_problem_id, public_receipt_id
 
 router = APIRouter()
 
@@ -25,12 +26,18 @@ def _to_community_post(
     comment: db_models.Comment,
     user: db_models.User | None,
     current_user: db_models.User | None = None,
+    problem: db_models.Problem | None = None,
 ) -> schemas.CommunityPostRead:
+    privileged = current_user is not None and (
+        current_user.role == "admin" or comment.user_id == current_user.id
+    )
     return schemas.CommunityPostRead(
-        id=comment.id,
-        problem_id=comment.problem_id,
-        user_id=comment.user_id,
-        author=user.username if user else "unknown",
+        id=comment.id if privileged else public_receipt_id(comment.id),
+        problem_id=comment.problem_id if comment.problem_id in SYSTEM_BOARD_IDS else (
+            public_problem_id(problem) if problem is not None else comment.problem_id
+        ),
+        user_id=comment.user_id if privileged else None,
+        author=public_display_name(user),
         avatar_url=user.avatar_url if user else None,
         content=comment.content,
         created_at=comment.created_at,
@@ -48,7 +55,9 @@ def list_posts(
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
-    require_public_problem(db, problem_id, current_user)
+    if problem_id not in SYSTEM_BOARD_IDS:
+        problem = require_public_problem(db, problem_id, current_user)
+        problem_id = problem.id
     comments = (
         db.query(db_models.Comment)
         .filter(db_models.Comment.problem_id == problem_id)
@@ -63,7 +72,7 @@ def list_posts(
     users_by_id = {user.id: user for user in users}
 
     return [
-        _to_community_post(comment, users_by_id.get(comment.user_id), current_user)
+        _to_community_post(comment, users_by_id.get(comment.user_id), current_user, problem if problem_id not in SYSTEM_BOARD_IDS else None)
         for comment in comments
     ]
 
@@ -74,17 +83,21 @@ def create_post(
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(get_current_user),
 ):
-    require_public_problem(db, payload.problem_id, current_user)
-    if payload.problem_id == NOTICE_BOARD_ID and not _is_admin(current_user):
+    internal_problem_id = payload.problem_id
+    problem = None
+    if payload.problem_id not in SYSTEM_BOARD_IDS:
+        problem = require_public_problem(db, payload.problem_id, current_user)
+        internal_problem_id = problem.id
+    if internal_problem_id == NOTICE_BOARD_ID and not _is_admin(current_user):
         raise HTTPException(status_code=403, detail="공지 작성은 관리자만 가능합니다.")
 
-    if payload.problem_id not in SYSTEM_BOARD_IDS:
-        exists = db.query(db_models.Problem.id).filter(db_models.Problem.id == payload.problem_id).first()
+    if internal_problem_id not in SYSTEM_BOARD_IDS:
+        exists = db.query(db_models.Problem.id).filter(db_models.Problem.id == internal_problem_id).first()
         if exists is None:
             raise HTTPException(status_code=404, detail="Problem not found")
 
     new_comment = db_models.Comment(
-        problem_id=payload.problem_id,
+        problem_id=internal_problem_id,
         user_id=current_user.id,
         content=payload.content,
     )
@@ -92,7 +105,7 @@ def create_post(
     db.commit()
     db.refresh(new_comment)
 
-    return _to_community_post(new_comment, current_user, current_user)
+    return _to_community_post(new_comment, current_user, current_user, problem)
 
 
 @router.delete("/posts/{post_id}", status_code=204)
@@ -131,12 +144,25 @@ def update_post(
     db.commit()
     db.refresh(comment)
     user = db.query(db_models.User).filter(db_models.User.id == comment.user_id).first()
-    return _to_community_post(comment, user, current_user)
+    problem = db.get(db_models.Problem, comment.problem_id) if comment.problem_id not in SYSTEM_BOARD_IDS else None
+    return _to_community_post(comment, user, current_user, problem)
 
 
 @router.post("/posts/counts")
 def get_post_counts(payload: schemas.CommunityPostCountsRequest, db: Session = Depends(get_db)):
-    problem_ids = [item for item in payload.problem_ids if item]
+    requested_ids = [item for item in payload.problem_ids if item]
+    public_rows = db.query(db_models.Problem.id, db_models.Problem.public_id).filter(
+        or_(
+            db_models.Problem.id.in_(requested_ids),
+            db_models.Problem.public_id.in_(requested_ids),
+        )
+    ).all()
+    public_to_internal = {public_id: internal_id for internal_id, public_id in public_rows}
+    internal_to_public = {internal_id: public_id for internal_id, public_id in public_rows}
+    requested_to_internal = {
+        item: public_to_internal.get(item, item) for item in requested_ids
+    }
+    problem_ids = list(dict.fromkeys(requested_to_internal.values()))
     hidden_ids = set(db.scalars(private_problem_ids()).all())
     hidden_ids.update(problem_id for (problem_id,) in db.query(db_models.Problem.id).filter(
         db_models.Problem.id.in_(problem_ids), db_models.Problem.deleted_at.is_not(None)).all())
@@ -151,4 +177,8 @@ def get_post_counts(payload: schemas.CommunityPostCountsRequest, db: Session = D
         .all()
     )
 
-    return {problem_id: counts.get(problem_id, 0) for problem_id in problem_ids}
+    return {
+        internal_to_public.get(internal, requested): counts.get(internal, 0)
+        for requested, internal in requested_to_internal.items()
+        if internal not in hidden_ids
+    }

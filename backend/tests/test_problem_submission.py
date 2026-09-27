@@ -7,6 +7,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.models.database import Problem, Submission, User
 from app.services import compiler as compiler_service
+from app.services.public_identity import public_problem_id
 from tests.execution_helpers import finish_receipt, install_measured_fake_judge
 from tests.test_judge_policy import policy_fixture
 
@@ -56,7 +57,12 @@ async def test_problem_list_omits_grading_cases_for_public_users():
             response = await client.get("/api/v1/problems/")
 
         assert response.status_code == 200
-        problem = next(item for item in response.json() if item["id"] == problem_id)
+        db = SessionLocal()
+        try:
+            expected_public_id = public_problem_id(db.get(Problem, problem_id))
+        finally:
+            db.close()
+        problem = next(item for item in response.json() if item["id"] == expected_public_id)
         assert problem["testCases"] == [{"input": "sample", "expectedOutput": "ok"}]
         assert problem["hiddenTestCases"] == []
     finally:

@@ -76,6 +76,7 @@ export interface Problem {
   judgeLimits?: PublicJudgeLimits | null;
   /** Existing problems can deliberately retain their former execution policy. */
   judgePolicyLegacy?: boolean;
+  judgePolicyCompatibility?: boolean;
   /** Admin-only raw measurement record. It is intentionally not editable from this UI. */
   judgePolicy?: JudgePolicy | null;
   /** Publication gate state; optional while older API fixtures/servers are rolling forward. */
@@ -94,6 +95,7 @@ export type ProblemCreateRequest = Omit<
   | 'bestAwardedPoints'
   | 'judgeLimits'
   | 'judgePolicyLegacy'
+  | 'judgePolicyCompatibility'
   | 'publicationStatus'
 >;
 

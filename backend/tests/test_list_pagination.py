@@ -8,6 +8,7 @@ from app.api.routes.contests import list_contests, problem_library
 from app.api.routes.problems import list_problems
 from app.core.database import Base
 from app.models import database as m
+from app.services.public_identity import public_problem_id
 
 
 def test_problem_filters_are_counted_before_database_pagination(tmp_path):
@@ -30,13 +31,16 @@ def test_problem_filters_are_counted_before_database_pagination(tmp_path):
                              search=None, limit=2, offset=1, db=db, current_user=None)
 
         assert response.headers["X-Total-Count"] == "3"
-        assert [problem["id"] for problem in page] == ["p3", "p4"]
+        expected = [public_problem_id(db.get(m.Problem, item)) for item in ("p3", "p4")]
+        assert [problem["id"] for problem in page] == expected
 
         literal_response = Response()
         literal_page = list_problems(literal_response, difficulty=None, tag=["100%"], difficulty_min=None,
                                      difficulty_max=None, search=None, limit=10, offset=0, db=db, current_user=None)
         assert literal_response.headers["X-Total-Count"] == "1"
-        assert [problem["id"] for problem in literal_page] == ["literal"]
+        assert [problem["id"] for problem in literal_page] == [
+            public_problem_id(db.get(m.Problem, "literal"))
+        ]
     engine.dispose()
 
 

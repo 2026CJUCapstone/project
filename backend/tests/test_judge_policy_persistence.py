@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.main import app
 from app.models import database as m
 from app.initialize import initialize, LEARNING_SCHEMA_VERSION, RUNTIME_SCHEMA_VERSION
-from app.services.judge_policy import UNREVIEWED, stored_policy, freeze_stored_submission
+from app.services.judge_policy import COMPATIBILITY, UNREVIEWED, stored_policy, freeze_stored_submission
 from app.services.judging import judge_code
 from app.core.config import settings
 from tests.test_contests import env, headers, payload, setup_contest
@@ -90,7 +90,7 @@ async def test_practice_receipt_freezes_policy_and_retry_does_not_refresh_it(env
         first = await c.post(url, headers=auth, json=request)
         assert first.status_code in (200,202), first.text
         with env.factory() as db:
-            job = db.get(m.ExecutionJob, first.json()['executionId'])
+            job = db.query(m.ExecutionJob).filter_by(public_id=first.json()['executionId']).one()
             frozen = deepcopy(job.payload['judge_contract'])
             assert frozen['kind'] == 'measured-v1'
             assert frozen['profile']['run']['cpuMs'] == 1000
@@ -104,7 +104,9 @@ async def test_practice_receipt_freezes_policy_and_retry_does_not_refresh_it(env
         assert retry.status_code == first.status_code, retry.text
         assert retry.json()['executionId'] == first.json()['executionId']
         with env.factory() as db:
-            assert db.get(m.ExecutionJob, first.json()['executionId']).payload['judge_contract'] == frozen
+            assert db.query(m.ExecutionJob).filter_by(
+                public_id=first.json()['executionId']
+            ).one().payload['judge_contract'] == frozen
 
 
 def test_legacy_and_draft_are_never_conflated():
@@ -145,7 +147,9 @@ def test_v12_additive_migration_preserves_v11_marker_and_legacy_data(replicas, m
     with Session(engine) as db:
         assert db.get(m.User, 'admin-policy').total_score == 321
         old = db.get(m.Problem, 'old-problem')
-        assert (old.title, old.points, old.test_cases, old.judge_policy) == ('Keep exactly', 17, SAMPLE, None)
+        assert (old.title, old.points, old.test_cases, old.judge_policy) == (
+            'Keep exactly', 17, SAMPLE, COMPATIBILITY,
+        )
 
 
 @pytest.mark.asyncio
@@ -173,7 +177,7 @@ async def test_contest_policy_snapshot_and_submission_use_original_limits(env):
         response = await c.post(url + '/submit', headers=headers(env.alice), json=dict(code='print(42)', language='python', requestId='frozen'))
         assert response.status_code == 202, response.text
         with env.factory() as db:
-            submission = db.get(m.ContestSubmission, response.json()['id'])
+            submission = db.query(m.ContestSubmission).filter_by(public_id=response.json()['id']).one()
             job = db.get(m.ExecutionJob, submission.execution_job_id)
             assert job.payload['judge_contract']['profile']['run']['cpuMs'] == 1000
             assert job.payload['judge_contract']['revision'] == 1

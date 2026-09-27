@@ -16,10 +16,11 @@ def test_frontend_nginx_sets_consistent_safe_response_headers():
         assert f'add_header {header};' in config
 
 
-def test_csp_is_report_only_and_allows_self_hosted_monaco_and_avatar_sources():
+def test_csp_is_enforced_and_allows_self_hosted_monaco_and_avatar_sources():
     config = NGINX_CONFIG.read_text(encoding='utf-8')
 
-    assert 'add_header Content-Security-Policy-Report-Only' in config
+    assert 'add_header Content-Security-Policy ' in config
+    assert 'Content-Security-Policy-Report-Only' not in config
     assert "frame-ancestors 'none'" in config
     assert "object-src 'none'" in config
     assert "script-src 'self'" in config
@@ -49,8 +50,29 @@ def test_frontend_proxies_liveness_and_readiness_outside_spa_fallback():
         assert f'proxy_pass http://backend_upstream{backend_path};' in block
 
 
-def test_hsts_is_left_to_the_tls_terminating_proxy():
+def test_hsts_is_scoped_to_the_public_host_without_subdomain_expansion():
     config = NGINX_CONFIG.read_text(encoding='utf-8')
 
-    assert 'Strict-Transport-Security' not in config
-    assert 'TLS terminates at an external proxy' in config
+    assert 'add_header Strict-Transport-Security "max-age=31536000" always;' in config
+    assert 'includeSubDomains' not in config
+
+
+def test_static_assets_are_compressed_cached_and_missing_files_do_not_soft_404():
+    config = NGINX_CONFIG.read_text(encoding='utf-8')
+
+    assert 'gzip on;' in config
+    assert config.count('expires 1y;') == 2
+    for prefix in ('^/assets/', '^/webcompiler/assets/'):
+        assert prefix in config
+    assert config.count('try_files $uri =404;') >= 4
+
+
+def test_public_discovery_assets_and_korean_metadata_exist():
+    root = NGINX_CONFIG.parents[1]
+    index = (root / 'frontend' / 'index.html').read_text(encoding='utf-8')
+
+    assert '<html lang="ko">' in index
+    assert 'rel="canonical" href="https://cuha.cju.ac.kr/webcompiler/"' in index
+    assert 'property="og:title"' in index and 'name="twitter:card"' in index
+    for name in ('favicon.svg', 'robots.txt', 'sitemap.xml', 'site.webmanifest'):
+        assert (root / 'frontend' / 'public' / name).is_file()

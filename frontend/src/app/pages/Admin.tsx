@@ -161,6 +161,14 @@ export function Admin() {
       setPageError(roleError instanceof Error ? roleError.message : "권한 변경에 실패했습니다.");
     }
   };
+  const handlePublicVisibilityChange = async (user: AdminUser) => {
+    try {
+      await updateAdminUser(user.id, { publicProfileEnabled: user.publicProfileEnabled === false });
+      await loadUsers();
+    } catch (visibilityError) {
+      setPageError(visibilityError instanceof Error ? visibilityError.message : "공개 상태 변경에 실패했습니다.");
+    }
+  };
   const totalUserPages = Math.max(1, Math.ceil(usersFilteredTotal / USER_PAGE_SIZE));
 
   const applyUserSearch = () => {
@@ -501,13 +509,14 @@ export function Admin() {
                     <th className="py-2 px-3">닉네임</th>
                     <th className="py-2 px-3">점수</th>
                     <th className="py-2 px-3">권한</th>
+                    <th className="py-2 px-3">공개</th>
                     <th className="py-2 px-3">관리</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.length === 0 ? (
                     <tr className="text-sm text-gray-500 border-b border-[#222]">
-                      <td className="py-3 px-3" colSpan={6}>
+                      <td className="py-3 px-3" colSpan={7}>
                         등록된 사용자가 없습니다.
                       </td>
                     </tr>
@@ -525,6 +534,15 @@ export function Admin() {
                             {user.role === 'admin' && <ShieldCheck size={12} />}
                             {user.role === 'admin' ? '관리자' : '사용자'}
                           </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => void handlePublicVisibilityChange(user)}
+                            className={user.publicProfileEnabled === false ? 'text-amber-300 hover:text-amber-200' : 'text-emerald-300 hover:text-emerald-200'}
+                          >
+                            {user.publicProfileEnabled === false ? '비공개' : '공개'}
+                          </button>
                         </td>
                         <td className="py-3 px-3">
                           <button

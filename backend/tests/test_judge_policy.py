@@ -6,9 +6,11 @@ from pydantic import ValidationError
 from app.models.judge_policy import JudgePolicy, StageLimits, SUPPORTED_LANGUAGES
 from app.services.judge_runtime_registry import TOOLCHAINS,launcher_digest
 from app.services.judge_policy import (
-    candidate_limit, content_hash, freeze_submission, public_limits,
+    COMPATIBILITY, candidate_limit, compatibility_public_limits, compatibility_receipt,
+    content_hash, freeze_submission, public_limits, stored_policy,
     resource_fingerprint, test_suite_hash as suite_hash, validate_publishable,
 )
+from app.core.config import settings
 
 SAMPLE = [{'input': '1\n', 'expected_output': '2\n'}]
 HIDDEN = [{'input': 'SECRET_INPUT', 'expected_output': 'SECRET_EXPECTED'}]
@@ -48,6 +50,37 @@ def install_synthetic_registry(tmp_path,monkeypatch):
     path.write_text(json.dumps(dict(version=1,runtimes=entries)),encoding='utf-8')
     monkeypatch.setattr(settings,'JUDGE_RUNTIME_REGISTRY',str(path))
     return path
+
+
+def test_existing_problem_compatibility_limits_are_explicit_and_language_specific():
+    limits = compatibility_public_limits(2, settings=settings)
+    languages = limits['languages']
+
+    assert set(languages) == SUPPORTED_LANGUAGES
+    assert limits['reviewStatus'] == 'compatibility'
+    assert languages['cpp']['run']['wallMs'] == 2_000
+    assert languages['python']['run']['wallMs'] == 4_000
+    assert languages['java']['compile']['wallMs'] == 15_000
+    assert languages['cpp']['run']['memoryBytes'] == 256 * 1024**2
+    assert languages['javascript']['run']['memoryBytes'] == 384 * 1024**2
+    with pytest.raises((ValidationError, ValueError)):
+        stored_policy(COMPATIBILITY, creating=True)
+
+
+def test_compatibility_receipt_binds_current_registry_without_inventing_measurement(tmp_path, monkeypatch):
+    install_synthetic_registry(tmp_path, monkeypatch)
+    monkeypatch.setattr(settings, 'JUDGE_WORKER_CLASS', 'test-cpu')
+
+    receipts = {
+        language: compatibility_receipt(language, SAMPLE, HIDDEN, settings=settings)
+        for language in SUPPORTED_LANGUAGES
+    }
+    assert all(receipt['kind'] == 'measured-v1' for receipt in receipts.values())
+    assert all(receipt['policyId'] == 'legacy-compatibility-v1' for receipt in receipts.values())
+    assert all('evidence' not in receipt for receipt in receipts.values())
+    assert all(receipt['jobDeadlineMs'] <= settings.EXECUTION_JOB_TIMEOUT_SECONDS * 1000
+               for receipt in receipts.values())
+    assert receipts['python']['profile']['run']['memoryBytes'] > receipts['cpp']['profile']['run']['memoryBytes']
 
 
 @pytest.mark.parametrize(('base', 'factor', 'extra', 'floor', 'expected'), [

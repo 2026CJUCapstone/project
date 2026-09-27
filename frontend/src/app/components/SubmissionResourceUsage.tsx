@@ -66,7 +66,7 @@ function RunMetrics({ run }: { run: JudgeRunResourceUsage }) {
 /** Compact, public-safe aggregate usage display. It deliberately exposes no case-level data. */
 export function SubmissionResourceUsage({ resourceUsage, className = '' }: SubmissionResourceUsageProps) {
   if (!resourceUsage) {
-    return <span role="status" className={`text-xs text-slate-500 dark:text-slate-400 ${className}`.trim()}>자원 측정 미기록</span>;
+    return <span role="status" className={`text-xs text-slate-500 dark:text-slate-400 ${className}`.trim()}>이전 채점 기록 · 자원 사용량 없음</span>;
   }
 
   const summary = resourceUsage.run

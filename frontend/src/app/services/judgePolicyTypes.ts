@@ -21,7 +21,7 @@ export interface JudgePolicyLanguageLimits {
 export interface PublicJudgeLimits {
   policyId: string;
   revision: number;
-  reviewStatus: 'draft' | 'verified';
+  reviewStatus: 'draft' | 'verified' | 'compatibility';
   languages: Partial<Record<JudgePolicyLanguage, JudgePolicyLanguageLimits>>;
 }
 

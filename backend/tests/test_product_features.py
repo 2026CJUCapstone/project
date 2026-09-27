@@ -10,6 +10,7 @@ from app.main import app
 from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, ProblemLearningRecord, Submission, User, UserProblemScore
 from app.services import auth
 from app.services import compiler as compiler_service
+from app.services.public_identity import public_problem_id
 from tests.execution_helpers import finish_receipt, install_measured_fake_judge
 from tests.test_judge_policy import policy_fixture
 
@@ -223,7 +224,7 @@ async def test_community_guide_notice_is_published():
 
     assert response.status_code == 200
     notices = response.json()
-    guide = next(item for item in notices if item["id"] == COMMUNITY_GUIDE_NOTICE_ID)
+    guide = next(item for item in notices if "B++ 커뮤니티 이용 안내" in item["content"])
     assert "B++ 커뮤니티 이용 안내" in guide["content"]
     assert "문제 토론" in guide["content"]
 
@@ -326,6 +327,7 @@ async def test_problem_detail_does_not_require_submission_payload():
         db.commit()
         db.refresh(problem)
         problem_id = problem.id
+        expected_public_id = public_problem_id(problem)
     finally:
         db.close()
 
@@ -334,7 +336,7 @@ async def test_problem_detail_does_not_require_submission_payload():
             response = await client.get(f"/api/v1/problems/{problem_id}")
 
         assert response.status_code == 200
-        assert response.json()["id"] == problem_id
+        assert response.json()["id"] == expected_public_id
     finally:
         db = SessionLocal()
         try:
@@ -425,6 +427,7 @@ async def test_submission_history_exposes_public_metadata(
         db.commit()
         db.refresh(problem)
         problem_id = problem.id
+        expected_public_id = public_problem_id(problem)
     finally:
         db.close()
 
@@ -445,7 +448,7 @@ async def test_submission_history_exposes_public_metadata(
         assert history.status_code == 200
         body = history.json()
         assert body["filteredTotal"] >= 1
-        assert body["submissions"][0]["problemId"] == problem_id
+        assert body["submissions"][0]["problemId"] == expected_public_id
         assert body["submissions"][0]["problemTitle"] == f"history {suffix}"
         assert body["submissions"][0]["username"] == solver.username
         assert body["submissions"][0]["verdict"] == "accepted"

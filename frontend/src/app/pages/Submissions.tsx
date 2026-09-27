@@ -360,7 +360,7 @@ export function Submissions() {
                           <td className="min-w-0 px-3 py-3">
                             <button
                               type="button"
-                              onClick={() => navigate(`/challenges/${submission.problemId}`)}
+                              onClick={() => navigate(`/problems/${submission.problemId}`)}
                               className="block max-w-full truncate text-left font-medium text-gray-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-300"
                             >
                               {submission.problemTitle ?? submission.problemId}

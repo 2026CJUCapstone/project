@@ -11,6 +11,7 @@ from app.services.execution_runtime import execution_queue
 from app.services.judge_policy import freeze_stored_submission
 from app.services.judge_test_manifest import validate_stored_cases
 from app.core.config import settings
+from app.services.public_identity import public_execution_id, public_receipt_id
 
 
 def accept_practice(problem_id, data, request, response, db, user):
@@ -38,7 +39,7 @@ def accept_practice(problem_id, data, request, response, db, user):
             # Ordinary history retention must not turn a retry of a completed
             # receipt into a new score-earning submission (or a server error).
             status = ((previous.result or {}).get('value') or {}).get('status', previous.status)
-            return {'id':payload['submission_id'], 'executionId':previous.id,
+            return {'id':public_receipt_id(payload['submission_id']), 'executionId':public_execution_id(previous),
                     'status':status, 'receivedAt':iso(previous.received_at)}
         return receipt(record, previous)
     require_public_problem(db, problem_id)
@@ -80,4 +81,5 @@ def accept_practice(problem_id, data, request, response, db, user):
 
 
 def receipt(submission, job):
-    return {'id':submission.id, 'executionId':job.id, 'status':submission.status, 'receivedAt':iso(submission.created_at)}
+    return {'id':public_receipt_id(submission.id), 'executionId':public_execution_id(job),
+            'status':submission.status, 'receivedAt':iso(submission.created_at)}

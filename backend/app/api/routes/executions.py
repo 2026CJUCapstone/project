@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.routes.auth import get_optional_current_user
@@ -13,6 +14,7 @@ from app.services.durable_queue import IdempotencyConflict, QueueFull, Execution
 from app.services.execution_admission import admit_execution, validate_execution_input
 from app.services.execution_identity import execution_owner, execution_quota
 from app.services.execution_runtime import execution_queue
+from app.services.public_identity import public_execution_id
 
 router = APIRouter()
 
@@ -41,10 +43,10 @@ def accept_execution(data: ExecutionRequest, request: Request, response: Respons
     owner = execution_owner(request, user, response)
     problem = None
     if data.problem_id:
-        require_public_problem(db, data.problem_id)
-        problem = db.get(m.Problem, data.problem_id)
+        problem = require_public_problem(db, data.problem_id)
+    internal_problem_id = problem.id if problem else None
     payload = {'code':data.source_code, 'language':data.language, 'stdin':data.stdin or '',
-               'optimize':data.optimize, 'target':data.target, 'problem_id':data.problem_id}
+               'optimize':data.optimize, 'target':data.target, 'problem_id':internal_problem_id}
     try:
         job = execution_queue().enqueue_in_session(db, owner_key=owner, quota_key=execution_quota(request,user),
             request_id=request_id(request), kind=data.kind, payload=payload, at=received)
@@ -65,7 +67,8 @@ def accept_execution(data: ExecutionRequest, request: Request, response: Respons
             target=data.target if data.kind == 'compile' else None,
             source_size_bytes=len(data.source_code.encode('utf-8')), queued_at=job.received_at))
     db.commit()
-    return {'id':job.id, 'status':job.status, 'receivedAt':iso(job.received_at), 'requestId':job.request_id}
+    return {'id':public_execution_id(job), 'status':job.status,
+            'receivedAt':iso(job.received_at), 'requestId':job.request_id}
 
 
 @router.get('/{job_id}')
@@ -73,7 +76,10 @@ def read_execution(job_id: str, request: Request, response: Response,
                    db: Session = Depends(get_db), user=Depends(get_optional_current_user)):
     response.headers['Cache-Control'] = 'no-store'
     owner = execution_owner(request,user)
-    job = db.query(m.ExecutionJob).filter_by(id=job_id, owner_key=owner).first() if owner else None
+    job = db.query(m.ExecutionJob).filter(
+        m.ExecutionJob.owner_key == owner,
+        or_(m.ExecutionJob.public_id == job_id, m.ExecutionJob.id == job_id),
+    ).first() if owner else None
     if job is None or job.kind == 'authoring-validation-v1':
         raise HTTPException(404, '실행 기록을 찾을 수 없습니다.')
     if job.content_expired_at is not None:
@@ -92,4 +98,5 @@ def read_execution(job_id: str, request: Request, response: Response,
         result = {'ok':value is not None, 'value':value, 'verdict':raw.get('verdict')}
         if value is None:
             result['error'] = raw.get('message', '실행 서비스를 사용할 수 없습니다.')
-    return {'id':job.id, 'status':job.status, 'receivedAt':iso(job.received_at), 'result':result}
+    return {'id':public_execution_id(job), 'status':job.status,
+            'receivedAt':iso(job.received_at), 'result':result}

@@ -115,6 +115,13 @@ def record(body="", version=0, bookmarked=True, reviewed=False):
     return {"note": body, "version": version, "bookmarked": bookmarked, "reviewed": reviewed}
 
 
+def public_ids(factory, *internal_ids):
+    with factory() as db:
+        return {problem.id: problem.public_id for problem in (
+            db.get(m.Problem, internal_id) for internal_id in internal_ids
+        )}
+
+
 @pytest.mark.asyncio
 async def test_private_notes_auth_and_conflicting_first_writes(fixture):
     app, factory, headers = fixture
@@ -152,12 +159,13 @@ async def test_hidden_archived_problems_never_enter_learning_even_for_admin(fixt
         db.get(m.Problem, "p1").deleted_at = now_utc()
         db.add(m.ProblemLearningRecord(user_id="alice", problem_id="p0", bookmarked=True, note="hidden note"))
         db.commit()
+    ids = public_ids(factory, "p0", "p1")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         for h in [{}, headers("alice"), headers("admin")]:
             for path in ["/tracks/io", "/recommendations"]:
                 response = await client.get("/api/v1/learning"+path, headers=h)
                 assert response.status_code == 200
-                assert not {"p0", "p1"} & {p["id"] for p in response.json()["items"]}
+                assert not set(ids.values()) & {p["id"] for p in response.json()["items"]}
                 assert "SECRET" not in response.text and "hidden note" not in response.text
             if h:
                 for p in ["p0", "p1", "missing"]:
@@ -167,13 +175,14 @@ async def test_hidden_archived_problems_never_enter_learning_even_for_admin(fixt
             db.get(m.Contest, "c").ends_at = now_utc()-timedelta(seconds=1)
             db.commit()
         public = await client.get("/api/v1/learning/tracks/io")
-        assert "p0" in {p["id"] for p in public.json()["items"]}
+        assert ids["p0"] in {p["id"] for p in public.json()["items"]}
         assert "SECRET" not in public.text
 
 
 @pytest.mark.asyncio
 async def test_review_survives_pruning_and_reopens_on_new_wrong_attempt(fixture, monkeypatch):
     app, factory, headers = fixture
+    ids = public_ids(factory, "p0", "p1", "p2")
     older = now_utc()-timedelta(minutes=10)
     with factory() as db:
         for i in range(3):
@@ -201,7 +210,7 @@ async def test_review_survives_pruning_and_reopens_on_new_wrong_attempt(fixture,
             db.add(m.UserProblemScore(user_id="alice", challenge_id="p1", points_awarded=100))
             db.commit()
         result = (await client.get("/api/v1/learning/review")).json()
-        assert {p["id"] for p in result["items"]} == {"p0", "p2"}
+        assert {p["id"] for p in result["items"]} == {ids["p0"], ids["p2"]}
         reopened = (await client.get('/api/v1/learning/problems/p0')).json()
         assert reopened['reviewedAt'] is not None and reopened['reviewed'] is False
         page = (await client.get("/api/v1/learning/review?limit=1&offset=1")).json()
@@ -212,26 +221,27 @@ async def test_review_survives_pruning_and_reopens_on_new_wrong_attempt(fixture,
 @pytest.mark.asyncio
 async def test_tracks_progress_recommendations_deterministic_and_no_awards(fixture):
     app, factory, headers = fixture
+    ids = public_ids(factory, "p0", "p1")
     with factory() as db:
         db.add(m.UserProblemScore(user_id="alice", challenge_id="p0", points_awarded=100))
         db.commit()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         guest = (await client.get("/api/v1/learning/recommendations")).json()
-        assert guest["targetDifficulty"] == "iron5" and guest["items"][0]["id"] == "p0"
+        assert guest["targetDifficulty"] == "iron5" and guest["items"][0]["id"] == ids["p0"]
         for board_id in ["__notice__", "__free__"]:
             assert (await client.get("/api/v1/learning/problems/"+board_id, headers=headers("admin"))).status_code == 404
         a = headers("alice")
         rec = (await client.get("/api/v1/learning/recommendations", headers=a)).json()
         assert rec["targetDifficulty"] == "iron4"
-        assert rec["items"][0]["id"] == "p1"
-        assert "p0" not in {p["id"] for p in rec["items"]}
+        assert rec["items"][0]["id"] == ids["p1"]
+        assert ids["p0"] not in {p["id"] for p in rec["items"]}
         assert rec == (await client.get("/api/v1/learning/recommendations", headers=a)).json()
         tracks = (await client.get("/api/v1/learning/tracks", headers=a)).json()["tracks"]
-        assert [t["order"] for t in tracks] == list(range(1, 8))
-        assert tracks[0]["solved"] == 1 and tracks[0]["nextProblemId"] == "p1"
-        assert tracks[-1]["total"] == 0 and tracks[-1]["nextProblemId"] is None
+        assert [t["order"] for t in tracks] == [1, 3]
+        assert tracks[0]["solved"] == 1 and tracks[0]["nextProblemId"] == ids["p1"]
+        assert all(track["total"] > 0 for track in tracks)
         detail = (await client.get("/api/v1/learning/tracks/io?limit=1&offset=1", headers=a)).json()
-        assert detail["total"] == 4 and detail["items"][0]["id"] == "p1"
+        assert detail["total"] == 4 and detail["items"][0]["id"] == ids["p1"]
         assert "description" not in detail["items"][0] and "testCases" not in detail["items"][0]
         assert (await client.get("/api/v1/learning/tracks/unknown")).status_code == 404
     with factory() as db:

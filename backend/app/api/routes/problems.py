@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import String, cast, desc, or_
+from sqlalchemy import String, cast, desc, literal, or_
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
@@ -11,8 +11,9 @@ from app.api.routes.auth import get_current_user, get_optional_current_user, req
 from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.services.rating import RatingStats, calculate_rating_stats, invalidate_rating_cache, rating_stats_for_users
 from app.services.redis_client import cache_get_json, cache_set_json, redis_key
-from app.services.contest_access import private_problem_ids, require_public_problem, now_utc
-from app.services.judge_policy import UNREVIEWED, stored_policy, public_policy_fields, validate_stored_publication
+from app.services.contest_access import private_problem_ids, require_public_problem, resolve_problem_identifier, now_utc
+from app.services.public_identity import public_display_name, public_problem_id, public_receipt_id
+from app.services.judge_policy import UNREVIEWED, stored_policy, public_policy_fields_for_problem, validate_stored_publication
 from app.models.judge_test_manifest import is_reference_case,canonical_case
 from app.services.judge_test_manifest import validate_stored_cases
 
@@ -213,10 +214,13 @@ def _serialize_problem(problem: db_models.Problem, include_hidden: bool = False,
                        include_policy: bool = False) -> dict:
     sample_cases, hidden_cases = _normalize_problem_test_cases(problem.test_cases)
     progress = progress or {}
-    limits = public_policy_fields(problem.judge_policy)
+    limits = public_policy_fields_for_problem(
+        problem.judge_policy, len(sample_cases) + len(hidden_cases), settings=settings
+    )
     return {
         "judge_limits": limits['judgeLimits'],
         "judge_policy_legacy": limits['judgePolicyLegacy'],
+        "judge_policy_compatibility": limits.get('judgePolicyCompatibility', False),
         "judge_policy": problem.judge_policy if include_policy and problem.judge_policy != UNREVIEWED else None,
         "publication_status": (
             "draft"
@@ -225,8 +229,8 @@ def _serialize_problem(problem: db_models.Problem, include_hidden: bool = False,
             if problem.publication_review_required is True
             else "legacy"
         ),
-        "id": problem.id,
-        "creator_id": problem.creator_id,
+        "id": problem.id if include_hidden or include_policy else public_problem_id(problem),
+        "creator_id": problem.creator_id if include_hidden or include_policy else None,
         "title": problem.title,
         "difficulty": problem.difficulty,
         "tags": problem.tags,
@@ -248,7 +252,7 @@ def _leaderboard_entry(user: db_models.User, rank: int, rating_stats: RatingStat
     stats = rating_stats or calculate_rating_stats([])
     return {
         "rank": rank,
-        "username": user.username,
+        "username": public_display_name(user),
         "total_score": user.total_score,
         "rating": stats.rating,
         "tier": stats.tier,
@@ -260,7 +264,7 @@ def _leaderboard_entry(user: db_models.User, rank: int, rating_stats: RatingStat
 def _leaderboard_rows(db: Session) -> list[tuple[db_models.User, RatingStats]]:
     users = (
         db.query(db_models.User)
-        .filter(db_models.User.role != "admin")
+        .filter(db_models.User.role != "admin", db_models.User.public_profile_enabled.is_(True))
         .order_by(db_models.User.username.asc())
         .all()
     )
@@ -508,7 +512,7 @@ def get_leaderboard(
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    cache_key = redis_key("leaderboard", str(limit))
+    cache_key = redis_key("leaderboard-public-v2", str(limit))
     cached = cache_get_json(cache_key)
     if isinstance(cached, list):
         return cached
@@ -598,11 +602,11 @@ def _serialize_submission(
 ) -> schemas.SubmissionRead:
     from app.services.judge_metrics import public_usage
     return schemas.SubmissionRead(
-        id=submission.id,
-        problem_id=submission.problem_id,
+        id=public_receipt_id(submission.id),
+        problem_id=public_problem_id(problem) if problem else "unavailable",
         problem_title=problem.title if problem else None,
-        user_id=submission.user_id,
-        username=user.username if user else None,
+        user_id=None,
+        username=public_display_name(user) if user else None,
         language=submission.language,
         status=submission.status,
         verdict=submission.verdict or _submission_verdict_from_status(submission.status),
@@ -630,8 +634,15 @@ def list_submissions(
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
     query = db.query(db_models.Submission).filter(~db_models.Submission.problem_id.in_(private_problem_ids()))
+    if (current_user is None or current_user.role != "admin") and not mine:
+        query = query.join(db_models.User, db_models.User.id == db_models.Submission.user_id).filter(
+            db_models.User.public_profile_enabled.is_(True)
+        )
     if problem_id:
-        query = query.filter(db_models.Submission.problem_id == problem_id)
+        resolved_problem = resolve_problem_identifier(db, problem_id)
+        query = query.filter(
+            db_models.Submission.problem_id == resolved_problem.id if resolved_problem is not None else literal(False)
+        )
     if status:
         query = query.filter(db_models.Submission.status == status)
     if verdict:
@@ -640,9 +651,9 @@ def list_submissions(
         if current_user is None:
             raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
         query = query.filter(db_models.Submission.user_id == current_user.id)
-    elif user_id:
+    elif user_id and current_user is not None and current_user.role == "admin":
         query = query.filter(db_models.Submission.user_id == user_id)
-    elif username:
+    elif username and current_user is not None and current_user.role == "admin":
         matched_user = (
             db.query(db_models.User)
             .filter(db_models.User.username == username.strip())
@@ -653,7 +664,12 @@ def list_submissions(
                 ~db_models.Submission.problem_id.in_(private_problem_ids())).count(), "filtered_total": 0}
         query = query.filter(db_models.Submission.user_id == matched_user.id)
 
-    total = db.query(db_models.Submission).filter(~db_models.Submission.problem_id.in_(private_problem_ids())).count()
+    total_query = db.query(db_models.Submission).filter(~db_models.Submission.problem_id.in_(private_problem_ids()))
+    if current_user is None or current_user.role != "admin":
+        total_query = total_query.join(db_models.User, db_models.User.id == db_models.Submission.user_id).filter(
+            db_models.User.public_profile_enabled.is_(True)
+        )
+    total = total_query.count()
     filtered_total = query.count()
     submissions = (
         query.order_by(desc(db_models.Submission.created_at))
@@ -700,8 +716,7 @@ def get_problem(
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
-    require_public_problem(db, id, current_user)
-    problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
+    problem = require_public_problem(db, id, current_user)
     if not problem or problem.id in SYSTEM_BOARD_IDS:
         raise HTTPException(status_code=404, detail="Problem not found")
 
@@ -732,4 +747,5 @@ def submit_problem(
     current_user: db_models.User | None = Depends(get_optional_current_user)
 ):
     from app.services.submission_acceptance import accept_practice
-    return accept_practice(id, request, http_request, response, db, current_user)
+    problem = require_public_problem(db, id, current_user)
+    return accept_practice(problem.id, request, http_request, response, db, current_user)

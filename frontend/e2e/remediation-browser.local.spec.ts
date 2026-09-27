@@ -15,7 +15,7 @@ const routeChecks: RouteCheck[] = [
     },
   },
   {
-    path: '/challenges',
+    path: '/problems',
     ready: async page => {
       await expect(page.getByRole('heading', { name: '문제 목록', exact: true })).toBeVisible();
     },
@@ -172,7 +172,7 @@ test('desktop deep-links, refreshes, and protected routes work in the isolated D
 
   await page.goto(appPath('/'));
   await page.getByRole('button', { name: '문제', exact: true }).click();
-  await expect(page).toHaveURL(/\/webcompiler\/challenges$/);
+  await expect(page).toHaveURL(/\/webcompiler\/problems$/);
   await expect(page.getByRole('heading', { name: '문제 목록', exact: true })).toBeVisible();
   await assertNoHorizontalOverflow(page);
   expect(pageErrors).toEqual([]);

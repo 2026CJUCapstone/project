@@ -16,6 +16,7 @@ from app.core.database import Base
 from app.models import database as m
 from app.services import contests, scoreboard_cache
 from app.services.execution_results import publish_result, publish_transition
+from app.services.public_identity import public_user_key
 
 
 class _MemoryCache:
@@ -115,7 +116,7 @@ def memory_cache(monkeypatch):
 
 
 def _row(board, user_id="alice"):
-    return next(row for row in board["rows"] if row["userId"] == user_id)
+    return next(row for row in board["rows"] if row["userId"] == public_user_key(user_id))
 
 
 def _revision(db, contest_id="contest"):

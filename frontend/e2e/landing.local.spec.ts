@@ -38,7 +38,7 @@ for (const width of [1440, 390]) {
 
     for (const [name, destination] of [
       ['코드 실행하기', '/ide'],
-      ['문제 둘러보기', '/challenges'],
+      ['문제 둘러보기', '/problems'],
       ['커뮤니티 가기', '/community'],
       ['IDE 열기', '/ide'],
       ['리더보드 보기', '/leaderboard'],

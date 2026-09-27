@@ -263,6 +263,7 @@ export interface CompileQueueResponse {
   problemOptions?: CompileQueueProblemOption[];
   optionLimit?: number;
   optionsTruncated?: boolean;
+  detailScope?: 'aggregate' | 'mine' | 'admin';
 }
 
 export interface CompileQueueFilters {

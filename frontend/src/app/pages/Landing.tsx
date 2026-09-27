@@ -90,7 +90,7 @@ export function Landing() {
               </button>
               <button
                 type="button"
-                onClick={() => navigate('/challenges')}
+                onClick={() => navigate('/problems')}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white/80 px-5 py-3 text-sm font-bold text-slate-800 transition hover:border-slate-400 hover:bg-white dark:border-white/15 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
               >
                 <Swords size={17} /> 문제 둘러보기

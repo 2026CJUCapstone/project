@@ -159,8 +159,57 @@ def test_v26_adds_nullable_publication_columns_without_hiding_legacy_problem(rep
         active = set(connection.execute(text(
             "SELECT version FROM schema_migrations WHERE version LIKE '%_v%'"
         )).scalars())
-    assert RUNTIME_SCHEMA_VERSION == '20260927_problem_publication_gate_v26'
+    assert RUNTIME_SCHEMA_VERSION == '20260928_public_identity_v27'
     assert active == {RUNTIME_SCHEMA_VERSION}
+
+
+def test_v27_backfills_public_problem_and_job_ids_without_losing_rows(replicas, monkeypatch):
+    monkeypatch.setattr(settings, 'ADMIN_PASSWORD', 'initial-test-password')
+    engine = replicas[0].kw['bind']
+    initialize(bind=engine)
+    with replicas[0]() as db:
+        admin = db.query(m.User).filter_by(username=settings.ADMIN_USERNAME).one()
+        db.add(m.Problem(
+            id='pre-v27-problem', creator_id=admin.id, title='Preserved problem',
+            description='keep', difficulty='iron5', tags=['io'],
+            test_cases={'sample': [{'input': '', 'expected_output': 'ok'}], 'hidden': []},
+            points=71, judge_policy=None, publication_review_required=None,
+        ))
+        db.add(m.ExecutionJob(
+            id='pre-v27-job', owner_key='account:pre-v27', quota_key='account:pre-v27',
+            request_id='pre-v27-request', payload_hash='pre-v27-hash', kind='run',
+            payload={'code': 'print(1)', 'language': 'python'}, status='completed', attempts=1,
+        ))
+        db.commit()
+
+    with engine.begin() as connection:
+        for index in ('ix_problems_public_id', 'ix_execution_jobs_public_id',
+                      'ix_users_public_profile_enabled'):
+            connection.execute(text(f'DROP INDEX IF EXISTS {index}'))
+        connection.execute(text('ALTER TABLE problems DROP COLUMN public_id'))
+        connection.execute(text('ALTER TABLE execution_jobs DROP COLUMN public_id'))
+        connection.execute(text('ALTER TABLE users DROP COLUMN public_profile_enabled'))
+        connection.execute(text("UPDATE problems SET judge_policy = NULL WHERE id='pre-v27-problem'"))
+        connection.execute(text('DELETE FROM schema_migrations WHERE version=:v'),
+                           {'v': RUNTIME_SCHEMA_VERSION})
+        connection.execute(text('DELETE FROM runtime_schema_history WHERE version=:v'),
+                           {'v': RUNTIME_SCHEMA_VERSION})
+
+    for _ in range(2):
+        initialize(bind=engine)
+
+    with replicas[0]() as db:
+        problem = db.get(m.Problem, 'pre-v27-problem')
+        job = db.get(m.ExecutionJob, 'pre-v27-job')
+        admin = db.query(m.User).filter_by(username=settings.ADMIN_USERNAME).one()
+        assert problem.title == 'Preserved problem' and problem.points == 71
+        assert problem.public_id.startswith('p_') and len(problem.public_id) == 18
+        assert problem.judge_policy == {'kind': 'compatibility-v1'}
+        assert job.payload['code'] == 'print(1)' and job.attempts == 1
+        assert job.public_id.startswith('job_') and len(job.public_id) == 20
+        assert admin.public_profile_enabled is True
+        assert db.query(m.Problem).count() >= 3
+        assert db.query(m.ExecutionJob).filter_by(id='pre-v27-job').count() == 1
 
 
 def legacy_rows(factory, *, count=1):

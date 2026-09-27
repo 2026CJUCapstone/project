@@ -11,6 +11,9 @@ def utc_now():
 class Problem(Base):
     __tablename__ = "problems"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    # Stable URL-safe identifier for public APIs. Internal UUIDs stay server-side.
+    public_id = Column(String(32), nullable=False, unique=True, index=True,
+                       default=lambda: f"p_{uuid.uuid4().hex[:16]}")
     creator_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String, index=True, nullable=False)
     difficulty = Column(String, nullable=False) # iron5 ~ diamond1
@@ -50,6 +53,8 @@ class User(Base):
     total_score = Column(Integer, nullable=False, default=0)
     avatar_url = Column(String, nullable=True)
     role = Column(String, nullable=False, default="user", index=True)
+    # Reversible administrator-controlled visibility for public rankings/history.
+    public_profile_enabled = Column(Boolean, nullable=False, default=True, server_default="1", index=True)
 
 
 class PasswordResetToken(Base):
@@ -276,6 +281,8 @@ class ExecutionJob(Base):
     __table_args__ = (UniqueConstraint("owner_key", "request_id", name="uq_execution_owner_request"),
         Index('ix_execution_content_retention', 'status', 'content_expired_at', 'finished_at'))
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    public_id = Column(String(32), nullable=False, unique=True, index=True,
+                       default=lambda: f"job_{uuid.uuid4().hex[:16]}")
     owner_key = Column(String, nullable=False, index=True)
     quota_key = Column(String, nullable=False, index=True)
     request_id = Column(String, nullable=False)
@@ -526,6 +533,8 @@ class ContestSubmission(Base):
     __tablename__ = "contest_submissions"
     __table_args__ = (UniqueConstraint("contest_id", "user_id", "request_id"),)
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    public_id = Column(String(32), nullable=False, unique=True, index=True,
+                       default=lambda: f"submission_{uuid.uuid4().hex[:16]}")
     execution_job_id = Column(String, ForeignKey('execution_jobs.id'), nullable=True, unique=True)
     resource_report = Column(JSON, nullable=True)
     contest_id = Column(String, ForeignKey("contests.id"), nullable=False, index=True)

@@ -13,6 +13,7 @@ const toChallenge = (p: Problem): Challenge => ({
   id: p.id, title: p.title, difficulty: p.difficulty, tags: p.tags ?? [], description: p.description,
   testCases: p.testCases, solved: p.solved, attempted: p.attempted, lastSubmissionVerdict: p.lastSubmissionVerdict,
   judgeLimits: p.judgeLimits, judgePolicyLegacy: p.judgePolicyLegacy,
+  judgePolicyCompatibility: p.judgePolicyCompatibility,
 });
 type SortOption = 'difficultyAsc' | 'difficultyDesc' | 'title';
 
@@ -28,6 +29,7 @@ interface Challenge {
   lastSubmissionVerdict?: string | null;
   judgeLimits?: Problem['judgeLimits'];
   judgePolicyLegacy?: boolean;
+  judgePolicyCompatibility?: boolean;
 }
 
 const difficultyTrackStops: Difficulty[] = [
@@ -78,7 +80,7 @@ function ChallengeRow({ challenge, index }: { challenge: Challenge; index: numbe
       </div>
       <button
         type="button"
-        onClick={() => navigate(`/challenges/${challenge.id}`)}
+        onClick={() => navigate(`/problems/${challenge.id}`)}
         className="min-w-0 text-left focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
         aria-label={`${challenge.title} 문제 상세 보기`}
       >

@@ -82,9 +82,13 @@ async def test_missing_registry_rolls_back_public_creation_and_retry_keeps_origi
         body=dict(code='print(42)',language='python')
         first=await client.post(url,json=body,headers=auth)
         assert first.status_code in (200,202),first.text
-        with env.factory() as db: original=deepcopy(db.get(m.ExecutionJob,first.json()['executionId']).payload)
+        with env.factory() as db:
+            original=deepcopy(db.query(m.ExecutionJob).filter_by(
+                public_id=first.json()['executionId']).one().payload)
         monkeypatch.setattr(settings,'JUDGE_RUNTIME_REGISTRY','')
         retry=await client.post(url,json=body,headers=auth)
         assert retry.status_code==first.status_code and retry.json()['executionId']==first.json()['executionId']
         assert (await client.post(url,json=body,headers={**auth,'X-Request-ID':'ffffffff-aaaa-4444-9999-123456789abc'})).status_code==409
-        with env.factory() as db: assert db.get(m.ExecutionJob,first.json()['executionId']).payload==original
+        with env.factory() as db:
+            assert db.query(m.ExecutionJob).filter_by(
+                public_id=first.json()['executionId']).one().payload==original

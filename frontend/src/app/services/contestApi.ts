@@ -20,6 +20,7 @@ export interface ContestProblemDetail extends ContestProblem {
   /** Public contest-problem snapshot; a client must not invent missing limits. */
   judgeLimits?: PublicJudgeLimits | null;
   judgePolicyLegacy?: boolean;
+  judgePolicyCompatibility?: boolean;
   /** Full measured policy is admin-only and deliberately opaque to presentation code. */
   judgePolicy?: JudgePolicy | null;
 }

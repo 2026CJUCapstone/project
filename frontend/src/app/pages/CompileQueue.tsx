@@ -353,6 +353,7 @@ export function CompileQueue() {
   const [running, setRunning] = useState(0);
   const [total, setTotal] = useState(0);
   const [filteredTotal, setFilteredTotal] = useState(0);
+  const [detailScope, setDetailScope] = useState<'aggregate' | 'mine' | 'admin'>('aggregate');
   const [resultKey, setResultKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -412,6 +413,7 @@ export function CompileQueue() {
     setRunning(0);
     setTotal(0);
     setFilteredTotal(0);
+    setDetailScope('aggregate');
     setOptionsTruncated(false);
     setResultKey(null);
   }, []);
@@ -449,6 +451,7 @@ export function CompileQueue() {
       setRunning(response.running);
       setTotal(response.total);
       setFilteredTotal(nextFilteredTotal);
+      setDetailScope(response.detailScope ?? 'aggregate');
       setProblemGroups(response.problemGroups ?? []);
       setUserGroups(response.userGroups ?? []);
       setContestOptions(response.contestOptions ?? []);
@@ -610,7 +613,11 @@ export function CompileQueue() {
           </div>
 
           <p className="text-xs leading-5 text-gray-600 dark:text-gray-400">
-            공개 IDE·연습 기록은 누구나 볼 수 있습니다. 로그인하면 본인의 대회 제출도 함께 볼 수 있으며, 다른 사용자의 대회 제출은 표시되지 않습니다.
+            {detailScope === 'admin'
+              ? '관리자에게만 사용자·문제별 상세 기록이 표시됩니다.'
+              : detailScope === 'mine'
+                ? '본인의 실행·제출 기록만 표시됩니다. 다른 사용자의 기록과 내부 식별자는 공개하지 않습니다.'
+                : '전체 대기·실행 건수만 공개합니다. 로그인하면 본인의 상세 기록을 확인할 수 있습니다.'}
           </p>
 
           <div className="flex flex-wrap items-end gap-3">
@@ -730,7 +737,7 @@ export function CompileQueue() {
                 placeholder="제목 또는 ID 일부"
               />
             </label>
-            <label className="flex w-full min-w-0 flex-none flex-col gap-1 text-xs font-medium text-gray-600 sm:w-auto sm:min-w-[160px] sm:flex-1 dark:text-gray-300">
+            {detailScope === 'admin' && <label className="flex w-full min-w-0 flex-none flex-col gap-1 text-xs font-medium text-gray-600 sm:w-auto sm:min-w-[160px] sm:flex-1 dark:text-gray-300">
               사용자 이름
               <input
                 aria-label="사용자 이름"
@@ -739,7 +746,7 @@ export function CompileQueue() {
                 className={controlClassName}
                 placeholder="사용자 이름"
               />
-            </label>
+            </label>}
             <label className="inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 dark:border-[#333] dark:bg-[#141414] dark:text-gray-200">
               <input
                 aria-label="내 기록만 보기"
@@ -782,7 +789,7 @@ export function CompileQueue() {
             </div>
           )}
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          {detailScope !== 'aggregate' && <div className="grid gap-4 xl:grid-cols-2">
             <GroupTable
               title="문제별 집계"
               icon={<Layers3 size={16} className="shrink-0 text-blue-500" />}
@@ -791,14 +798,14 @@ export function CompileQueue() {
               onPickProblem={selectProblem}
               onPickContest={selectContest}
             />
-            <GroupTable
+            {detailScope === 'admin' && <GroupTable
               title="유저별 집계"
               icon={<UserRound size={16} className="shrink-0 text-emerald-500" />}
               groups={visibleUserGroups}
               emptyText="표시할 유저가 없습니다."
               onPickUser={(username) => updateFilter('username', username)}
-            />
-          </div>
+            />}
+          </div>}
 
           <section className="overflow-hidden rounded-md border border-gray-200 bg-white dark:border-[#333] dark:bg-[#1a1a1a]">
             <div className="flex flex-col gap-3 border-b border-gray-200 px-4 py-3 dark:border-[#333] sm:flex-row sm:items-center sm:justify-between">
@@ -836,6 +843,10 @@ export function CompileQueue() {
                 <div className="flex min-h-[260px] items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
                   <RefreshCw size={18} className="animate-spin" />
                   불러오는 중...
+                </div>
+              ) : detailScope === 'aggregate' ? (
+                <div className="flex min-h-[260px] items-center justify-center px-6 text-center text-gray-500 dark:text-gray-400">
+                  개인정보 보호를 위해 개별 작업은 공개하지 않습니다. 위 집계에서 현재 처리 상태를 확인하세요.
                 </div>
               ) : visibleJobs.length === 0 ? (
                 <div className="flex min-h-[260px] items-center justify-center text-gray-500 dark:text-gray-400">

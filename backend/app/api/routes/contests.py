@@ -460,10 +460,11 @@ def read_problem(contest_id: str, contest_problem_id: str, db: Session = Depends
     state = service.contest_state(contest)
     if not admin and (state in ("draft", "upcoming") or (state == "running" and not service.participant(db, contest_id, user))):
         raise HTTPException(403, "시작 후 참가자만 문제를 볼 수 있습니다.")
-    problem = db.query(m.ContestProblem).filter_by(id=contest_problem_id, contest_id=contest_id).first()
+    problem = service.resolve_contest_problem(db, contest_id, contest_problem_id)
     if not problem:
         raise HTTPException(404, "문제를 찾을 수 없습니다.")
-    return {**service.problem_read(problem, detail=True), "contest": service.contest_read(db, contest, user)}
+    return {**service.problem_read(db, problem, detail=True, public=not admin),
+            "contest": service.contest_read(db, contest, user)}
 
 
 @router.post("/{contest_id}/problems/{contest_problem_id}/submit", status_code=202)
@@ -475,14 +476,18 @@ def submit(contest_id: str, contest_problem_id: str, data: ContestSubmit, http_r
     if not data.code.strip() or len(data.code.encode("utf-8")) > settings.SUBMISSION_CODE_MAX_BYTES:
         raise HTTPException(400, "코드가 비어 있거나 제출 크기 제한을 초과했습니다.")
     service.get_contest(db, contest_id, user)
+    problem = service.resolve_contest_problem(db, contest_id, contest_problem_id)
+    if problem is None:
+        raise HTTPException(404, "문제를 찾을 수 없습니다.")
+    internal_contest_problem_id = problem.id
     queue = execution_queue()
     # Always acquire queue before contest/user locks, including retries.
     queue._lock(db)
     previous = db.query(m.ContestSubmission).filter_by(contest_id=contest_id, user_id=user.id, request_id=data.request_id).first()
     if previous:
-        if previous.contest_problem_id != contest_problem_id or previous.language != data.language or previous.code != data.code:
+        if previous.contest_problem_id != internal_contest_problem_id or previous.language != data.language or previous.code != data.code:
             raise HTTPException(409, "동일 요청 ID에 다른 제출을 사용할 수 없습니다.")
-        return service.submission_read(previous)
+        return service.submission_read(db, previous)
     if not service.participant(db, contest_id, user):
         raise HTTPException(403, "먼저 대회에 참가 신청하세요.")
     # A pre-deadline request may wait for a DB lock until after maintenance
@@ -492,9 +497,6 @@ def submit(contest_id: str, contest_problem_id: str, data: ContestSubmit, http_r
         m.Contest.starts_at <= received, m.Contest.ends_at > received).update({"finalized_at": None}, synchronize_session=False)
     if not valid:
         raise HTTPException(403, "대회 진행 시간에만 제출할 수 있습니다.")
-    problem = db.query(m.ContestProblem).filter_by(id=contest_problem_id, contest_id=contest_id).first()
-    if problem is None:
-        raise HTTPException(404, "문제를 찾을 수 없습니다.")
     if db.query(m.ContestSubmission.id).filter(m.ContestSubmission.contest_id == contest_id,
             m.ContestSubmission.user_id == user.id, m.ContestSubmission.status.in_(service.PENDING)).count() >= 5:
         raise HTTPException(429, "대기 중인 제출이 많습니다. 채점 완료 후 다시 제출하세요.")
@@ -512,7 +514,7 @@ def submit(contest_id: str, contest_problem_id: str, data: ContestSubmit, http_r
         job = queue.enqueue_in_session(db, owner_key=f'account:{user.id}', quota_key=f'account:{user.id}',
             request_id=key, kind='contest', at=received,
             payload={'code':data.code, 'language':data.language, 'contest_id':contest_id,
-                'contest_problem_id':contest_problem_id, 'sample':problem.snapshot['sample'], 'hidden':problem.snapshot['hidden'],
+                'contest_problem_id':internal_contest_problem_id, 'sample':problem.snapshot['sample'], 'hidden':problem.snapshot['hidden'],
                 'judge_contract':judge_contract})
     except QueueFull:
         raise HTTPException(429, '실행 대기열이 가득 찼습니다.', headers={'Retry-After':'5'}) from None
@@ -520,7 +522,7 @@ def submit(contest_id: str, contest_problem_id: str, data: ContestSubmit, http_r
         raise HTTPException(409, '동일 요청 ID에 다른 제출을 사용할 수 없습니다.') from None
     except ValueError:
         raise HTTPException(413, '채점 요청이 너무 큽니다. 관리자에게 문의하세요.') from None
-    record = m.ContestSubmission(execution_job_id=job.id, contest_id=contest_id, contest_problem_id=contest_problem_id, user_id=user.id,
+    record = m.ContestSubmission(execution_job_id=job.id, contest_id=contest_id, contest_problem_id=internal_contest_problem_id, user_id=user.id,
                                 request_id=data.request_id, code=data.code, language=data.language, received_at=received)
     db.add(record)
     # No public queue metadata for contest jobs: private titles/identities and
@@ -533,10 +535,10 @@ def submit(contest_id: str, contest_problem_id: str, data: ContestSubmit, http_r
     except IntegrityError:
         db.rollback()
         record = db.query(m.ContestSubmission).filter_by(contest_id=contest_id, user_id=user.id, request_id=data.request_id).one()
-        if record.contest_problem_id != contest_problem_id or record.language != data.language or record.code != data.code:
+        if record.contest_problem_id != internal_contest_problem_id or record.language != data.language or record.code != data.code:
             raise HTTPException(409, "동일 요청 ID에 다른 제출을 사용할 수 없습니다.")
     db.refresh(record)
-    return service.submission_read(record)
+    return service.submission_read(db, record)
 
 
 @router.get("/{contest_id}/submissions")
@@ -544,7 +546,7 @@ def my_submissions(contest_id: str, limit: int = Query(50, ge=1, le=200), offset
                    db: Session = Depends(get_db), user=Depends(get_current_user)):
     service.get_contest(db, contest_id, user)
     query = db.query(m.ContestSubmission).filter_by(contest_id=contest_id, user_id=user.id)
-    return {"total": query.count(), "submissions": [service.submission_read(s) for s in query.order_by(
+    return {"total": query.count(), "submissions": [service.submission_read(db, s) for s in query.order_by(
         m.ContestSubmission.received_at.desc(), m.ContestSubmission.id.desc()).offset(offset).limit(limit).all()]}
 
 
@@ -553,10 +555,14 @@ def my_submission(contest_id: str, submission_id: str, response: Response,
                   db: Session = Depends(get_db), user=Depends(get_current_user)):
     response.headers['Cache-Control'] = 'no-store'
     service.get_contest(db, contest_id, user)
-    record = db.query(m.ContestSubmission).filter_by(id=submission_id, contest_id=contest_id, user_id=user.id).first()
+    record = db.query(m.ContestSubmission).filter(
+        m.ContestSubmission.contest_id == contest_id,
+        m.ContestSubmission.user_id == user.id,
+        or_(m.ContestSubmission.public_id == submission_id, m.ContestSubmission.id == submission_id),
+    ).first()
     if not record:
         raise HTTPException(404, "제출을 찾을 수 없습니다.")
-    return service.submission_read(record, include_code=True)
+    return service.submission_read(db, record, include_code=True)
 
 
 @router.get('/{contest_id}/submissions/{submission_id}/resources')

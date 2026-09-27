@@ -11,6 +11,7 @@ vi.mock('../services/compilerApi', () => ({
 
 const emptyQueue = {
   jobs: [], total: 0, filteredTotal: 0, queued: 0, running: 0, problemGroups: [], userGroups: [],
+  detailScope: 'mine' as const,
 };
 
 function LocationProbe() {

@@ -236,9 +236,9 @@ export function Header() {
               IDE
             </button>
             <button 
-              onClick={() => navigate('/challenges')}
+              onClick={() => navigate('/problems')}
               className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${
-	                location.pathname.startsWith('/challenges')
+                location.pathname.startsWith('/problems') || location.pathname.startsWith('/challenges')
                   ? 'bg-gray-100 dark:bg-[#2d2d2d] text-gray-900 dark:text-white' 
                   : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2d2d2d]'
               }`}
@@ -427,7 +427,7 @@ export function Header() {
           {[
             { path: '/', label: '홈', icon: Home },
             { path: '/ide', label: 'IDE', icon: Code2 },
-            { path: '/challenges', label: '문제', icon: Swords },
+            { path: '/problems', label: '문제', icon: Swords },
             { path: '/learning', label: '학습', icon: Code2 },
             { path: '/contests', label: '콘테스트', icon: Trophy },
             { path: '/leaderboard', label: '리더보드', icon: Trophy },

@@ -149,6 +149,7 @@ async def test_compile_queue_records_public_problem_and_user_filters(monkeypatch
             queue = await client.get(
                 "/api/v1/compiler/queue",
                 params={"problemId": problem_id, "username": username},
+                headers=headers,
             )
 
         assert queue.status_code == 200
@@ -156,14 +157,17 @@ async def test_compile_queue_records_public_problem_and_user_filters(monkeypatch
         jobs = body["jobs"]
         assert len(jobs) == 1
         assert body["filteredTotal"] == 1
-        assert jobs[0]["problemId"] == problem_id
+        assert jobs[0]["id"].startswith("job_")
+        assert "-" not in jobs[0]["id"]
+        assert jobs[0]["problemId"].startswith("p_")
+        assert jobs[0]["problemId"] != problem_id
         assert jobs[0]["username"] == username
         assert jobs[0]["status"] == "completed"
         assert jobs[0]["verdict"] == "compile_success"
         assert jobs[0]["sourceSizeBytes"] > 0
-        assert body["problemGroups"][0]["problemId"] == problem_id
+        assert body["problemGroups"][0]["problemId"] == jobs[0]["problemId"]
         assert body["problemGroups"][0]["verdicts"]["compile_success"] == 1
-        assert body["userGroups"][0]["username"] == username
+        assert body["detailScope"] == "mine" and body["userGroups"] == []
     finally:
         db = SessionLocal()
         try:
@@ -216,8 +220,10 @@ async def test_compile_queue_paginates_and_filters_verdicts(monkeypatch: pytest.
     monkeypatch.setattr(compiler_service.compiler_instance, "compile", fake_compile)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        headers = {"Authorization": f"Bearer {auth.create_access_token({'sub': username})}"}
         first = await client.post(
             "/api/v1/compiler/compile",
+            headers=headers,
             json={
                 "code": "bad one",
                 "language": "bpp",
@@ -227,6 +233,7 @@ async def test_compile_queue_paginates_and_filters_verdicts(monkeypatch: pytest.
         )
         second = await client.post(
             "/api/v1/compiler/compile",
+            headers=headers,
             json={
                 "code": "bad two",
                 "language": "bpp",
@@ -234,20 +241,20 @@ async def test_compile_queue_paginates_and_filters_verdicts(monkeypatch: pytest.
                 "options": {"optimize": False, "target": "all"},
             },
         )
-        await finish_receipt(client, first)
-        await finish_receipt(client, second)
+        await finish_receipt(client, first, headers=headers)
+        await finish_receipt(client, second, headers=headers)
         queue = await client.get(
             "/api/v1/compiler/queue",
             params={"problemId": problem_id, "verdict": "compile_error", "limit": 1, "offset": 1},
+            headers=headers,
         )
 
     assert queue.status_code == 200
     body = queue.json()
     assert body["filteredTotal"] == 2
+    assert body["detailScope"] == "mine"
     assert len(body["jobs"]) == 1
     assert body["jobs"][0]["verdict"] == "compile_error"
-    assert body["problemGroups"][0]["total"] == 2
-    assert body["problemGroups"][0]["verdicts"]["compile_error"] == 2
     db = SessionLocal()
     try:
         db.query(Problem).filter(Problem.id == problem_id).delete()

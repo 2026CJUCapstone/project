@@ -120,7 +120,7 @@ def test_initializer_adds_nullable_sandbox_operation_and_preserves_pending_inten
 
     # Runtime history is preserved outside the active marker namespace so a
     # stale replica cannot remain ready during a rolling deployment.
-    assert RUNTIME_SCHEMA_VERSION == "20260927_problem_publication_gate_v26"
+    assert RUNTIME_SCHEMA_VERSION == "20260928_public_identity_v27"
     with engine.connect() as connection:
         versions = set(connection.execute(text("SELECT version FROM schema_migrations")).scalars())
     assert RUNTIME_SCHEMA_VERSION in versions and V7_SCHEMA_VERSION not in versions

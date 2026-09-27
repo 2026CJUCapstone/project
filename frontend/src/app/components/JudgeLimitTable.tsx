@@ -13,6 +13,7 @@ export interface JudgeLimitTableProps {
   policy: PublicJudgeLimits | null;
   selectedLanguage: string;
   legacy?: boolean;
+  compatibility?: boolean;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -100,7 +101,7 @@ function StageDetails({ title, stage }: { title: string; stage: UnknownRecord | 
   );
 }
 
-export function JudgeLimitTable({ policy, selectedLanguage, legacy = false }: JudgeLimitTableProps) {
+export function JudgeLimitTable({ policy, selectedLanguage, legacy = false, compatibility = false }: JudgeLimitTableProps) {
   const selectedProfile = policy ? profileFor(policy, selectedLanguage) : null;
   const selectedRun = stageFor(selectedProfile, 'run');
   const selectedCompile = stageFor(selectedProfile, 'compile');
@@ -118,6 +119,7 @@ export function JudgeLimitTable({ policy, selectedLanguage, legacy = false }: Ju
           )}
         </div>
         {legacy && <span className="rounded-full border border-amber-400/50 bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">기존 문제 정책</span>}
+        {compatibility && <span className="rounded-full border border-blue-400/50 bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-900 dark:bg-blue-950/50 dark:text-blue-200">기존 문제 호환 정책</span>}
       </div>
 
       {legacy && !policy && (
@@ -137,6 +139,11 @@ export function JudgeLimitTable({ policy, selectedLanguage, legacy = false }: Ju
           {policy.reviewStatus === 'draft' && (
             <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
               초안 정책입니다. 실제 측정과 검증이 끝나기 전에는 제출 기준으로 사용하면 안 됩니다.
+            </p>
+          )}
+          {policy.reviewStatus === 'compatibility' && (
+            <p role="status" className="rounded-md border border-blue-300 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200">
+              기존 문제에 적용되는 고정 호환 제한입니다. 언어별 시간·메모리 차이를 실제 채점에도 동일하게 적용합니다.
             </p>
           )}
 

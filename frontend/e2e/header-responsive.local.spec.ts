@@ -53,11 +53,11 @@ for (const signedIn of [false, true]) {
     await page.setViewportSize({ width: 677, height: 900 });
     await page.getByRole('button', { name: '메뉴 열기' }).click();
     await page.getByRole('navigation', { name: '모바일 메뉴' }).getByRole('button', { name: '문제', exact: true }).click();
-    await expect(page).toHaveURL(/\/challenges$/);
+    await expect(page).toHaveURL(/\/problems$/);
     await expect(page.getByRole('navigation', { name: '모바일 메뉴' })).toHaveCount(0);
     await expect(page.locator('body')).not.toContainText('챌린지');
     await page.goto('/');
     await page.getByRole('button', { name: '문제 둘러보기' }).click();
-    await expect(page).toHaveURL(/\/challenges$/);
+    await expect(page).toHaveURL(/\/problems$/);
   });
 }

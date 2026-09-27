@@ -28,15 +28,24 @@ def private_problem_ids(at=None):
     return contest_private.union(reviewed_drafts)
 
 
+def resolve_problem_identifier(db, value):
+    return db.query(Problem).filter(or_(Problem.id == value, Problem.public_id == value)).first()
+
+
 def require_public_problem(db, problem_id, user=None):
+    problem = resolve_problem_identifier(db, problem_id)
+    if problem is None:
+        raise HTTPException(status_code=404, detail="Problem not found")
+    internal_id = problem.id
     # Archival is not an admin draft view: no new grading/discussion is allowed.
-    if db.query(Problem.id).filter(Problem.id == problem_id, Problem.deleted_at.is_not(None)).first():
+    if problem.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Problem not found")
     # Administrators may inspect drafts, but contest grading uses snapshots.
     if user is not None and user.role == "admin":
-        return
+        return problem
     if db.query(Problem.id).filter(
-        Problem.id == problem_id,
+        Problem.id == internal_id,
         Problem.id.in_(private_problem_ids()),
     ).first():
         raise HTTPException(status_code=404, detail="Problem not found")
+    return problem

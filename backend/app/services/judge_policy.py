@@ -4,11 +4,82 @@ from decimal import Decimal, InvalidOperation, ROUND_CEILING
 import hashlib
 import json
 
-from app.models.judge_policy import JudgePolicy, SUPPORTED_LANGUAGES
+from app.models.judge_policy import JudgePolicy, RuntimeLimits, StageLimits, SUPPORTED_LANGUAGES
 from app.models.judge_test_manifest import canonical_suite,has_stored_cases,test_data_buffer_bytes
 
 
 UNREVIEWED = {'kind': 'unreviewed-v1'}
+COMPATIBILITY = {'kind': 'compatibility-v1'}
+
+# Existing inline-test problems predate measured authoring. These limits are
+# explicit operator defaults, not fabricated benchmark evidence. New or edited
+# content must still pass the measured publication gate.
+_COMPAT_TIME_MS = {
+    'bpp': (30_000, 2_000), 'c': (10_000, 2_000), 'cpp': (10_000, 2_000),
+    'python': (5_000, 4_000), 'java': (15_000, 4_000), 'javascript': (5_000, 4_000),
+}
+_COMPAT_MEMORY_BYTES = {
+    'bpp': 256 * 1024**2, 'c': 256 * 1024**2, 'cpp': 256 * 1024**2,
+    'python': 384 * 1024**2, 'java': 384 * 1024**2, 'javascript': 384 * 1024**2,
+}
+
+
+def _compat_stage_limits(language, case_count, settings):
+    compile_ms, preferred_run_ms = _COMPAT_TIME_MS[language]
+    cleanup_ms = 5_000
+    ceiling_ms = int(settings.EXECUTION_JOB_TIMEOUT_SECONDS * 1000)
+    remaining = ceiling_ms - compile_ms - cleanup_ms
+    if case_count < 1 or remaining < case_count:
+        raise ValueError('Compatibility problem cannot fit the execution deadline')
+    run_ms = min(preferred_run_ms, remaining // case_count)
+    memory = _COMPAT_MEMORY_BYTES[language]
+    compile_limits = StageLimits(cpu_ms=compile_ms, wall_ms=compile_ms,
+        memory_bytes=memory, output_bytes=1024**2, pids=64, tmp_bytes=64 * 1024**2)
+    run_limits = StageLimits(cpu_ms=run_ms, wall_ms=run_ms,
+        memory_bytes=memory, output_bytes=1024**2, pids=64, tmp_bytes=16 * 1024**2)
+    return compile_limits, run_limits, cleanup_ms
+
+
+def compatibility_public_limits(case_count, *, settings):
+    languages = {}
+    for language in sorted(SUPPORTED_LANGUAGES):
+        compile_limits, run_limits, _ = _compat_stage_limits(language, case_count, settings)
+        languages[language] = {
+            'runtimeVersion': '운영 기본 환경',
+            'compile': compile_limits.model_dump(by_alias=True),
+            'run': run_limits.model_dump(by_alias=True),
+        }
+    return {'policyId': 'legacy-compatibility-v1', 'revision': 1,
+            'reviewStatus': 'compatibility', 'languages': languages}
+
+
+def compatibility_receipt(language, sample, hidden, *, settings):
+    from app.services.judge_runtime_registry import RuntimeRegistry
+    case_count = len(sample) + len(hidden)
+    compile_limits, run_limits, cleanup_ms = _compat_stage_limits(language, case_count, settings)
+    registry = RuntimeRegistry.load(settings.JUDGE_RUNTIME_REGISTRY)
+    registration = registry.admission_registration(language, settings.JUDGE_WORKER_CLASS)
+    profile = RuntimeLimits(
+        runtime_id=registration.runtime_id, runtime_version=registration.runtime_version,
+        image_digest=registration.image_digest, worker_class=registration.worker_class,
+        toolchain_profile=registration.toolchain_profile, launcher_digest=registration.launcher_digest,
+        compile=compile_limits, run=run_limits,
+    )
+    buffers = test_data_buffer_bytes(sample, hidden)
+    reservation = max(compile_limits.memory_bytes, run_limits.memory_bytes) + buffers
+    if reservation > policy_memory_budget(settings):
+        raise ValueError('Compatibility problem exceeds the worker memory budget')
+    identity = {'kind': 'compatibility-v1', 'language': language,
+                'testSuiteHash': test_suite_hash(sample, hidden),
+                'profile': profile.model_dump(by_alias=True)}
+    return {
+        'kind': 'measured-v1', 'policyId': 'legacy-compatibility-v1', 'revision': 1,
+        'policyHash': content_hash(identity), 'language': language,
+        'testSuiteHash': identity['testSuiteHash'], 'profile': identity['profile'],
+        'jobDeadlineMs': compile_limits.wall_ms + case_count * run_limits.wall_ms + cleanup_ms,
+        'reservationBytes': reservation,
+        **({'testDataBufferBytes': buffers} if buffers else {}),
+    }
 
 
 def stored_policy(policy, *, previous=None, creating=False) -> dict | None:
@@ -20,7 +91,7 @@ def stored_policy(policy, *, previous=None, creating=False) -> dict | None:
     """
     if policy is not None:
         canonical = JudgePolicy.model_validate(policy).model_dump(by_alias=True)
-        if previous is not None and previous != UNREVIEWED:
+        if previous is not None and previous not in (UNREVIEWED, COMPATIBILITY):
             old = JudgePolicy.model_validate(previous)
             if canonical != old.model_dump(by_alias=True):
                 if canonical['policyId'] != old.policy_id or canonical['revision'] <= old.revision:
@@ -30,11 +101,22 @@ def stored_policy(policy, *, previous=None, creating=False) -> dict | None:
 
 
 def public_policy_fields(policy) -> dict:
+    if policy == COMPATIBILITY:
+        return {'judgeLimits': None, 'judgePolicyLegacy': False, 'judgePolicyCompatibility': True}
     return {'judgeLimits': None if policy is None or policy == UNREVIEWED else public_limits(policy),
-            'judgePolicyLegacy': policy is None}
+            'judgePolicyLegacy': policy is None, 'judgePolicyCompatibility': False}
+
+
+def public_policy_fields_for_problem(policy, case_count, *, settings):
+    if policy == COMPATIBILITY:
+        return {'judgeLimits': compatibility_public_limits(case_count, settings=settings),
+                'judgePolicyLegacy': False, 'judgePolicyCompatibility': True}
+    return public_policy_fields(policy)
 
 
 def validate_stored_publication(policy, sample, hidden, *, settings):
+    if policy == COMPATIBILITY:
+        return
     if policy is None:
         if has_stored_cases(sample,hidden):
             raise ValueError('Stored test data requires a measured judge policy')
@@ -60,6 +142,8 @@ def policy_memory_budget(settings):
 def freeze_stored_submission(policy, language, sample, hidden, *, settings) -> dict:
     """Receipt-owned contract, distinct from mutable source problem settings."""
     validate_stored_publication(policy, sample, hidden, settings=settings)
+    if policy == COMPATIBILITY:
+        return compatibility_receipt(language, sample, hidden, settings=settings)
     if policy is not None:
         return freeze_submission(policy, language, sample, hidden,
             max_job_ms=int(settings.EXECUTION_JOB_TIMEOUT_SECONDS * 1000),

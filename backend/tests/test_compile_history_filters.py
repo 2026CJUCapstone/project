@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.models import database as m
 from app.services import compile_queue as queue_module, compile_history
 from app.services.auth import create_access_token
+from app.services.public_identity import public_receipt_id
 from tests.test_durable_queue import replicas
 
 AT = datetime(2030, 1, 1, 12)
@@ -99,8 +100,9 @@ async def test_guest_projection_and_facets_cannot_reveal_contest_or_hidden_metad
         assert result.status_code == 200, result.text
         body = result.json()
         assert body['total'] == body['filteredTotal'] == 5
-        assert body['contestOptions'] == []
-        assert {row['source'] for row in body['jobs']} == {'ide', 'practice'}
+        assert body['detailScope'] == 'aggregate'
+        assert body['jobs'] == [] and body['problemGroups'] == [] and body['userGroups'] == []
+        assert body['contestOptions'] == [] and body['problemOptions'] == []
         assert 'SECRET' not in result.text and '스냅샷' not in result.text and '내 비공개' not in result.text
         assert result.headers['cache-control'] == 'no-store'
         assert 'Authorization' in result.headers['vary']
@@ -111,16 +113,25 @@ async def test_guest_projection_and_facets_cannot_reveal_contest_or_hidden_metad
 @pytest.mark.asyncio
 async def test_owner_scope_is_not_bypassed_by_user_filter_or_admin_role(history_env):
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
-        for owner, expected in [('alice', {'contest:alice-a', 'contest:alice-b', 'contest:alice-hidden'}),
-                                ('bob', {'contest:bob-a'}), ('admin', set())]:
+        for owner, expected in [('alice', {'alice-a', 'alice-b', 'alice-hidden'}),
+                                ('bob', {'bob-a'}), ('admin', set())]:
             result = await get_history(client, owner, source='contest')
             assert result.status_code == 200, result.text
             body = result.json()
-            assert {row['id'] for row in body['jobs']} == expected
+            assert {row['id'] for row in body['jobs']} == {
+                public_receipt_id(value) for value in expected
+            }
             assert body['filteredTotal'] == len(expected)
             assert all('SECRET' not in json.dumps(row) for row in body['jobs'])
             assert all(row['sourceSizeBytes'] is None and row['error'] is None for row in body['jobs'])
-        for filters in ({'userId': 'bob'}, {'username': 'bob'}, {'contestId': 'draft'}, {'contestId': 'upcoming'}):
+        for filters in ({'userId': 'bob'}, {'username': 'bob'}):
+            body = (await get_history(client, 'alice', source='contest', **filters)).json()
+            assert body['filteredTotal'] == 3
+            assert {row['id'] for row in body['jobs']} == {
+                public_receipt_id(value) for value in ('alice-a', 'alice-b', 'alice-hidden')
+            }
+            assert all(row['userId'] is None for row in body['jobs'])
+        for filters in ({'contestId': 'draft'}, {'contestId': 'upcoming'}):
             body = (await get_history(client, 'alice', source='contest', **filters)).json()
             assert body['filteredTotal'] == 0 and body['jobs'] == []
             assert body['problemOptions'] == []
@@ -134,14 +145,17 @@ async def test_combined_filters_counts_and_immutable_contest_title(history_env):
                                   verdict='pending', kind='grading', mine=True)).json()
         assert body['total'] == 8 and body['filteredTotal'] == 1
         assert body['jobs'][0]['problemTitle'] == 'A 스냅샷'
-        assert body['jobs'][0]['contestProblemId'] == 'cp-a'
-        assert body['problemOptions'] == [{'id': 'shared', 'title': 'A 스냅샷', 'contestId': 'a'}]
+        assert body['jobs'][0]['contestProblemId'] == 'A'
+        assert body['problemOptions'][0]['id'].startswith('p_')
+        assert body['problemOptions'][0]['title'] == 'A 스냅샷'
+        assert body['problemOptions'][0]['contestId'] == 'a'
         assert len(body['contestOptions']) == 3
         assert body['problemGroups'][0]['contestId'] == 'a'
-        for filters, expected in [({'source': 'ide'}, 3), ({'source': 'practice'}, 2),
-                                  ({'mine': True}, 5), ({'language': 'java'}, 1),
+        assert body['detailScope'] == 'mine' and body['userGroups'] == []
+        for filters, expected in [({'source': 'ide'}, 1), ({'source': 'practice'}, 1),
+                                  ({'mine': True}, 5), ({'language': 'java'}, 0),
                                   ({'verdict': 'process_limit_exceeded'}, 1),
-                                  ({'problemId': 'shared'}, 4), ({'problemSearch': '스냅샷'}, 2),
+                                  ({'problemId': 'shared'}, 3), ({'problemSearch': '스냅샷'}, 2),
                                   ({'username': ' ALICE '}, 5), ({'source': 'ide', 'contestId': 'a'}, 0)]:
             assert (await get_history(client, 'alice', **filters)).json()['filteredTotal'] == expected
 
@@ -150,12 +164,12 @@ async def test_combined_filters_counts_and_immutable_contest_title(history_env):
 async def test_filter_applied_before_pagination_and_stable_tie_order(history_env):
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
         whole = (await get_history(client, 'alice', problemId='shared')).json()
-        pages = [(await get_history(client, 'alice', problemId='shared', limit=1, offset=i)).json() for i in range(4)]
+        pages = [(await get_history(client, 'alice', problemId='shared', limit=1, offset=i)).json() for i in range(3)]
         assert [page['jobs'][0]['id'] for page in pages] == [row['id'] for row in whole['jobs']]
-        assert all(page['filteredTotal'] == 4 for page in pages)
+        assert all(page['filteredTotal'] == 3 for page in pages)
         assert len(whole['problemGroups']) == 3  # practice + two separate contest snapshots
         beyond = (await get_history(client, 'alice', problemId='shared', offset=100)).json()
-        assert beyond['jobs'] == [] and beyond['filteredTotal'] == 4
+        assert beyond['jobs'] == [] and beyond['filteredTotal'] == 3
 
 
 @pytest.mark.asyncio
@@ -165,7 +179,8 @@ async def test_problem_search_treats_percent_underscore_as_literal(history_env):
         db.commit()
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
         body = (await get_history(client, 'alice', problemSearch='%_')).json()
-        assert body['filteredTotal'] == 1 and body['jobs'][0]['id'] == 'practice-alice'
+        assert body['filteredTotal'] == 1
+        assert body['jobs'][0]['id'] == public_receipt_id('practice-alice')
         for query in ('missing', "' OR 1=1 --"):
             assert (await get_history(client, 'alice', problemSearch=query)).json()['jobs'] == []
 
@@ -194,7 +209,8 @@ async def test_options_are_bounded_but_search_reaches_beyond_options(history_env
         body = (await get_history(client, 'alice', problemSearch='B 스냅샷')).json()
         assert body['optionLimit'] == 1 and body['optionsTruncated'] is True
         assert len(body['contestOptions']) == len(body['problemOptions']) == 1
-        assert body['filteredTotal'] == 1 and body['jobs'][0]['id'] == 'contest:alice-b'
+        assert body['filteredTotal'] == 1
+        assert body['jobs'][0]['id'] == public_receipt_id('alice-b')
 
 
 @pytest.mark.asyncio

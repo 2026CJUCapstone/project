@@ -172,9 +172,9 @@ describe("app routes", () => {
     expect(screen.getAllByText("Iron V")).not.toHaveLength(0);
   });
 
-  it("renders the challenges page", async () => {
+  it("renders the canonical problems page", async () => {
     const router = createMemoryRouter(routeDefinitions, {
-      initialEntries: ["/challenges"],
+      initialEntries: ["/problems"],
     });
 
     render(<RouterProvider router={router} />);
@@ -216,7 +216,7 @@ describe("app routes", () => {
 	    });
 
     const router = createMemoryRouter(routeDefinitions, {
-      initialEntries: ["/challenges/p-1"],
+      initialEntries: ["/problems/p-1"],
     });
 
     render(<RouterProvider router={router} />);
@@ -224,5 +224,17 @@ describe("app routes", () => {
     expect(await screen.findByRole("heading", { name: "두 수의 합" }, { timeout: 10_000 })).toBeInTheDocument();
     expect(await screen.findByText("입력")).toBeInTheDocument();
     expect(await screen.findByText("출력")).toBeInTheDocument();
+  });
+
+  it("redirects legacy challenge links and renders a Korean 404", async () => {
+    const legacy = createMemoryRouter(routeDefinitions, { initialEntries: ["/challenges"] });
+    const view = render(<RouterProvider router={legacy} />);
+    expect(await screen.findByRole("heading", { name: "문제 목록" })).toBeInTheDocument();
+    expect(legacy.state.location.pathname).toBe("/problems");
+    view.unmount();
+
+    const missing = createMemoryRouter(routeDefinitions, { initialEntries: ["/does-not-exist"] });
+    render(<RouterProvider router={missing} />);
+    expect(await screen.findByRole("heading", { name: "페이지를 찾을 수 없습니다" })).toBeInTheDocument();
   });
 });

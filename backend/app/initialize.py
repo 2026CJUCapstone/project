@@ -22,7 +22,7 @@ from app.services.durable_queue import DurableQueue, QueueFull
 from app.core.config import settings
 
 LEARNING_SCHEMA_VERSION = '20260911_learning_v11'
-RUNTIME_SCHEMA_VERSION = '20260927_problem_publication_gate_v26'
+RUNTIME_SCHEMA_VERSION = '20260928_public_identity_v27'
 _RUNTIME_MARKER = re.compile(r'_v[0-9]+$')
 
 

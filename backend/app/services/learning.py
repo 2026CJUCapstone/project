@@ -6,6 +6,7 @@ from sqlalchemy import String, cast, case, func, or_, exists, select
 from app.models import database as m
 from app.services.contest_access import private_problem_ids, iso, utc_naive
 from app.core.bootstrap import SYSTEM_BOARD_IDS
+from app.services.public_identity import public_problem_id
 
 DIFFICULTIES = [f"{tier}{level}" for tier in ("iron", "bronze", "silver", "gold", "platinum", "diamond", "ruby") for level in range(5, 0, -1)]
 TRACKS = [
@@ -89,7 +90,7 @@ def learning_items(db, problems, user_id=None):
     solved = {r[0] for r in db.query(m.UserProblemScore.challenge_id).filter(
         m.UserProblemScore.user_id == user_id, m.UserProblemScore.challenge_id.in_(ids)).all()} if user_id else set()
     return [{
-        "id": p.id, "title": p.title, "difficulty": p.difficulty, "tags": p.tags,
+        "id": public_problem_id(p), "title": p.title, "difficulty": p.difficulty, "tags": p.tags,
         "solved": p.id in solved,
         "attempted": bool(records.get(p.id) and records[p.id].last_attempt_at),
         "bookmarked": bool(records.get(p.id) and records[p.id].bookmarked),
@@ -102,11 +103,11 @@ def learning_items(db, problems, user_id=None):
 def track_summary(db, track, user_id=None):
     query = for_track(public_problems(db), track)
     next_query = query.filter(~solved_expression(user_id)) if user_id else query
-    next_id = next_query.with_entities(m.Problem.id).order_by(difficulty_order(), m.Problem.id).first()
+    next_problem = next_query.order_by(difficulty_order(), m.Problem.id).first()
     return {"id": track[0], "title": track[1], "description": track[2],
         "order": TRACKS.index(track) + 1, "total": query.count(),
         "solved": query.filter(solved_expression(user_id)).count() if user_id else 0,
-        "nextProblemId": next_id[0] if next_id else None}
+        "nextProblemId": public_problem_id(next_problem) if next_problem else None}
 
 
 def recommendations(db, user_id=None):

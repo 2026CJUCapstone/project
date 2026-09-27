@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
 from app.models.legacy_execution import LegacyExecutionResolutionWrite
+from app.services.rating import invalidate_rating_cache
 
 router = APIRouter()
 
@@ -102,6 +103,9 @@ def update_user(
     if 'avatar_url' in payload.model_fields_set:
         user.avatar_url = (payload.avatar_url or '').strip() or None
 
+    if payload.public_profile_enabled is not None:
+        user.public_profile_enabled = payload.public_profile_enabled
+
     db.add(user)
     try:
         db.commit()
@@ -109,4 +113,5 @@ def update_user(
         db.rollback()
         raise HTTPException(409, "이미 사용 중인 이메일 또는 닉네임입니다.") from exc
     db.refresh(user)
+    invalidate_rating_cache(user.id)
     return user

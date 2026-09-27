@@ -41,11 +41,11 @@ describe('SubmissionResourceUsage', () => {
   it('labels a null or missing record as unrecorded instead of treating it as zero usage', () => {
     const { rerender } = render(<SubmissionResourceUsage resourceUsage={null} />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('자원 측정 미기록');
+    expect(screen.getByRole('status')).toHaveTextContent('이전 채점 기록 · 자원 사용량 없음');
     expect(screen.queryByText(/0ms|0 B/)).not.toBeInTheDocument();
 
     rerender(<SubmissionResourceUsage />);
-    expect(screen.getByRole('status')).toHaveTextContent('자원 측정 미기록');
+    expect(screen.getByRole('status')).toHaveTextContent('이전 채점 기록 · 자원 사용량 없음');
   });
 
   it('keeps compilation measurements distinct when the run phase was not recorded', () => {

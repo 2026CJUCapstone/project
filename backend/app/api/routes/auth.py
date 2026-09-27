@@ -73,6 +73,7 @@ def _serialize_user(user: db_models.User, db: Session) -> dict:
         "tag_proficiencies": [item.to_cache_dict() for item in tag_proficiencies],
         "avatar_url": user.avatar_url,
         "role": user.role,
+        "public_profile_enabled": user.public_profile_enabled,
     }
 
 

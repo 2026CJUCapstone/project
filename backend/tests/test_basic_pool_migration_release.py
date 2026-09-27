@@ -221,6 +221,9 @@ def test_rehearsal_uses_the_restored_snapshot_as_its_migration_baseline(release)
 
     assert restore < baseline < first_initializer
     assert '_fingerprints("webcompiler-postgres", columns)' not in source
+    assert source.index("_rehearse_public_quality_cleanup(postgres)") > source.rindex(
+        "assert _fingerprints(postgres, columns) == before"
+    )
 
 
 def test_business_fingerprints_exclude_runtime_coordination_tables(release):

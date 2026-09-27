@@ -15,6 +15,9 @@ from app.services.scoreboard_cache import (
     read_public,
     write_public,
 )
+from app.services.public_identity import (
+    public_display_name, public_problem_id, public_receipt_id, public_user_key,
+)
 
 logger = logging.getLogger(__name__)
 PENALTY_VERDICTS = {"wrong_answer", "runtime_error", "time_limit_exceeded", "memory_limit_exceeded", "output_limit_exceeded"}
@@ -60,24 +63,45 @@ def contest_read(db, contest, user=None):
         "state": state, "published": contest.published, "joined": joined, "canManage": is_admin,
         "participantCount": db.query(m.ContestParticipant).filter_by(contest_id=contest.id).count(),
         "corrections": public_corrections(db, contest.id),
-        "problems": [problem_read(p) for p in problem_rows(db, contest.id)] if can_view else [],
+        "problems": [problem_read(db, p, public=not is_admin) for p in problem_rows(db, contest.id)] if can_view else [],
     }
 
 
-def problem_read(problem, detail=False):
+def contest_problem_key(problem):
+    return chr(65 + problem.position)
+
+
+def resolve_contest_problem(db, contest_id, identifier):
+    query = db.query(m.ContestProblem).filter_by(contest_id=contest_id)
+    problem = query.filter(m.ContestProblem.id == identifier).first()
+    if problem is None and len(identifier) == 1 and 'A' <= identifier.upper() <= 'Z':
+        problem = query.filter(m.ContestProblem.position == ord(identifier.upper()) - 65).first()
+    return problem
+
+
+def problem_read(db, problem, detail=False, public=True):
     snap = problem.snapshot
-    result = {"id": problem.id, "problemId": problem.problem_id, "label": chr(65 + problem.position),
+    source = db.get(m.Problem, problem.problem_id)
+    label = contest_problem_key(problem)
+    result = {"id": label if public else problem.id,
+              "problemId": (public_problem_id(source) if source else "unavailable") if public else problem.problem_id,
+              "label": label,
               "title": snap["title"], "points": problem.points, "difficulty": snap["difficulty"]}
     if detail:
         result.update(description=snap["description"], tags=snap["tags"], testCases=snap["sample"])
-        from app.services.judge_policy import public_policy_fields
-        result.update(public_policy_fields(snap.get('judgePolicy')))
+        from app.core.config import settings
+        from app.services.judge_policy import public_policy_fields_for_problem
+        result.update(public_policy_fields_for_problem(
+            snap.get('judgePolicy'), len(snap.get('sample', [])) + len(snap.get('hidden', [])), settings=settings
+        ))
     return result
 
 
-def submission_read(submission, include_code=False):
+def submission_read(db, submission, include_code=False):
     from app.services.judge_metrics import public_usage
-    result = {"id": submission.id, "contestProblemId": submission.contest_problem_id,
+    problem = db.get(m.ContestProblem, submission.contest_problem_id)
+    result = {"id": submission.public_id or public_receipt_id(submission.id),
+              "contestProblemId": contest_problem_key(problem) if problem else "unavailable",
               "language": submission.language, "receivedAt": iso(submission.received_at),
               "status": submission.status, "verdict": submission.verdict, "finishedAt": iso(submission.finished_at),
               "resourceUsage":public_usage(submission.resource_report)}
@@ -132,7 +156,7 @@ def _scoreboard_projection(db, contest, *, verdict_overrides=None):
                 penalty_count += wrong
                 last_seconds = max(last_seconds, elapsed)
             pending = any(s.status in PENDING for s in attempts)
-            cells.append({"contestProblemId": p.id, "label": chr(65 + p.position),
+            cells.append({"contestProblemId": chr(65 + p.position), "label": chr(65 + p.position),
                           "points": p.points if accepted else 0, "wrongAttempts": wrong,
                           "acceptedAt": iso(accepted.received_at) if accepted else None,
                           "elapsedSeconds": elapsed, "pending": pending,
@@ -148,18 +172,16 @@ def _scoreboard_projection(db, contest, *, verdict_overrides=None):
         row["rank"] = rank
         previous = key
     return {"rows": rows, "pendingCount": sum(s.status in PENDING for s in submissions),
-            "problems": [{"id": p.id, "label": chr(65 + p.position), "points": p.points} for p in problems]}
+            "problems": [{"id": chr(65 + p.position), "label": chr(65 + p.position),
+                          "points": p.points} for p in problems]}
 
 
 def _scoreboard_names(db, rows):
     user_ids = [row["userId"] for row in rows]
     if not user_ids:
         return {}
-    return {
-        user_id: nickname or username
-        for user_id, nickname, username in db.query(m.User.id, m.User.nickname, m.User.username).filter(
-            m.User.id.in_(user_ids)).all()
-    }
+    users = db.query(m.User).filter(m.User.id.in_(user_ids)).all()
+    return {user.id: public_display_name(user) for user in users}
 
 
 def _scoreboard_response(db, contest, projection, at):
@@ -170,7 +192,7 @@ def _scoreboard_response(db, contest, projection, at):
         # Never mutate a Redis-decoded object: a cache hit must remain the
         # name-free, public projection written by the original request.
         rows.append({
-            "userId": row["userId"],
+            "userId": public_user_key(row["userId"]),
             "username": names.get(row["userId"], row["userId"]),
             "totalPoints": row["totalPoints"],
             "penaltySeconds": row["penaltySeconds"],

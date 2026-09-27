@@ -194,8 +194,10 @@ async def test_submit_http_rejects_client_resource_overrides_before_enqueue(env,
         env.db.expire_all()
         job_id = admitted.json()['id' if target == 'contest' else 'executionId']
         if target == 'contest':
-            job_id = env.db.get(m.ContestSubmission, job_id).execution_job_id
-        job = env.db.get(m.ExecutionJob, job_id)
+            job_id = env.db.query(m.ContestSubmission).filter_by(public_id=job_id).one().execution_job_id
+            job = env.db.get(m.ExecutionJob, job_id)
+        else:
+            job = env.db.query(m.ExecutionJob).filter_by(public_id=job_id).one()
         assert job is not None and job.payload['judge_contract']['profile']['run']['cpuMs'] < 300_000
 
 
@@ -539,7 +541,7 @@ async def test_expired_lease_recovery_and_compile_error(env, monkeypatch):
         result = await env.worker()._execute(recovered)
         assert queue.finish(recovered.id, recovered.token, result)
         env.db.expire_all()
-        record=env.db.get(m.ContestSubmission,r.json()['id'])
+        record=env.db.query(m.ContestSubmission).filter_by(public_id=r.json()['id']).one()
         assert record.status=='completed' and record.verdict=='compile_error'
         assert service.scoreboard(env.db,env.db.get(m.Contest,contest['id']))['rows'][0]['penaltySeconds']==0
 
@@ -590,7 +592,7 @@ async def test_system_retry_and_shutdown_recovery(env, monkeypatch):
         with pytest.raises(asyncio.CancelledError):
             await task
         env.db.expire_all()
-        assert env.db.get(m.ContestSubmission, response.json()['id']).status == 'running'
+        assert env.db.query(m.ContestSubmission).filter_by(public_id=response.json()['id']).one().status == 'running'
         # Cancellation never releases capacity by assumption. The next worker
         # first reaps this expired claim, then retries the persisted receipt.
         env.clock[0] += timedelta(seconds=121)
@@ -599,10 +601,10 @@ async def test_system_retry_and_shutdown_recovery(env, monkeypatch):
         monkeypatch.setattr(compiler_service.compiler_instance, '_execute', unavailable)
         assert await env.worker().run_once()
         env.db.expire_all()
-        assert env.db.get(m.ContestSubmission, response.json()['id']).status == 'queued'
+        assert env.db.query(m.ContestSubmission).filter_by(public_id=response.json()['id']).one().status == 'queued'
         assert await env.worker().run_once()
         env.db.expire_all()
-        record = env.db.get(m.ContestSubmission, response.json()['id'])
+        record = env.db.query(m.ContestSubmission).filter_by(public_id=response.json()['id']).one()
         assert record.status == 'completed' and record.verdict == 'system_error'
 
 

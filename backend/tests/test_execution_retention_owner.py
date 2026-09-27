@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from app.main import app
 from app.models.database import ExecutionJob
 from app.services.execution_retention import expire_execution_content
-from tests.test_execution_api import runtime
+from tests.test_execution_api import _job_by_public_id, runtime
 
 
 AT = datetime(2030, 1, 20)
@@ -28,9 +28,10 @@ async def test_expired_receipt_request_id_is_scoped_to_each_anonymous_session(ru
     ):
         accepted = await first.post("/api/v1/executions", headers=headers, json=original)
         assert accepted.status_code == 202
-        original_job_id = accepted.json()["id"]
+        original_public_id = accepted.json()["id"]
         claim = queue.claim()
-        assert claim is not None and claim.id == original_job_id
+        assert claim is not None
+        original_job_id = claim.id
         assert queue.finish(
             original_job_id,
             claim.token,
@@ -48,16 +49,16 @@ async def test_expired_receipt_request_id_is_scoped_to_each_anonymous_session(ru
             assert expire_execution_content(db, at=AT, retention_days=7) == 1
             db.commit()
 
-        assert (await first.get(f"/api/v1/executions/{original_job_id}")).status_code == 410
-        assert (await second.get(f"/api/v1/executions/{original_job_id}")).status_code == 404
+        assert (await first.get(f"/api/v1/executions/{original_public_id}")).status_code == 410
+        assert (await second.get(f"/api/v1/executions/{original_public_id}")).status_code == 404
 
         replacement = await second.post("/api/v1/executions", headers=headers, json=original)
         assert replacement.status_code == 202
-        replacement_job_id = replacement.json()["id"]
-        assert replacement_job_id != original_job_id
+        replacement_public_id = replacement.json()["id"]
+        assert replacement_public_id != original_public_id
 
-        assert (await first.get(f"/api/v1/executions/{original_job_id}")).status_code == 410
-        assert (await second.get(f"/api/v1/executions/{original_job_id}")).status_code == 404
+        assert (await first.get(f"/api/v1/executions/{original_public_id}")).status_code == 410
+        assert (await second.get(f"/api/v1/executions/{original_public_id}")).status_code == 404
         assert (await first.post("/api/v1/executions", headers=headers, json=original)).status_code == 410
         assert (
             await first.post(
@@ -66,12 +67,12 @@ async def test_expired_receipt_request_id_is_scoped_to_each_anonymous_session(ru
                 json={**original, "code": "print('changed')"},
             )
         ).status_code == 410
-        assert (await second.get(f"/api/v1/executions/{replacement_job_id}")).status_code == 200
+        assert (await second.get(f"/api/v1/executions/{replacement_public_id}")).status_code == 200
 
         with factory() as db:
             assert db.query(ExecutionJob).count() == 2
             expired = db.get(ExecutionJob, original_job_id)
-            replacement_job = db.get(ExecutionJob, replacement_job_id)
+            replacement_job = _job_by_public_id(db, replacement_public_id)
             assert expired.payload == {}
             assert expired.result is None
             assert expired.content_expired_at == AT

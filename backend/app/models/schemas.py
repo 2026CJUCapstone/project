@@ -183,6 +183,7 @@ class CompileQueueResponse(CamelModel):
     problem_options: List[CompileHistoryOption] = Field(default_factory=list)
     option_limit: int = 200
     options_truncated: bool = False
+    detail_scope: Literal["aggregate", "mine", "admin"] = "aggregate"
 
 
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -303,7 +304,7 @@ class ProblemCreate(ProblemBase):
 
 class ProblemRead(CamelModel):
     id: str
-    creator_id: str
+    creator_id: Optional[str] = None
     title: str
     difficulty: str
     tags: List[str]
@@ -320,6 +321,7 @@ class ProblemRead(CamelModel):
     best_awarded_points: int = 0
     judge_limits: dict | None = None
     judge_policy_legacy: bool = False
+    judge_policy_compatibility: bool = False
     judge_policy: dict | None = None
     publication_status: Literal["legacy", "draft", "published"] = "legacy"
 
@@ -360,6 +362,7 @@ class UserRead(CamelModel):
     tag_proficiencies: List[TagProficiencyRead] = Field(default_factory=list)
     avatar_url: Optional[str] = None
     role: str = "user"
+    public_profile_enabled: bool = True
 
 class UserProfileUpdate(CamelModel):
     email: Optional[str] = Field(default=None, max_length=254)
@@ -379,6 +382,7 @@ class AdminUserUpdate(CamelModel):
     email: Optional[str] = Field(default=None, max_length=254)
     nickname: Optional[str] = Field(default=None, min_length=2, max_length=30)
     avatar_url: Optional[str] = Field(default=None, max_length=500)
+    public_profile_enabled: Optional[bool] = None
 
     @field_validator("email")
     @classmethod
@@ -482,7 +486,7 @@ class CommunityPostUpdate(CamelModel):
 class CommunityPostRead(CamelModel):
     id: str
     problem_id: str
-    user_id: str
+    user_id: Optional[str] = None
     author: str
     avatar_url: Optional[str] = None
     content: str

@@ -1,4 +1,6 @@
 import os
+import hashlib
+import json
 from contextlib import contextmanager
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -100,13 +102,25 @@ def migrate_schema(bind=None) -> None:
     _add_column_if_missing("users", "auth_version", "auth_version INTEGER DEFAULT 0 NOT NULL", bind)
     _add_column_if_missing("users", "role", "role VARCHAR DEFAULT 'user' NOT NULL", bind)
     _add_column_if_missing("users", "email", "email VARCHAR", bind)
+    _add_column_if_missing("users", "public_profile_enabled", "public_profile_enabled BOOLEAN DEFAULT TRUE NOT NULL", bind)
+    _add_column_if_missing("problems", "public_id", "public_id VARCHAR(32)", bind)
     _add_column_if_missing("problems", "points", "points INTEGER DEFAULT 100 NOT NULL", bind)
     _add_column_if_missing("problems", "deleted_at", "deleted_at TIMESTAMP", bind)
     _add_column_if_missing("problems", "judge_policy", "judge_policy JSON", bind)
     _add_column_if_missing("problems", "publication_review_required", "publication_review_required BOOLEAN", bind)
     _add_column_if_missing("problems", "publication_approved_at", "publication_approved_at TIMESTAMP", bind)
+    if "problems" in inspect(bind).get_table_names():
+        compatibility = json.dumps({"kind": "compatibility-v1"}, separators=(",", ":"))
+        with _connection(bind) as connection:
+            value = "CAST(:policy AS JSON)" if connection.dialect.name == "postgresql" else ":policy"
+            connection.execute(text(
+                "UPDATE problems SET judge_policy = " + value + " "
+                "WHERE judge_policy IS NULL AND publication_review_required IS NULL "
+                "AND id NOT IN ('__notice__', '__free__')"
+            ), {"policy": compatibility})
     _add_column_if_missing('submissions', 'resource_report', 'resource_report JSON', bind)
     _add_column_if_missing('contest_submissions', 'resource_report', 'resource_report JSON', bind)
+    _add_column_if_missing('contest_submissions', 'public_id', 'public_id VARCHAR(32)', bind)
     _add_column_if_missing('contest_rejudge_applications', 'preview_hash', 'preview_hash VARCHAR', bind)
     _add_column_if_missing('contest_rejudge_applications', 'review_provenance', 'review_provenance JSON', bind)
     _add_column_if_missing('contest_rejudge_applications', 'legacy_resolution_provenance', 'legacy_resolution_provenance JSON', bind)
@@ -118,6 +132,7 @@ def migrate_schema(bind=None) -> None:
     _add_column_if_missing('contest_rejudge_items', 'candidate_receipt_hash', 'candidate_receipt_hash VARCHAR', bind)
     _create_index_if_missing('contest_rejudge_items', 'ix_contest_rejudge_items_shard_id', ['shard_id'], bind)
     _add_column_if_missing('execution_jobs', 'resource_reservation', 'resource_reservation JSON', bind)
+    _add_column_if_missing('execution_jobs', 'public_id', 'public_id VARCHAR(32)', bind)
     _add_column_if_missing("contests", "scoreboard_revision", "scoreboard_revision INTEGER DEFAULT 0 NOT NULL", bind)
     _add_column_if_missing("code_projects", "revision", "revision VARCHAR DEFAULT 'legacy' NOT NULL", bind)
     _add_column_if_missing('execution_jobs', 'quota_key', 'quota_key VARCHAR', bind)
@@ -134,8 +149,29 @@ def migrate_schema(bind=None) -> None:
     if 'execution_jobs' in inspect(bind).get_table_names():
         with _connection(bind) as connection:
             connection.execute(text('UPDATE execution_jobs SET quota_key = owner_key WHERE quota_key IS NULL'))
+            rows = connection.execute(text(
+                "SELECT id FROM execution_jobs WHERE public_id IS NULL OR public_id = ''"
+            )).scalars().all()
+            for job_id in rows:
+                digest = hashlib.sha256(f"public-job:{job_id}".encode("utf-8")).hexdigest()[:16]
+                connection.execute(
+                    text("UPDATE execution_jobs SET public_id = :public_id WHERE id = :id"),
+                    {"public_id": f"job_{digest}", "id": job_id},
+                )
         _create_index_if_missing('execution_jobs', 'ix_execution_jobs_quota_key', ['quota_key'], bind)
+        _create_unique_index_if_missing('execution_jobs', 'ix_execution_jobs_public_id', ['public_id'], bind)
     _create_index_if_missing("problems", "ix_problems_deleted_at", ["deleted_at"], bind)
+    if "problems" in inspect(bind).get_table_names():
+        with _connection(bind) as connection:
+            rows = connection.execute(text("SELECT id FROM problems WHERE public_id IS NULL OR public_id = ''")).scalars().all()
+            for problem_id in rows:
+                digest = hashlib.sha256(f"public-problem:{problem_id}".encode("utf-8")).hexdigest()[:16]
+                connection.execute(
+                    text("UPDATE problems SET public_id = :public_id WHERE id = :id"),
+                    {"public_id": f"p_{digest}", "id": problem_id},
+                )
+        _create_unique_index_if_missing("problems", "ix_problems_public_id", ["public_id"], bind)
+    _create_index_if_missing("users", "ix_users_public_profile_enabled", ["public_profile_enabled"], bind)
     _create_index_if_missing(
         "problems",
         "ix_problems_publication_gate",
@@ -146,6 +182,22 @@ def migrate_schema(bind=None) -> None:
     for submission_table in ('submissions', 'contest_submissions'):
         _add_column_if_missing(submission_table, 'execution_job_id', 'execution_job_id VARCHAR REFERENCES execution_jobs(id)', bind)
         _create_unique_index_if_missing(submission_table, f'ix_{submission_table}_execution_job', ['execution_job_id'], bind)
+    if 'contest_submissions' in inspect(bind).get_table_names():
+        with _connection(bind) as connection:
+            rows = connection.execute(text(
+                "SELECT id FROM contest_submissions WHERE public_id IS NULL OR public_id = ''"
+            )).scalars().all()
+            for submission_id in rows:
+                digest = hashlib.sha256(
+                    f"public-receipt:{submission_id}".encode("utf-8")
+                ).hexdigest()[:16]
+                connection.execute(
+                    text("UPDATE contest_submissions SET public_id = :public_id WHERE id = :id"),
+                    {"public_id": f"submission_{digest}", "id": submission_id},
+                )
+        _create_unique_index_if_missing(
+            'contest_submissions', 'ix_contest_submissions_public_id', ['public_id'], bind
+        )
     _add_column_if_missing("comments", "updated_at", "updated_at TIMESTAMP", bind)
     _create_unique_index_if_missing("users", "ix_users_email_unique", ["email"], bind)
     with _connection(bind) as connection:

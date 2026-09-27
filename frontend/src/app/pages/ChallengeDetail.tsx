@@ -98,7 +98,7 @@ export function ChallengeDetail() {
               <h2 className="text-lg font-bold text-red-600 dark:text-red-400 mb-1">문제 로딩 실패</h2>
               <p className="text-sm text-gray-700 dark:text-gray-300">{loadError}</p>
               <button
-                onClick={() => navigate('/challenges')}
+                onClick={() => navigate('/problems')}
                 className="mt-4 px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-[#444] bg-white dark:bg-[#1e1e1e] hover:bg-gray-50 dark:hover:bg-[#252525]"
               >
                 목록으로 돌아가기
@@ -117,7 +117,7 @@ export function ChallengeDetail() {
           <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">문제를 찾을 수 없습니다</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">삭제되었거나 잘못된 URL일 수 있습니다.</p>
           <button
-            onClick={() => navigate('/challenges')}
+            onClick={() => navigate('/problems')}
             className="px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-[#444] bg-white dark:bg-[#1e1e1e] hover:bg-gray-100 dark:hover:bg-[#252525]"
           >
             목록으로 돌아가기
@@ -132,7 +132,7 @@ export function ChallengeDetail() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-6">
           <button
-            onClick={() => navigate('/challenges')}
+            onClick={() => navigate('/problems')}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-[#444] bg-white dark:bg-[#1e1e1e] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525]"
           >
             <ArrowLeft size={16} />
@@ -194,6 +194,7 @@ export function ChallengeDetail() {
               policy={challenge.judgeLimits ?? null}
               selectedLanguage={language}
               legacy={challenge.judgePolicyLegacy === true}
+              compatibility={challenge.judgePolicyCompatibility === true}
             />
           </div>
 

@@ -268,6 +268,28 @@ def _dump(path: Path, postgres_id: str) -> None:
     b.o.run("docker", "exec", "-i", postgres_id, "pg_restore", "--list", data=path.read_bytes(), timeout=60)
 
 
+def _rehearse_public_quality_cleanup(container: str) -> None:
+    """Apply the exact cleanup only to the disposable restored rehearsal DB."""
+    script = b.ROOT / "scripts/public_quality_v27.sql"
+    assert script.is_file() and script.stat().st_size <= 64 * 1024
+    b.o.run(
+        "docker", "exec", "-i", container,
+        "psql", "-v", "ON_ERROR_STOP=1", "-U", "compiler", "-d", "compiler",
+        data=script.read_bytes(), timeout=60,
+    )
+    assert b.o.sql(
+        container,
+        "SELECT "
+        "(SELECT count(*) FROM users WHERE public_profile_enabled=false AND username ~ '^(debug_|report_|test123$|testtok_|ui_)')"
+        "||':'||(SELECT count(*) FROM contests WHERE published=false AND id IN "
+        "('436e5826-b411-4ecb-a960-d1b3a54b2db9','d1eef831-4729-4dbb-83d3-8c1178a722fd'))"
+        "||':'||(SELECT count(*) FROM problems WHERE deleted_at IS NOT NULL AND id IN "
+        "('5aec67d0-ce85-4378-b299-d24ed3cc8fd2','da83f02e-639f-4c0c-8bf2-00b813052dda',"
+        "'9ec2f010-c970-487f-ba82-dee241db8d05','2172fd0d-bf11-485f-9a95-61f4a1ca3a83'))"
+        "||':'||(SELECT count(*) FROM comments WHERE id='system-community-guide-v1' AND content LIKE '%챌린지%')",
+    ) == "7:2:4:0"
+
+
 def _write_env(path: Path, environment: dict[str, str]) -> None:
     assert all("\n" not in str(value) and "\r" not in str(value) for value in environment.values())
     assert all(re.fullmatch(r"[A-Z][A-Z0-9_]*", key) for key in environment)
@@ -377,6 +399,7 @@ def rehearse(state: dict) -> None:
         _run_initialize(state["images"]["backend"], network, env_file)
         assert b.o.sql(postgres, "SELECT count(*) FROM schema_migrations WHERE version='" + state["new_marker"] + "'") == "1"
         assert _fingerprints(postgres, columns) == before
+        _rehearse_public_quality_cleanup(postgres)
         state["rehearsal"] = {"passed": True, "business_fingerprints": before}
         b.save(state)
     finally:

@@ -149,7 +149,7 @@ test('actual contest editor, participation, Docker grading, scoreboard and wall-
     expect(await publicProblem.text()).not.toContain(hiddenMarker);
     await expect.poll(async () => (await (await request.get(api + '/auth/me', { headers: solverHeaders })).json()).totalScore,
       { timeout: 15_000 }).toBe(startingScore + 17);
-    await solver.goto(base + '/challenges');
+    await solver.goto(base + '/problems');
     await expect(solver.getByText(problemTitle, { exact: true })).toBeVisible();
     await solver.goto(base + '/ide');
     await solver.getByRole('tab', { name: '코드', exact: true }).click();

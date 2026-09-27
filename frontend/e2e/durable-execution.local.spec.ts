@@ -61,7 +61,7 @@ test('practice JudgePanel resolves a wrong answer through execution polling', as
       : { id: 'judge-e2e', status: 'completed', receivedAt: 'now', result: { ok: true, verdict: 'wrong_answer', value } }) });
   });
 
-  await page.goto('/challenges/practice-e2e');
+  await page.goto('/problems/practice-e2e');
   await page.getByRole('button', { name: '문제 풀기' }).click();
   await page.getByRole('button', { name: /채점하기/ }).click();
   await page.getByRole('button', { name: '제출', exact: true }).click();

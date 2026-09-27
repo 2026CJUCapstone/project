@@ -78,7 +78,7 @@ test('admin creates → participant solves → scoreboard → automatic public r
   expect(user.totalScore).toBe(100);
   const queueText = await (await request.get(`${api}/api/v1/compiler/queue`)).text();
   expect(queueText).not.toContain('Secret Forty Two'); expect(queueText).not.toContain('HIDDEN_INPUT_NEVER_PUBLIC');
-  await solver.goto('http://127.0.0.1:4175/challenges');
+  await solver.goto('http://127.0.0.1:4175/problems');
   await expect(solver.getByText('Secret Forty Two',{exact:true})).toBeVisible();
   await solver.goto('http://127.0.0.1:4175/ide');
   await expect(editor).not.toContainText('contest-only-code');

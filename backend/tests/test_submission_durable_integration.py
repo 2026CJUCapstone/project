@@ -58,13 +58,14 @@ async def test_expired_practice_receipt_never_reexecutes_or_changes_awarded_poin
         assert first.status_code == 202
         job_id = first.json()['executionId']
         claim = queue.claim()
-        assert queue.finish(job_id, claim.token, accepted(claim))
+        internal_job_id = claim.id
+        assert queue.finish(internal_job_id, claim.token, accepted(claim))
         with factories[0]() as db:
-            db.get(m.ExecutionJob, job_id).finished_at = now_utc()-timedelta(days=8)
+            db.get(m.ExecutionJob, internal_job_id).finished_at = now_utc()-timedelta(days=8)
             db.flush()
             assert expire_execution_content(db, retention_days=7) == 1
-            db.query(m.Submission).filter_by(execution_job_id=job_id).delete()
-            db.query(m.CompileQueueRecord).filter_by(id=job_id).delete()
+            db.query(m.Submission).filter_by(execution_job_id=internal_job_id).delete()
+            db.query(m.CompileQueueRecord).filter_by(id=internal_job_id).delete()
             db.commit()
         for retry in (data, {**data, 'code': 'changed'}):
             response = await client.post('/api/v1/problems/problem/submit', headers=headers, json=retry)
@@ -159,7 +160,8 @@ async def test_retry_after_ordinary_history_prune_returns_original_job(environme
             queue.finish(claim.id, claim.token, accepted(claim))
         with factories[1]() as db:
             assert db.query(m.Submission).count() == 1
-            assert db.get(m.Submission, first.json()['id']) is None
+            assert db.query(m.Submission).join(m.ExecutionJob).filter(
+                m.ExecutionJob.public_id == first.json()['executionId']).first() is None
         repeated = await client.post('/api/v1/problems/problem/submit', headers=identity, json=data)
         assert repeated.status_code == 202, repeated.text
         assert repeated.json()['id'] == first.json()['id']

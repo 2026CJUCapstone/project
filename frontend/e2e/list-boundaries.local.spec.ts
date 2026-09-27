@@ -64,7 +64,7 @@ test('changing search cancels a held real load-more response without corrupting 
         await route.fulfill({ response });
       } finally { handled(); }
     });
-    await page.goto('/challenges');
+    await page.goto('/problems');
     await page.getByPlaceholder('문제 제목/설명 검색').fill(prefix);
     await expect(page.getByText('25문제', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: /문제 더 보기/ }).click();

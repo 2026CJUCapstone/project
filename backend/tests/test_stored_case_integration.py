@@ -119,7 +119,8 @@ async def test_large_upload_receipt_restart_one_case_loading_and_private_score_r
         submitted=await client.post(submit_url,headers=auth,json=dict(language='python',code='print(42)'))
         assert submitted.status_code==202,submitted.text
         with env.factory() as db:
-            job=db.get(m.ExecutionJob,submitted.json()['executionId'])
+            job=db.query(m.ExecutionJob).filter_by(public_id=submitted.json()['executionId']).one()
+            internal_job_id=job.id
             frozen=deepcopy(job.payload)
             assert len(json.dumps(frozen).encode())<5000 and frozen['hidden']==raw['hiddenTestCases']
             source=db.get(m.Problem,problem_id)
@@ -136,12 +137,13 @@ async def test_large_upload_receipt_restart_one_case_loading_and_private_score_r
             # Infrastructure failures retry with the same frozen receipt. Do
             # not change that policy merely to make the test immediately final.
             with env.factory() as db:
-                row=db.get(m.Submission,submitted.json()['id'])
+                row=db.query(m.Submission).filter_by(execution_job_id=internal_job_id).one()
                 assert row.verdict=='pending' and row.awarded_points==0
             for _ in range(env.worker().queue.max_attempts-1):
                 assert await env.worker().run_once()
         with env.factory() as db:
-            row=db.get(m.Submission,submitted.json()['id'])
+            row=db.query(m.Submission).join(m.ExecutionJob).filter(
+                m.ExecutionJob.public_id == submitted.json()['executionId']).one()
             assert row.verdict==('system_error' if corrupt else 'accepted')
             assert row.awarded_points==(0 if corrupt else 100)
             assert db.get(m.User,env.alice.id).total_score==(0 if corrupt else 100)
@@ -196,7 +198,7 @@ async def test_contest_schedule_edit_preserves_refs_and_receipt_uses_snapshot(en
             json=dict(code='print(42)',language='python',requestId='stored-frozen'))
         assert receipt.status_code==202,receipt.text
         with env.factory() as db:
-            row=db.get(m.ContestSubmission,receipt.json()['id'])
+            row=db.query(m.ContestSubmission).filter_by(public_id=receipt.json()['id']).one()
             assert db.get(m.ExecutionJob,row.execution_job_id).payload['hidden']==raw['hiddenTestCases']
 
 
@@ -279,7 +281,7 @@ async def test_actual_maximum_upload_contest_receipt_and_case_hydration(
             json=dict(code='print("synthetic")',language='python',requestId='actual-'+maximum_name))
         assert submitted.status_code==202,submitted.text
         with env.factory() as db:
-            row=db.get(m.ContestSubmission,submitted.json()['id'])
+            row=db.query(m.ContestSubmission).filter_by(public_id=submitted.json()['id']).one()
             job=db.get(m.ExecutionJob,row.execution_job_id)
             frozen=deepcopy(job.payload)
             assert frozen['hidden']==hidden and len(json.dumps(frozen).encode('utf-8'))<10_000
@@ -287,7 +289,7 @@ async def test_actual_maximum_upload_contest_receipt_and_case_hydration(
             db.commit()
         assert await env.worker().run_once()
         with env.factory() as db:
-            row=db.get(m.ContestSubmission,submitted.json()['id'])
+            row=db.query(m.ContestSubmission).filter_by(public_id=submitted.json()['id']).one()
             assert row.verdict=='accepted'
             job=db.get(m.ExecutionJob,row.execution_job_id)
             assert job.payload==frozen and 'inputRef' not in json.dumps(job.result)
@@ -445,13 +447,13 @@ async def test_actual_c_maximum_private_import_review_publication_and_submission
             json=dict(code='print("synthetic")',language='python',requestId='imported-c-maximum'))
         assert submitted.status_code==202,submitted.text
         with env.factory() as db:
-            row=db.get(m.ContestSubmission,submitted.json()['id'])
+            row=db.query(m.ContestSubmission).filter_by(public_id=submitted.json()['id']).one()
             frozen=deepcopy(db.get(m.ExecutionJob,row.execution_job_id).payload)
             assert frozen['hidden']==hidden and len(json.dumps(frozen).encode('utf-8'))<10_000
             assert db.query(m.Contest).count()==db.query(m.Problem).count()==db.query(m.ContestPackageImport).count()==1
         assert await env.worker().run_once()
         with env.factory() as db:
-            row=db.get(m.ContestSubmission,submitted.json()['id'])
+            row=db.query(m.ContestSubmission).filter_by(public_id=submitted.json()['id']).one()
             assert row.verdict=='accepted'
             job=db.get(m.ExecutionJob,row.execution_job_id)
             assert job.payload==frozen and 'inputRef' not in json.dumps(job.result)

@@ -149,9 +149,10 @@ def test_delete_and_submit_have_one_serial_order(contest_engine, monkeypatch):
     with factory() as db:
         problem = db.get(m.Problem, problem_id)
         submission = db.query(m.Submission).filter_by(problem_id=problem_id).one()
-        job = db.get(m.ExecutionJob, receipt['executionId'])
+        job = db.query(m.ExecutionJob).filter_by(public_id=receipt['executionId']).one()
         assert problem.deleted_at is not None
-        assert submission.id == receipt['id']
+        from app.services.public_identity import public_receipt_id
+        assert public_receipt_id(submission.id) == receipt['id']
         assert job.status == 'queued'
         assert job.payload['problem_id'] == problem_id
 
