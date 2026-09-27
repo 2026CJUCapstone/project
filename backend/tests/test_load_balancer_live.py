@@ -364,6 +364,9 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
                     assert peer in endpoints
                     seen.add(peer)
                     await asyncio.sleep(.1)
+            empty = worker.exec_run(['python','-c',
+                "from pathlib import Path; from app.core.config import settings; assert not any(Path(settings.SANDBOX_WORKDIR_ROOT).iterdir())"])
+            assert empty.exit_code == 0, empty.output
             await asyncio.to_thread(worker.stop,timeout=15)
             await wait_http(http,url+'/ready',status=503)
             assert proxy.exec_run(['wget','-q','-O','/dev/null','http://127.0.0.1:8080/ready']).exit_code != 0
@@ -372,7 +375,6 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
             # safe to retry as a system error, but it must not retain capacity
             # or require an impossible observation of a container that never
             # existed.
-            assert list(Path(sandbox).iterdir()) == []
             keys = list(store.scan_iter(match=prefix+':rate_limit:*'))
             if keys:
                 store.delete(*keys)
@@ -393,8 +395,10 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
             with replicas[0]() as db:
                 missing_row = db.get(m.ExecutionJob,missing_job)
                 assert missing_row.attempts == 3 and missing_row.sandbox_operation is None
+            empty = missing_worker.exec_run(['python','-c',
+                "from pathlib import Path; from app.core.config import settings; assert not any(Path(settings.SANDBOX_WORKDIR_ROOT).iterdir())"])
+            assert empty.exit_code == 0, empty.output
             await asyncio.to_thread(missing_worker.stop,timeout=15)
-            assert list(Path(sandbox).iterdir()) == []
     except Exception:
         # These are newly-created test services only. Redact even the isolated
         # credentials before showing bounded startup diagnostics on failure.
