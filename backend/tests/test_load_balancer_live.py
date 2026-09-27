@@ -201,12 +201,25 @@ async def test_proxy_distribution_api_loss_restart_shared_limits_and_websocket(r
                 store.delete(*keys)
             responses = []
             started = time.monotonic()
-            for number in range(16):
-                responses.append(await http.post(url+'/api/v1/executions',json=payload,
-                    headers={'X-Request-ID':request_id,'X-Forwarded-For':f'198.51.100.{number+1}'}))
-            assert time.monotonic()-started < 60
-            assert [r.status_code for r in responses].count(202) == 8
-            assert [r.status_code for r in responses].count(429) == 8
+            concurrency = asyncio.Semaphore(10)
+
+            async def submit(number):
+                async with concurrency:
+                    return await http.post(url+'/api/v1/executions',json=payload,
+                        headers={'X-Request-ID':request_id,
+                                 'X-Forwarded-For':f'198.51.100.{number+1}'})
+
+            # One cumulative rate window ramps through 10 -> 50 -> 100 actual
+            # proxy requests. The same request ID makes accepted retries safe;
+            # the shared Redis admission budget must still cap the window at 8.
+            for target in (10,50,100):
+                batch = await asyncio.gather(*(submit(number) for number in range(len(responses),target)))
+                responses.extend(batch)
+                statuses = [response.status_code for response in responses]
+                assert statuses.count(202) == 8
+                assert statuses.count(429) == target-8
+                assert set(statuses) == {202,429}
+            assert time.monotonic()-started < 120
             assert all(r.headers.get('retry-after') for r in responses if r.status_code == 429)
             assert {final_upstream(r.headers['x-audit-upstream']) for r in responses} == set(endpoints)
             with replicas[0]() as db:
