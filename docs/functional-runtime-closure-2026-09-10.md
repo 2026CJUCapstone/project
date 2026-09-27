@@ -1,5 +1,7 @@
 # 실제 화면 후속 검증 — 2026-09-10
 
+> Candidate-bundle evidence note (2026-09-28): the `../.deploy/test-results/...` targets below are historical local-run artifacts and are not included in this self-contained candidate bundle; they were not reconstructed. The currently preserved overview is [final readiness](final-readiness-acceptance-2026-09-27.md), with the scoped [latest isolated PostgreSQL/LB execution evidence summary](evidence/final-serialization-global-admission-2026-09-28.json). These newer summaries do not replace the raw per-run browser/runtime outputs cited below.
+
 ## 최종 결과와 범위
 
 최종 격리 이미지에서 브라우저 **12개 테스트 모두 통과**했다. 이번에 발견한 F13·F14를 수정했고 기존 F09~F12와 실제 대회·실행·제출 경로를 함께 검증했다. **F01 실제 SMTP 메일 재설정은 미완료**다. 모든 입력·장애·브라우저 조합의 무결함 보증이나 운영 배포 승인을 뜻하지 않는다.

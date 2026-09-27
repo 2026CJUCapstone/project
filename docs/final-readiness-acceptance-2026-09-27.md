@@ -2,7 +2,7 @@
 
 ## 결론
 
-제품 코드와 최종 격리 검증 기준선 `c05c8f74b1f47894d67cbc87122203dfa36d0435`는 SMTP를 제외한 로컬 회귀와 별도 PostgreSQL·Redis 통합 검사를 통과했다. 이 결과는 운영 배포, 상업 서비스 규모의 장시간 부하 수락, A–J 대회의 공개 승인을 뜻하지 않는다. 운영은 여전히 `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`이고, 이 작업에서 push, main 병합, 배포, 운영 DB 변경, 대회 등록은 하지 않았다.
+제품 코드와 최종 격리 검증 기준선 `304028511f65cbfd35762a15dbab930ef57e7026`은 SMTP를 제외한 전체 백엔드 회귀와 별도 PostgreSQL·Redis 통합 검사를 통과했다. 이 결과는 운영 배포, 상업 서비스 규모의 장시간 부하 수락, A–J 대회의 공개 승인을 뜻하지 않는다. 운영은 여전히 `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`이고, 이 작업에서 push, main 병합, 배포, 운영 DB 변경, 대회 등록은 하지 않았다.
 
 ## 이번 최종 검증
 
@@ -10,12 +10,12 @@
 |---|---:|---|
 | 새 LF checkout의 corpus manifest·runtime harness·재채점 집중 회귀 | 149 PASS, 5 SKIP | frozen manifest `sha256:e5213ca9d1aaf3691c91db22aa021870b532b653c015c58c4bf90fff8a8539fc`; skip은 외부 staged archive와 전용 runtime이 없는 명시적 조건이다. |
 | 사용자의 원본 작업 폴더에 동기화한 동일 변경 | 151 PASS, 1 SKIP | 원본의 기존 변경을 보존한 채 최신 세 파일을 반영했다. 원본 폴더에 이미 있던 staged archive 때문에 fresh checkout보다 두 검사가 더 실행됐다. |
-| 백엔드 전체 | 3,152 PASS, 456 SKIP, 10 subtests PASS, 0 FAIL, 507.90초 | 최종 기준선 `c05c8f74`의 새 LF worktree 결과다. skip은 PostgreSQL·Redis·POSIX·Docker/cgroup·외부 런타임 등 명시적 환경 조건이며 성공으로 세지 않는다. |
+| 백엔드 전체 | 3,153 PASS, 456 SKIP, 10 subtests PASS, 0 FAIL, 377.83초 | `30402851`의 정리 fail-closed 변경을 포함한 새 worktree 결과다. skip은 PostgreSQL·Redis·POSIX·Docker/cgroup·외부 런타임 등 명시적 환경 조건이며 성공으로 세지 않는다. |
 | 프런트 전체 | 58 files, 322 PASS | TypeScript 검사와 production build도 PASS. `npm ci` 감사 결과 알려진 취약점 0건. |
 | 서버 격리 PostgreSQL·Redis | 48 PASS, 3 SKIP, 0 FAIL, 147.03초 | 운영 DB·Redis와 분리된 기존 audit Compose를 재사용했다. 세 skip은 PostgreSQL 전용 process test의 SQLite 매개변수 변형이다. |
 | Linux A–J private package·bundle | 152 PASS, 4 SKIP, 0 FAIL, 263.92초 | owner-only 출력, blob closure, 부분 생성 실패 정리, symlink 거부, 동일 bundle replay, import transport를 비권한 UID·read-only·network-none container에서 확인했다. skip은 POSIX에서 불필요한 Windows 음성 테스트 1개, image의 Git 부재 1개, 별도 staged archive 부재 2개다. |
 | PostgreSQL private import 흐름 | 3 PASS, 0 FAIL, 21.86초 | 실제 C 최대 stored data package의 미검수 비공개 차단과 검수·재시도 흐름을 고유 임시 PostgreSQL schema에서 실행했다. 종료 후 `audit_contest_*`·`audit_queue_*` 잔여 schema는 0개다. |
-| 실제 격리 PostgreSQL 경쟁·LB·failover·부하 | 3 PASS, 0 FAIL, 107.41초 | 일반 제출↔삭제와 대회 연결↔삭제의 두 직렬화, 두 API 분산, 접수 API 강제 종료 뒤 다른 API의 receipt 조회·완료, 활성 terminal WebSocket upstream 종료와 취소 1회, 서로 다른 인증 계정의 HTTP 7건과 terminal 1건만 허용하는 전역 rate window, 10→50→100, 2→3→2, worker readiness 503을 실행했다. 누락 sandbox image는 세 번 재시도 뒤 journal·작업 폴더가 남지 않았다. [원시 영수증](evidence/final-serialization-global-admission-2026-09-28.json) |
+| 실제 격리 PostgreSQL 경쟁·LB·failover·부하 | 6 PASS, 0 FAIL, 150.38초 | 정리 단위검사 3건, 일반 제출↔삭제와 대회 연결↔삭제 직렬화 2건, LB 1건이다. 두 API 분산, 접수 API 강제 종료 뒤 다른 API의 receipt 조회·완료, 활성 terminal WebSocket upstream 종료와 취소 1회, 서로 다른 인증 계정의 HTTP 7건과 terminal 1건만 허용하는 전역 rate window, 10→50→100, 활성 socket·대기 backlog 중 2→3→2, worker 강제 교체와 lease 복구, readiness 503을 실행했다. 누락 sandbox image는 세 번 재시도 뒤 journal·작업 폴더가 남지 않았고, 정리 실패도 성공으로 완료 처리하지 않는다. [실행 증거 요약](evidence/final-serialization-global-admission-2026-09-28.json) |
 | readiness·controller fail-closed | 1 PASS, 0 FAIL, 182.65초 | 실제 Nginx/frontend/API/worker/controller를 만들고 release·pool·runtime identity 충돌, membership reload와 잘못된 peer 거부를 확인했다. |
 | API·worker lifecycle·runtime inventory | 14 PASS, 0 FAIL, 221.21초 | held HTTP·WebSocket drain, worker fencing·재시작, runtime restart·replace·graceful retirement·stateful 보존, namespace 위조 거부를 확인했다. |
 | 운영 read-only probe | `/health` 200, release marker 200 | 둘 다 운영 SHA `ebd7e367...`를 반환했다. `/webcompiler/ready`는 200 HTML SPA fallback을 반환해 운영 host include가 아직 고쳐지지 않았음을 재확인했다. |
@@ -41,13 +41,13 @@ CPU가 제한된 audit host에서 충돌 API는 identity mismatch를 기록했�
 | A03 비밀번호·메일 | 외부검증필요 | session-version, reset configuration 회귀 | SMTP는 이번 목표에서 제외. 실제 공급자·발송·수신·reset URL은 별도 수락 |
 | A04 테스트 0개 문제 | 완료-로컬 | problem integrity 회귀 | 없음 |
 | A05 삭제와 점수 원장 | 완료-로컬 | problem integrity 회귀와 실제 PostgreSQL 제출·대회 연결↔삭제 양방향 직렬화 2 PASS | 없음 |
-| A06 다중 프로세스 큐 | 현재증거 | 실제 격리 Nginx·두 API·worker·WebSocket의 정확한 upstream/API/worker 강제 종료·receipt 복구와 exact-once 완료 | 더 긴 soak와 운영과 동급인 별도 staging host 장애 |
+| A06 다중 프로세스 큐 | 현재증거 | 실제 격리 Nginx·두 API·worker·WebSocket의 정확한 upstream/API 강제 종료, 활성 socket·대기 backlog 중 API 증감, worker 강제 교체·lease 복구와 receipt 완료 | 더 긴 soak와 운영과 동급인 별도 staging host 장애 |
 | A07 실행 출력·로그 상한 | 외부검증필요 | runner output budget과 controller 물리 128 KiB cap | 느린 소비자와 혼합 부하에서 API·프록시·디스크 상한 |
 | A08 Docker 권한 분리 | 외부검증필요 | runtime binding·worker 격리 회귀 | 전용 non-default daemon 또는 VM의 전체 Compose 권한·mount 수명주기 |
 | A09 재시작·readiness | 현재증거 | 실제 격리 readiness/controller, API·worker drain, restart·replace·retirement 15 PASS | cold 전체 Compose와 host 손실 수락 |
 | A10 일반 제출 내구성 | 외부검증필요 | durable submission 회귀, PostgreSQL rejudge shard 통합 PASS | 실제 배포 이관·장애·혼합 부하 |
 | A11 점수판 조회 | 외부검증필요 | projection·cache concurrency 회귀 | 대용량 대회 자료와 혼합 조회 성능 |
-| A12 Redis 큐 정체 | 현재증거 | IP 한도를 높인 실제 격리 shared Redis 전역 admission, 서로 다른 계정의 고유 receipt, worker fencing·재시작, API loss와 100-request ramp | 장시간 backlog·Redis process 장애·전체 rollout |
+| A12 Redis 큐 정체 | 현재증거 | IP 한도를 높여 비구속으로 둔 실제 격리 shared Redis admission에서 유일하게 bind한 rate bucket인 global 한도 8, 서로 다른 계정의 고유 receipt, worker fencing·재시작, API loss와 100-request ramp | 장시간 backlog·Redis process 장애·전체 rollout |
 | A13 저장 충돌·유실 | 현재증거 | project revision·editor identity 회귀 | 전체 브라우저와 운영 흐름 수락 |
 | A14 모바일 IDE·목록 | 현재증거 | IDE mobile 회귀 | 실제 데이터가 많은 모바일 목록 검수 |
 | A15 503 시 로그아웃 | 완료-로컬 | header auth 회귀 | 없음 |
@@ -57,10 +57,10 @@ CPU가 제한된 audit host에서 충돌 API는 identity mismatch를 기록했�
 | A19 백업·복구 | 외부검증필요 | backup live 회귀 | 정기 일정, 외부 보관, RPO·RTO 승인 |
 | A20 보안 header·origin | 외부검증필요 | frontend security·trusted ingress 회귀 | TLS 종료단 HSTS와 운영 ingress |
 | A21 보관 정책 | 외부검증필요 | submission retention 회귀 | 기간 승인, 장기 receipt 상한, 대규모 정리 지연 |
-| A22 임시 파일 정리 | 외부검증필요 | runner cleanup·sandbox reconciliation 회귀와 실제 typed ImageNotFound 3회 재시도 뒤 journal/workdir 0 | daemon 장애와 전송 단절처럼 결과가 불확실한 RPC 복구 |
+| A22 임시 파일 정리 | 외부검증필요 | runner cleanup·sandbox reconciliation 회귀, worker 강제 종료에서 재현한 workdir 잔류의 fail-closed 수정, 실제 typed ImageNotFound 3회 재시도 뒤 journal/workdir 0 | daemon 장애와 전송 단절처럼 결과가 불확실한 RPC 복구 |
 | A23 조회·번들 | 외부검증필요 | compile history filter·browser 회귀 | 대용량 조회와 bundle 성능 |
 | A24 안내·접근성 | 현재증거 | auth modal 접근성·모바일 tab 회귀 | 전체 화면 키보드·확대·보조기기 검수 |
-| A25 로드밸런싱 | 현재증거 | 실제 두 upstream, API loss, receipt 연속성, 활성 WebSocket upstream loss, 고유 인증 receipt의 exact-once, 10→50→100, 2→3→2, drain·controller fail-closed | 별도 daemon/host의 cold deploy, 장시간 soak, Redis process loss, multi-host HA |
+| A25 로드밸런싱 | 현재증거 | 실제 두 upstream, API loss, receipt 연속성, 활성 WebSocket upstream loss, 고유 인증 receipt의 exact-once, 10→50→100, 활성 WS·대기 backlog 중 2→3→2, worker 교체·lease 복구, drain·controller fail-closed | 별도 daemon/host의 cold deploy, 장시간 soak, Redis process loss, multi-host HA |
 
 ## 5.4 최종 로드밸런싱 목표
 
@@ -68,8 +68,8 @@ CPU가 제한된 audit host에서 충돌 API는 identity mismatch를 기록했�
 
 - 두 upstream 분산과 접수 API 강제 종료 후 다른 API의 동일 receipt 조회·완료.
 - Python worker와 terminal WebSocket 입출력, 활성 socket의 실제 upstream API 강제 종료와 취소 1회, survivor의 새 terminal 접수, held HTTP·WebSocket drain.
-- IP 한도를 1,000으로 높이고 global 한도만 8로 둔 공유 rate window의 실제 누적 10→50→100 요청과 서로 다른 인증 계정의 고유 제출: terminal 1건과 HTTP 7건만 허용되고 나머지 2건은 429, 생성된 job은 모두 정확히 한 번 완료.
-- 2→3→2 membership 증감, runtime identity 충돌 fail-closed, worker restart·fencing, graceful retirement.
+- IP rate bucket은 1,000으로 높여 비구속으로 두고, 유일하게 bind한 rate bucket인 공유 global 한도는 8로 설정했다. 이 window에서 서로 다른 인증 계정으로 누적 10→50→100 요청을 보내 terminal 1건과 HTTP 7건만 허용되고 나머지 2건은 429이며, 생성된 job은 모두 정확히 한 번 완료됨을 확인했다.
+- 활성 terminal과 대기 HTTP backlog를 유지한 2→3→2 membership 증감, worker 강제 교체와 만료 lease 복구, runtime identity 충돌 fail-closed, worker fencing, graceful retirement.
 - 존재하지 않는 sandbox image의 typed 404는 동일 daemon/lease/operation에서만 no-effect로 확정하고 세 번 재시도 뒤 journal·작업 폴더를 제거. 연결 단절 등 모호한 실패는 그대로 조정 대상으로 보존.
 - 매 실행 뒤 테스트 container·image·network·Redis key·DB audit schema·sandbox 잔여값 0.
 
@@ -95,9 +95,9 @@ CPU가 제한된 audit host에서 충돌 API는 identity mismatch를 기록했�
 
 ## 증거 보존과 위생
 
-`docs/evidence`에는 이번 [최종 경쟁·전역 admission 영수증](evidence/final-serialization-global-admission-2026-09-28.json)과 [authoring validation 회귀 원시 기록](evidence/authoring-validation-regressions-2026-09-27.json)을 포함해 실행 범위와 실패 이력을 보존한다. [첫 reference 측정 요약](evidence/freshman-reference-first-pass-summary-2026-09-26.json)에는 당시 Windows checkout 절대 경로가 다섯 곳 남아 있지만 사용자명·비밀은 없고, 원시 영수증을 사후 변조하지 않기 위해 보존한다. `/tmp`와 PostgreSQL container 경로는 격리 실행 경로다. 전체 evidence 검색에서 명백한 실제 토큰·비밀번호·운영 비밀은 발견되지 않았다.
+`docs/evidence`에는 이번 [최종 경쟁·전역 admission 실행 증거 요약](evidence/final-serialization-global-admission-2026-09-28.json)과 [authoring validation 회귀 원시 기록](evidence/authoring-validation-regressions-2026-09-27.json)을 포함해 실행 범위와 실패 이력을 보존한다. [첫 reference 측정 요약](evidence/freshman-reference-first-pass-summary-2026-09-26.json)에는 당시 Windows checkout 절대 경로가 다섯 곳 남아 있지만 사용자명·비밀은 없고, 해당 기록은 원본 보존을 위해 그대로 둔다. `/tmp`와 PostgreSQL container 경로는 격리 실행 경로다. 전체 evidence 검색에서 명백한 실제 토큰·비밀번호·운영 비밀은 발견되지 않았다.
 
-서버에 이번 검증을 위해 만든 `/home/vulpo/webcompiler-audit-final-d000ec1e`, `/home/vulpo/webcompiler-audit-final-f18279e9`, `/home/vulpo/webcompiler-audit-lb-ws-O0UFNp`, `/home/vulpo/webcompiler-audit-final-c05-8RocHs`, `/home/vulpo/webcompiler-audit-final-c05-n0xPdp`와 전송 archive는 각 경로의 소유권·권한·container mount 참조를 확인한 뒤 삭제했다. 마지막 확인에서 이번 실행의 label을 가진 container·image·network와 audit DB schema·Redis key·sandbox entry가 모두 0개였다. 운영 컨테이너·운영 데이터·기존 audit PostgreSQL·Redis는 변경하지 않았다.
+서버에 이번 검증을 위해 만든 `/home/vulpo/webcompiler-audit-final-d000ec1e`, `/home/vulpo/webcompiler-audit-final-f18279e9`, `/home/vulpo/webcompiler-audit-lb-ws-O0UFNp`, `/home/vulpo/webcompiler-audit-final-c05-8RocHs`, `/home/vulpo/webcompiler-audit-final-c05-n0xPdp`, `/home/vulpo/webcompiler-audit-scale-9754-Xmbqux`와 전송 archive는 각 경로의 소유권·권한·container mount 참조를 확인한 뒤 삭제했다. 마지막 확인에서 이번 실행의 container·image·network·volume·sandbox entry·runner 잔여값이 모두 0개였다. 운영 컨테이너·운영 데이터·기존 audit PostgreSQL·Redis는 변경하지 않았다.
 
 ## 다음 실행의 필수 입력
 

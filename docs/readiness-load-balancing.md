@@ -1,16 +1,17 @@
 # 준비 상태에 따른 API 로드밸런싱
 
-2026-09-28 현재 운영 상태: migration-aware release `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`는 basic pool의 API 2개와 별도 worker, Redis, PgBouncer, API proxy로 정상 기동했고 내부 `:18003/ready` 및 proxy `:18000/ready`는 준비 상태 JSON을 반환한다. 고유 토큰을 붙인 순차 read-only GET 12개는 실제 두 API 로그에 7/5로 나뉘었고 live proxy는 `least_conn`을 사용한다. 다만 외부 `/webcompiler/ready`가 SPA fallback으로 HTML을 반환하는 설정 드리프트를 실측했다. `frontend/nginx.conf`와 운영 include에 exact readiness location을 추가하고 소스 회귀를 통과했으나 아직 재배포하지 않았다. 최신 후보 `c05c8f74`의 별도 single-host 격리 시험은 두 API 분산, 접수 API와 활성 WebSocket upstream 장애, survivor receipt/신규 terminal, global 한도의 고유 인증 receipt exact-once, 10→50→100, 2→3→2, worker readiness 503까지 통과했다. 이는 운영 장시간 soak, Redis process/cold Compose 장애, 독립 daemon/VM 또는 multi-host HA 증거가 아니며, managed blue/green controller 검증과 현재 basic pool 배포를 같은 완료 증거로 합치지 않는다.
+2026-09-28 현재 운영 상태: migration-aware release `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`는 basic pool의 API 2개와 별도 worker, Redis, PgBouncer, API proxy로 정상 기동했고 내부 `:18003/ready` 및 proxy `:18000/ready`는 준비 상태 JSON을 반환한다. 고유 토큰을 붙인 순차 read-only GET 12개는 실제 두 API 로그에 7/5로 나뉘었고 live proxy는 `least_conn`을 사용한다. 다만 외부 `/webcompiler/ready`가 SPA fallback으로 HTML을 반환하는 설정 드리프트를 실측했다. `frontend/nginx.conf`와 운영 include에 exact readiness location을 추가하고 소스 회귀를 통과했으나 아직 재배포하지 않았다. 최신 후보 `30402851`의 별도 single-host 격리 시험은 두 API 분산, 접수 API와 활성 WebSocket upstream 장애, survivor receipt/신규 terminal, 유일하게 bind한 공유 global rate bucket에서의 고유 인증 receipt exact-once, 10→50→100, 활성 socket·대기 backlog 중 2→3→2, worker 강제 교체·lease 복구, worker readiness 503까지 통과했다. 이는 운영 장시간 soak, Redis process/cold Compose 장애, 독립 daemon/VM 또는 multi-host HA 증거가 아니며, managed blue/green controller 검증과 현재 basic pool 배포를 같은 완료 증거로 합치지 않는다.
 
 ## 2026-09-28 최종 single-host 격리 결과
 
-최종 검증 후보 `c05c8f74b1f47894d67cbc87122203dfa36d0435`의 정확한 Git archive(`sha256:59284358014b4a368d2e3185a7921321a0b539376d826d8c8160ba03bf117b73`)를 운영 서비스와 분리된 audit PostgreSQL·Redis 및 외부 host port가 없는 Docker/Nginx/API/worker 구성에서 실행해 삭제 경쟁 2건과 LB 1건, 합계 **3 PASS/107.41초**를 얻었다. [실행 영수증](evidence/final-serialization-global-admission-2026-09-28.json)에 범위와 정리 결과를 보존한다. 실제 시나리오는 다음을 모두 포함한다.
+최종 제품 후보 `304028511f65cbfd35762a15dbab930ef57e7026`의 재현 archive(`sha256:0205ab2d97eb57af52169fcdef3e949c5e764b1c1dbe7c885e97134425a3896e`)와 서버에서 검증한 base+delta 조립 SHA를 [실행 증거 요약](evidence/final-serialization-global-admission-2026-09-28.json)에 보존했다. 운영 서비스와 분리된 audit PostgreSQL·Redis 및 외부 host port가 없는 Docker/Nginx/API/worker 구성에서 정리 단위검사 3건, 삭제 경쟁 2건, LB 1건, 합계 **6 PASS/150.38초**를 얻었다. 실제 시나리오는 다음을 모두 포함한다.
 
 - 두 API에 요청이 분배되고, receipt를 받은 API를 종료한 뒤 survivor가 같은 receipt의 완료를 반환한다.
 - 활성 terminal WebSocket을 실제로 담당한 API를 찾아 종료한다. socket은 닫히고 receipt는 정확히 한 번 취소되며, survivor는 새 terminal을 받는다.
-- IP 한도는 1,000으로 높이고 global 한도만 8로 설정한다. terminal 1건 뒤 서로 다른 인증 계정의 HTTP 제출 9건을 보내 7건은 202, 2건은 429이며, 만들어진 고유 job은 모두 한 번만 완료되고 두 API가 모두 요청을 받는지 확인한다.
+- IP rate bucket은 1,000으로 높여 비구속으로 두고, 유일하게 bind한 rate bucket인 공유 global 한도는 8로 설정한다. terminal 1건 뒤 서로 다른 인증 계정의 HTTP 제출 9건을 보내 7건은 202, 2건은 429이며, 만들어진 고유 job은 모두 한 번만 완료되고 두 API가 모두 요청을 받는지 확인한다.
 - 같은 request ID로 누적 10→50→100 shared-rate window를 확인해 추가 job 생성 없이 제한을 검증한다.
-- 2→3→2 membership, worker 종료 뒤 readiness 503, proxy의 실패 peer quarantine 시간이 실제로 지난 뒤의 복구를 확인한다.
+- 활성 terminal과 일곱 대기 HTTP receipt를 유지한 2→3→2 membership, worker 강제 교체와 만료 lease 복구, worker 종료 뒤 readiness 503, proxy의 실패 peer quarantine 시간이 실제로 지난 뒤의 복구를 확인한다.
+- worker 강제 종료에서 작업 폴더 삭제 오류가 숨겨져 완료 처리되던 결함을 재현했다. 삭제 부재를 확인하지 못하면 lease를 보존하도록 고친 뒤 최종 sandbox 잔여값 0을 확인했다.
 - 존재하지 않는 sandbox image는 typed 404로 세 번 재시도되고 system error로 끝난다. 같은 daemon/lease/operation에 결속된 권위 있는 no-effect 응답만 create journal을 정산하며 작업 폴더도 worker UID 기준으로 비어 있다. 전송 단절 같은 모호한 결과는 이 경로로 지우지 않는다.
 
 실행 뒤 audit label container·image, audit queue schema, `audit-lb-*` Redis key와 sandbox entry는 모두 0이었다. 임시 소스 경로도 mount 참조와 정확한 소유권을 확인한 뒤 삭제했다. 운영 컨테이너·데이터와 상시 audit PostgreSQL·Redis는 변경하지 않았다. 남은 수락 조건은 장시간 bot/WS 혼합 soak, Redis process와 cold 전체 Compose 장애, 운영 동급의 독립 daemon/VM, 그리고 요구 시 multi-host 한 대 손실이다.

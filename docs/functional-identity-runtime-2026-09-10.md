@@ -1,5 +1,7 @@
 # Current-image identity runtime check — 2026-09-10
 
+> Candidate-bundle evidence note (2026-09-28): the `../.deploy/test-results/identity-runtime/results.json` artifact and the local Node executable referenced below are historical local-run outputs, not included in this self-contained candidate bundle; the original result was not reconstructed. The currently preserved overview is [final readiness](final-readiness-acceptance-2026-09-27.md), and the [latest isolated PostgreSQL/LB execution evidence summary](evidence/final-serialization-global-admission-2026-09-28.json) covers a different, explicitly scoped run. Neither is a raw or scenario-equivalent replacement for the historical identity-runtime result.
+
 ## Result
 
 Root follow-up on the F13+F14 frontend (`sha256:0c2bf9cfd47e60d9ad55628245308d7863355797ffee7570db0fbbddb3085bf3`): **3/3 PASS, 19.5 seconds**. The same result JSON now contains this final run. The long-email fixture was tightened to a valid <=64-character local part while keeping the whole address longer than64. The first 14.3-second result below is historical; no duplicate case count is added. Runtime image/archive evidence, not the inherited health response's deployment SHA setting, identifies the tested build.

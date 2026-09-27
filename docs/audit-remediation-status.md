@@ -1,8 +1,8 @@
 # 감사 후속 수정 진행표
 
-## 2026-09-28 최종 후보 검증 — `c05c8f74`
+## 2026-09-28 최종 후보 검증 — `30402851`
 
-최종 제품 코드 기준선 `c05c8f74b1f47894d67cbc87122203dfa36d0435`의 새 LF worktree에서 백엔드 전체 **3,152 PASS/456 조건부 SKIP/10 subtests PASS/실패 0/507.90초**, 프런트 **58 files/322 PASS**, TypeScript 검사와 production build가 통과했다. 별도 서버 audit PostgreSQL·Redis에서는 일반 제출↔삭제와 대회 연결↔삭제를 같은 execution/problem lock 순서로 직렬화하고, IP 한도를 높인 상태에서 global 한도 8을 확인하는 single-host 격리 LB까지 **3 PASS/107.41초**로 통과했다. 활성 WebSocket의 정확한 upstream 종료, 서로 다른 인증 계정의 고유 receipt와 exact-once 완료, 누적 10→50→100, 2→3→2, worker readiness 실패, typed ImageNotFound 정리를 포함한다. 누락 image는 세 번 재시도 뒤 journal·workdir 0이었고, 모든 audit resource 잔여값도 0이다. [실행 영수증](evidence/final-serialization-global-admission-2026-09-28.json)에 archive SHA·범위·실패 이력·정리 결과를 보존했다.
+최종 제품 코드 기준선 `304028511f65cbfd35762a15dbab930ef57e7026`의 새 worktree에서 백엔드 전체 **3,153 PASS/456 조건부 SKIP/10 subtests PASS/실패 0/377.83초**, 프런트 **58 files/322 PASS**, TypeScript 검사·production build가 통과했다. 작업 폴더 정리 실패를 성공으로 숨기지 않도록 보강한 뒤의 전체 결과다. 별도 서버 audit PostgreSQL·Redis에서는 정리 단위검사 3건, 일반 제출↔삭제와 대회 연결↔삭제 직렬화 2건, IP 한도를 높이고 global 한도 8을 확인한 single-host LB 1건을 합쳐 **6 PASS/150.38초**로 통과했다. 활성 WebSocket을 유지한 API 2→3→2, 대기 receipt 조회, worker 강제 교체와 lease 복구, 고유 receipt exact-once, 누적 10→50→100, readiness 실패, typed ImageNotFound 정리를 포함한다. 강제 교체에서 재현된 workdir 잔류는 정리 실패를 fail-closed하도록 고친 뒤 0건이었고, 모든 audit resource 잔여값도 0이다. [실행 증거 요약](evidence/final-serialization-global-admission-2026-09-28.json)에 명령·출력 요약·archive/전송 조립 SHA·실패 이력·정리 결과를 보존했다.
 
 운영 SHA는 여전히 `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`다. 공개 `/webcompiler/ready`가 200 HTML SPA fallback을 반환하는 문제도 다시 확인했다. push, main 병합, 배포, 운영 데이터 변경, A–J 등록은 하지 않았다. A01–A25와 5.4, A–J 패키지, 실제 검증 결과와 남은 외부 조건은 [최종 준비 상태 문서](final-readiness-acceptance-2026-09-27.md)를 기준으로 한다. 아래 과거 checkpoint는 이 판정을 덮어쓰지 않는다.
 
@@ -471,7 +471,7 @@ inventory-v5 전체86700은1237 passed /20 host-tool skipped /2 subtests passed(
 | A22 임시 파일 정리 | Terra/주 에이전트 | 부분 검증 | 초기화·파일 작성 실패시 정리 및 미확인 RPC의 증거 보존 검증. typed Docker ImageNotFound는 동일 daemon/lease/operation의 권위 있는 no-effect 응답일 때만 create journal을 정산하며, 실제 세 번 재시도 뒤 system_error·journal 0·worker UID 기준 workdir 0을 확인했다. 연결 단절·daemon 장애 같은 불확실 RPC 조정은 남음 |
 | A23 조회/번들 | Terra/Sol/주 에이전트 | 부분 검증 | 커뮤니티 GROUP BY, 13 lazy routes로 초기JS1655→786KB. Monaco/worker self-host 실제 Edge 검증(CDN0). 문제/대회/library 서버 필터 후 pagination/count, 프런트 더보기/필터 재시작 테스트 통과. 대규모 데이터 조회 비용/번들 추가 최적화 검증 남음 |
 | A24 안내/접근성 | Terra/Sol | 부분 검증 | tokenless 비밀번호 재설정 요청 폼, Admin 로그인 안내, 모바일 탭 접근성 테스트 통과. 전체 화면 검사 남음 |
-| A25 로드밸런싱 | 주 에이전트/Terra ultra 검토/Luna max 단위검사 | 부분 검증 | 실제 두 API 분배, 접수 API loss 후 survivor receipt, 활성 WS upstream loss, 고유 인증 receipt 전역 한도와 exact-once, 10→50→100, 2→3→2, worker readiness 503 및 controller quarantine를 한 single-host 격리 시험으로 통과. cold 전체 Compose·Redis process loss·장시간 soak·독립 daemon/VM·multi-host HA는 남음 |
+| A25 로드밸런싱 | 주 에이전트/Terra ultra 검토/Luna max 단위검사 | 부분 검증 | 실제 두 API 분배, 접수 API loss 후 survivor receipt, 활성 WS upstream loss, 고유 인증 receipt 전역 한도와 exact-once, 10→50→100, 활성 WS·대기 backlog 중 2→3→2, worker 교체·lease 복구, readiness 503 및 controller quarantine를 single-host 격리 시험으로 통과. cold 전체 Compose·Redis process loss·장시간 soak·독립 daemon/VM·multi-host HA는 남음 |
 
 ## 최신 통합 checkpoint
 
