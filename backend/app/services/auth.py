@@ -10,6 +10,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 PASSWORD_HASH_PREFIX = "sha256_bcrypt$"
 _DEV_SECRET_KEY = secrets.token_urlsafe(48)
+_INSECURE_SECRET_KEYS = frozenset({
+    # Historical value that was published in backend/.env.example.
+    "995e22c2cfdc927c5e45f96bead03e22b26430b5cc272a19e0e53e7732fc4fb3",
+})
 
 
 def get_secret_key() -> str:
@@ -25,6 +29,8 @@ def validate_runtime_security() -> None:
     validate_runtime_id(settings.RUNTIME_INSTANCE_ID)
     if not settings.SECRET_KEY or len(settings.SECRET_KEY) < 32:
         raise RuntimeError("SECRET_KEY must be set to at least 32 characters in production.")
+    if settings.SECRET_KEY in _INSECURE_SECRET_KEYS:
+        raise RuntimeError("SECRET_KEY must not use a published example value in production.")
     if not settings.ADMIN_PASSWORD or len(settings.ADMIN_PASSWORD) < 16:
         raise RuntimeError("ADMIN_PASSWORD must be set to at least 16 characters in production.")
 

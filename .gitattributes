@@ -9,3 +9,6 @@ backend/app/services/launcher_archive/*.py text eol=lf
 # Freshman contest manifests and reference sources are also hashed byte-for-byte.
 # Keep their identities stable across Windows checkouts and Git archives.
 tools/freshman_contest/** text eol=lf
+docs/freshman-contest-statements-a-i-2026-09-26.md text eol=lf
+scripts/generate_freshman_corpus_manifest.py text eol=lf
+scripts/verify_freshman_contest_examples.py text eol=lf

@@ -14,6 +14,11 @@ ROOT = Path(__file__).resolve().parents[2]
 SERVICES = ROOT / "backend" / "app" / "services"
 ARCHIVE = SERVICES / "launcher_archive"
 FRESHMAN_PACKAGE = ROOT / "tools" / "freshman_contest"
+FROZEN_CORPUS_SOURCES = (
+    ROOT / "docs" / "freshman-contest-statements-a-i-2026-09-26.md",
+    ROOT / "scripts" / "generate_freshman_corpus_manifest.py",
+    ROOT / "scripts" / "verify_freshman_contest_examples.py",
+)
 
 
 def test_content_addressed_launchers_are_forced_to_lf() -> None:
@@ -37,8 +42,13 @@ def test_content_addressed_launchers_are_forced_to_lf() -> None:
 def test_freshman_package_is_forced_to_lf() -> None:
     attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8").splitlines()
     assert "tools/freshman_contest/** text eol=lf" in attributes
+    for path in FROZEN_CORPUS_SOURCES:
+        assert f"{path.relative_to(ROOT).as_posix()} text eol=lf" in attributes
 
-    package_files = [path for path in FRESHMAN_PACKAGE.rglob("*") if path.is_file()]
+    package_files = [
+        *FROZEN_CORPUS_SOURCES,
+        *(path for path in FRESHMAN_PACKAGE.rglob("*") if path.is_file()),
+    ]
     assert package_files
     for path in package_files:
         assert b"\r\n" not in path.read_bytes(), path.relative_to(ROOT).as_posix()
@@ -63,6 +73,7 @@ def test_git_checkout_and_archive_preserve_launcher_identity(tmp_path: Path) -> 
             for path in sorted(FRESHMAN_PACKAGE.rglob("*"))
             if path.is_file()
         ),
+        *(path.relative_to(ROOT) for path in FROZEN_CORPUS_SOURCES),
     ]
     for relative in relative_files:
         destination = source / relative
