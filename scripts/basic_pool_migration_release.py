@@ -494,6 +494,41 @@ def _replace_once(value: str, needle: str, replacement: str) -> str:
 
 
 def candidate_edge_configs(current: dict[str, str]) -> dict[str, str]:
+    if "limit_conn_zone " in current["backend"] or "limit_conn_zone " in current["frontend"]:
+        expected_counts = {
+            "backend": {
+                "limit_conn_zone ": 2,
+                "client_max_body_size 16m;": 1,
+                "client_max_body_size 512k;": 1,
+                "proxy_request_buffering off;": 1,
+                "limit_conn judge_upload_ip 2;": 1,
+                "limit_conn judge_upload_total 8;": 1,
+                "location ^~ /api/v1/admin/judge-test-data/ {": 1,
+            },
+            "frontend": {
+                "limit_conn_zone ": 2,
+                "client_max_body_size 16m;": 2,
+                "client_max_body_size 512k;": 2,
+                "proxy_request_buffering off;": 2,
+                "limit_conn judge_upload_ip 2;": 2,
+                "limit_conn judge_upload_total 8;": 2,
+                "location ^~ /webcompiler/api/v1/admin/judge-test-data/ {": 1,
+                "location ^~ /api/v1/admin/judge-test-data/ {": 1,
+            },
+        }
+        for role, patterns in expected_counts.items():
+            for pattern, expected in patterns.items():
+                assert current[role].count(pattern) == expected, (
+                    "Existing edge hardening differs from the reviewed contract: " + role
+                )
+        assert current["backend"].count(
+            "proxy_pass http://127.0.0.1:18003/api/v1/admin/judge-test-data/;"
+        ) == 1
+        assert current["frontend"].count(
+            "proxy_pass http://127.0.0.1:18003/api/v1/admin/judge-test-data/;"
+        ) == 2
+        return dict(current)
+
     zones = (
         "limit_conn_zone $binary_remote_addr zone=judge_upload_ip:64k;\n"
         "limit_conn_zone $server_name zone=judge_upload_total:32k;\n\n"

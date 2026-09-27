@@ -290,6 +290,7 @@ def test_candidate_edge_configs_add_exact_upload_and_normal_api_limits(release):
     assert value["backend"].count("limit_conn judge_upload_ip 2;") == 1
     assert value["frontend"].count("limit_conn judge_upload_ip 2;") == 2
     assert "proxy_pass http://127.0.0.1:18003/api/v1/admin/judge-test-data/;" in value["frontend"]
+    assert release.candidate_edge_configs(value) == value
 
 
 def test_candidate_edge_configs_reject_unexpected_or_already_modified_template(release):
@@ -300,3 +301,22 @@ def test_candidate_edge_configs_reject_unexpected_or_already_modified_template(r
 
     with pytest.raises(AssertionError, match="Unexpected edge proxy template"):
         release.candidate_edge_configs(current)
+
+
+def test_candidate_edge_configs_reject_drift_in_an_existing_hardened_config(release):
+    current = {
+        "backend": "server {\n    location /api/ {\n        proxy_pass http://127.0.0.1:18003/api/;\n    }\n}\n",
+        "frontend": (
+            "server {\n"
+            "    location /webcompiler/api/ {\n        proxy_pass http://127.0.0.1:18003/api/;\n    }\n"
+            "    location /api/ {\n        proxy_pass http://127.0.0.1:18003/api/;\n    }\n"
+            "}\n"
+        ),
+    }
+    hardened = release.candidate_edge_configs(current)
+    hardened["backend"] = hardened["backend"].replace(
+        "limit_conn judge_upload_total 8;", "limit_conn judge_upload_total 9;"
+    )
+
+    with pytest.raises(AssertionError, match="Existing edge hardening differs"):
+        release.candidate_edge_configs(hardened)
