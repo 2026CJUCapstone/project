@@ -10,7 +10,7 @@
 |---|---:|---|
 | 새 LF checkout의 corpus manifest·runtime harness·재채점 집중 회귀 | 149 PASS, 3 SKIP | frozen manifest `sha256:e5213ca9d1aaf3691c91db22aa021870b532b653c015c58c4bf90fff8a8539fc`; skip은 외부 staged archive가 없는 명시적 조건이다. |
 | 사용자의 원본 작업 폴더에 동기화한 동일 변경 | 151 PASS, 1 SKIP | 원본의 기존 변경을 보존한 채 최신 세 파일을 반영했다. 원본 폴더에 이미 있던 staged archive 때문에 fresh checkout보다 두 검사가 더 실행됐다. |
-| 백엔드 전체 | 3,150 PASS, 454 SKIP, 10 subtests PASS, 0 FAIL, 368.07초 | skip은 PostgreSQL·Redis·POSIX·Docker/cgroup·외부 런타임 등 명시적 환경 조건이며 성공으로 세지 않는다. |
+| 백엔드 전체 | 3,150 PASS, 454 SKIP, 10 subtests PASS, 0 FAIL, 353.22초 | 최종 load/lifecycle test 변경까지 포함한 새 LF worktree 결과다. skip은 PostgreSQL·Redis·POSIX·Docker/cgroup·외부 런타임 등 명시적 환경 조건이며 성공으로 세지 않는다. |
 | 프런트 전체 | 58 files, 322 PASS | TypeScript 검사와 production build도 PASS. `npm ci` 감사 결과 알려진 취약점 0건. |
 | 서버 격리 PostgreSQL·Redis | 48 PASS, 3 SKIP, 0 FAIL, 147.03초 | 운영 DB·Redis와 분리된 기존 audit Compose를 재사용했다. 세 skip은 PostgreSQL 전용 process test의 SQLite 매개변수 변형이다. |
 | Linux A–J private package·bundle | 152 PASS, 4 SKIP, 0 FAIL, 263.92초 | owner-only 출력, blob closure, 부분 생성 실패 정리, symlink 거부, 동일 bundle replay, import transport를 비권한 UID·read-only·network-none container에서 확인했다. skip은 POSIX에서 불필요한 Windows 음성 테스트 1개, image의 Git 부재 1개, 별도 staged archive 부재 2개다. |
@@ -23,6 +23,8 @@
 서버 검증 중 재채점 shard의 부모 행보다 item이 먼저 INSERT되어 PostgreSQL FK가 7건 실패하는 오류를 재현했다. `contest_rejudge.py`가 각 bounded shard 부모를 먼저 flush하도록 고쳤고 동일 묶음이 48 PASS로 바뀌었다. SQLite만으로는 드러나지 않던 실제 dialect 차이다.
 
 runtime matrix controller가 `capture_output=True`로 출력을 전부 메모리에 모은 뒤 128 KiB를 검사하던 문제도 고쳤다. stdout·stderr를 동시에 제한해 합계 128 KiB에서 프로세스를 종료하고, timeout·overflow·truncation·실제 보관 byte 수를 영수증에 남긴다. 실제 subprocess overflow와 timeout 회귀를 추가했다.
+
+CPU가 제한된 audit host에서 충돌 API는 identity mismatch를 기록했지만 Docker SDK의 streaming `wait` 응답이 15초 안에 끝나지 않아 readiness 검사가 실패하는 문제도 재현했다. 실제 PID 1 상태를 최대 30초 동안 inspect polling하고 종료 코드를 확인하도록 바꿨다. 수정 후 readiness/controller 시험이 182.65초에 통과했으며, 단순히 timeout을 성공으로 바꾸지 않는다.
 
 ## A01–A25 판정
 
