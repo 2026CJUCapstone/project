@@ -21,6 +21,14 @@ FROZEN_CORPUS_SOURCES = (
 )
 
 
+def _freshman_package_files() -> list[Path]:
+    return [
+        path
+        for path in FRESHMAN_PACKAGE.rglob("*")
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+    ]
+
+
 def test_content_addressed_launchers_are_forced_to_lf() -> None:
     attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8").splitlines()
     assert "backend/app/services/linux_phase_launcher.py text eol=lf" in attributes
@@ -47,7 +55,7 @@ def test_freshman_package_is_forced_to_lf() -> None:
 
     package_files = [
         *FROZEN_CORPUS_SOURCES,
-        *(path for path in FRESHMAN_PACKAGE.rglob("*") if path.is_file()),
+        *_freshman_package_files(),
     ]
     assert package_files
     for path in package_files:
@@ -70,8 +78,7 @@ def test_git_checkout_and_archive_preserve_launcher_identity(tmp_path: Path) -> 
         ),
         *(
             path.relative_to(ROOT)
-            for path in sorted(FRESHMAN_PACKAGE.rglob("*"))
-            if path.is_file()
+            for path in sorted(_freshman_package_files())
         ),
         *(path.relative_to(ROOT) for path in FROZEN_CORPUS_SOURCES),
     ]
