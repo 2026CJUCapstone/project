@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build all three application images and scan their immutable local IDs.
+"""Build selected deployable images and scan their immutable local IDs.
 
 Uses an already provisioned bounded builder. Does not start application services,
 push images, deploy, or silently accept a base-image scan as application evidence.
@@ -37,7 +37,7 @@ def build_command(role, commit, compiler_ref, builder, iidfile):
     return command + ['-f', str(dockerfile), str(context)]
 
 
-def build_and_scan(*, commit, trivy, output, cache):
+def build_and_scan(*, commit, trivy, output, cache, roles=ROLES):
     if not COMMIT.fullmatch(commit):
         raise ScanError('Exact checked-out commit required')
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -47,6 +47,9 @@ def build_and_scan(*, commit, trivy, output, cache):
         raise ScanError('A clean checkout including untracked source is required')
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD', '--'], cwd=ROOT, check=True,
         stdout=subprocess.DEVNULL)
+    roles = tuple(roles)
+    if not roles or len(set(roles)) != len(roles) or any(role not in ROLES for role in roles):
+        raise ScanError('At least one distinct supported image role is required')
     compiler_ref = (ROOT / 'runtime/bpp-ref.txt').read_text().strip()
     if not COMMIT.fullmatch(compiler_ref):
         raise ScanError('Pinned compiler source required')
@@ -57,7 +60,7 @@ def build_and_scan(*, commit, trivy, output, cache):
     output = Path(output).resolve()
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     results, image_ids = {}, set()
-    for role in ROLES:
+    for role in roles:
         verify(config)
         iidfile = output / (role + '.iid')
         subprocess.run(build_command(role, commit, compiler_ref, config.name, iidfile),
@@ -79,7 +82,8 @@ def build_and_scan(*, commit, trivy, output, cache):
         results[role] = {'imageId': image_id, 'policyPassed': summary['policyPassed'],
             'manifestSha256': hashlib.sha256(manifest.read_bytes()).hexdigest()}
     receipt = {'schemaVersion': 1, 'sourceCommit': commit, 'compilerCommit': compiler_ref,
-        'roles': results, 'policyPassed': all(value['policyPassed'] for value in results.values())}
+        'roles': results, 'excludedRoles': [role for role in ROLES if role not in roles],
+        'policyPassed': all(value['policyPassed'] for value in results.values())}
     (output/'application-images.json').write_text(json.dumps(receipt, indent=2), encoding='utf-8')
     return receipt
 
@@ -90,10 +94,11 @@ def main():
     parser.add_argument('--trivy', required=True)
     parser.add_argument('--output-dir', required=True)
     parser.add_argument('--cache-dir', required=True)
+    parser.add_argument('--roles', nargs='+', choices=ROLES, default=list(ROLES))
     args = parser.parse_args()
     try:
         receipt = build_and_scan(commit=args.commit, trivy=args.trivy,
-            output=args.output_dir, cache=args.cache_dir)
+            output=args.output_dir, cache=args.cache_dir, roles=args.roles)
     except (ValueError, OSError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as exc:
         # ScanError messages are fixed validation reasons; subprocess repr may
         # contain credentials and must remain suppressed.

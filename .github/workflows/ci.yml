@@ -343,7 +343,8 @@ jobs:
             --commit "$GITHUB_SHA" \
             --trivy "$RUNNER_TEMP/trivy-0.74.0/trivy" \
             --output-dir "$RUNNER_TEMP/application-image-security" \
-            --cache-dir "$RUNNER_TEMP/trivy-cache"
+            --cache-dir "$RUNNER_TEMP/trivy-cache" \
+            --roles backend frontend
 
       - name: Upload installed-image security evidence
         # A failed policy may still produce useful sanitized reports. The job
