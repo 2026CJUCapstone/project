@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Pinned SSH deployment with a dedicated frontend upload stream.
+"""Pinned SSH deployment using a GitHub-hosted frontend artifact.
 
 This helper does not choose a revision. verify_deploy_ci.py must first prove the
 provided full SHA passed CI. No host-key scan or branch fallback is allowed.
 """
-import hashlib
 import os
 from pathlib import Path
 import re
@@ -17,12 +16,10 @@ class DeployConfigurationError(ValueError):
     pass
 
 
-MAX_FRONTEND_ARCHIVE_BYTES = 32 * 1024 * 1024
-
-
 def configuration(env):
     required = ('DEPLOY_SHA', 'DEPLOY_HOST', 'DEPLOY_USER', 'DEPLOY_PATH',
-                'DEPLOY_PORT', 'DEPLOY_REPO', 'DEPLOY_KNOWN_HOSTS')
+                'DEPLOY_PORT', 'DEPLOY_REPO', 'DEPLOY_KNOWN_HOSTS',
+                'DEPLOY_FRONTEND_ARTIFACT_ID', 'DEPLOY_FRONTEND_SHA256')
     if any(not env.get(key) for key in required):
         raise DeployConfigurationError('Required deployment configuration is missing')
     if not re.fullmatch(r'[0-9a-f]{40}', env['DEPLOY_SHA']):
@@ -40,21 +37,11 @@ def configuration(env):
         raise DeployConfigurationError('Invalid deploy repository URL')
     if len(env['DEPLOY_KNOWN_HOSTS']) > 65536:
         raise DeployConfigurationError('Host key configuration is too large')
+    if not re.fullmatch(r'[1-9][0-9]{0,19}', env['DEPLOY_FRONTEND_ARTIFACT_ID']):
+        raise DeployConfigurationError('Invalid frontend artifact ID')
+    if not re.fullmatch(r'[0-9a-f]{64}', env['DEPLOY_FRONTEND_SHA256']):
+        raise DeployConfigurationError('Invalid frontend archive SHA-256')
     return {key: env[key] for key in required}
-
-
-def _read_frontend_archive(path):
-    """Read a bounded local archive and return its bytes plus SHA-256 digest."""
-    try:
-        with Path(path).open('rb') as archive:
-            data = archive.read(MAX_FRONTEND_ARCHIVE_BYTES + 1)
-    except FileNotFoundError as exc:
-        raise DeployConfigurationError('Frontend archive is missing') from exc
-    except (OSError, ValueError) as exc:
-        raise DeployConfigurationError('Frontend archive is unreadable') from exc
-    if len(data) > MAX_FRONTEND_ARCHIVE_BYTES:
-        raise DeployConfigurationError('Frontend archive is too large')
-    return data, hashlib.sha256(data).hexdigest()
 
 
 def _ssh_command(config, known_hosts):
@@ -69,52 +56,14 @@ def _ssh_command(config, known_hosts):
     ]
 
 
-def _upload_frontend(config, known_hosts, archive, *, run):
-    """Stream the archive directly to cat; never make Bash parse binary data."""
-    data, digest = archive
-    upload_path = (
-        f"{config['DEPLOY_PATH'].rstrip('/')}/.deploy/"
-        f"frontend-upload-{config['DEPLOY_SHA']}-{digest}.tar.gz"
-    )
-    script = '\n'.join((
-        'set -euo pipefail',
-        'umask 077',
-        f"DEPLOY_PATH={shlex.quote(config['DEPLOY_PATH'])}",
-        f"UPLOAD_PATH={shlex.quote(upload_path)}",
-        '[[ "$DEPLOY_PATH" == /* && "$DEPLOY_PATH" != / && ! -L "$DEPLOY_PATH" ]]',
-        'mkdir -p "$DEPLOY_PATH/.deploy"',
-        '[[ ! -L "$DEPLOY_PATH/.deploy" && ! -L "$UPLOAD_PATH" ]]',
-        'TMP_PATH="$UPLOAD_PATH.part.$$"',
-        "trap 'rm -f -- \"$TMP_PATH\"' EXIT",
-        'cat >"$TMP_PATH"',
-        'chmod 600 "$TMP_PATH"',
-        'mv -f -- "$TMP_PATH" "$UPLOAD_PATH"',
-        'trap - EXIT',
-    ))
-    command = _ssh_command(config, known_hosts) + [f"bash -c {shlex.quote(script)}"]
-    run(command, input=data, check=True)
-    return upload_path, digest
-
-
-def _remove_frontend_upload(config, known_hosts, upload_path, *, run):
-    cleanup = f"rm -f -- {shlex.quote(upload_path)}"
-    run(
-        _ssh_command(config, known_hosts) + [f"bash -c {shlex.quote(cleanup)}"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-
-
 def dispatch(env, *, run=subprocess.run):
     config = configuration(env)
     script = Path(__file__).with_name('sync_remote_repo.sh').read_text(encoding='utf-8')
-    archive_path = env.get('DEPLOY_FRONTEND_ARCHIVE')
-    archive = None
-    if archive_path:
-        archive = _read_frontend_archive(archive_path)
     # Never put the token or secret fields in the SSH command line or a log.
-    values = {key:config[key] for key in ('DEPLOY_SHA','DEPLOY_PATH','DEPLOY_REPO')}
+    values = {key:config[key] for key in (
+        'DEPLOY_SHA', 'DEPLOY_PATH', 'DEPLOY_REPO',
+        'DEPLOY_FRONTEND_ARTIFACT_ID', 'DEPLOY_FRONTEND_SHA256',
+    )}
     if env.get('GITHUB_TOKEN'):
         values['GITHUB_TOKEN'] = env['GITHUB_TOKEN']
     payload = ''.join(f'export {key}={shlex.quote(value)}\n' for key,value in values.items())
@@ -128,21 +77,8 @@ def dispatch(env, *, run=subprocess.run):
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         if found.returncode:
             raise DeployConfigurationError('Pinned key for the exact host and port is missing')
-        upload_path = None
-        if archive is not None:
-            upload_path, digest = _upload_frontend(config, known_hosts, archive, run=run)
-            payload = (
-                f'export WEBCOMPILER_FRONTEND_UPLOAD={shlex.quote(upload_path)}\n'
-                f'export WEBCOMPILER_FRONTEND_SHA256={shlex.quote(digest)}\n'
-                + payload
-            )
         command = _ssh_command(config, known_hosts) + ['bash -s']
-        try:
-            run(command, input=payload, text=True, check=True)
-        except (OSError, subprocess.SubprocessError):
-            if upload_path is not None:
-                _remove_frontend_upload(config, known_hosts, upload_path, run=run)
-            raise
+        run(command, input=payload, text=True, check=True)
 
 
 def main():

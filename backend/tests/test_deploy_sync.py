@@ -31,6 +31,17 @@ class DeploySyncTests(unittest.TestCase):
         self.git(self.origin,'config','user.email','fixture@example.invalid')
         (self.origin/'scripts').mkdir()
         (self.origin/'scripts/deploy_guard.sh').write_text(GUARD.read_text(),encoding='utf-8')
+        # The sync fixture verifies artifact wiring without making a network
+        # request. The downloader itself has dedicated unit tests.
+        (self.origin/'scripts/download_deploy_frontend.py').write_text('''
+import os
+from pathlib import Path
+
+assert os.environ["DEPLOY_FRONTEND_ARTIFACT_ID"] == "123456789"
+assert os.environ["DEPLOY_FRONTEND_SHA256"] == "b" * 64
+assert os.environ["GITHUB_TOKEN"] == "fixture-token"
+Path(os.environ["WEBCOMPILER_FRONTEND_ARCHIVE"]).write_bytes(b"fixture frontend")
+'''.lstrip(),encoding='utf-8')
         # Only the exact real guard executes. Subsequent deploy side effects
         # are a marker and bounded wait, not the real Docker deploy script.
         (self.origin/'scripts/deploy_server.sh').write_text('''#!/usr/bin/env bash
@@ -65,7 +76,10 @@ fi
     def environment(self,sha=None,**extra):
         return {**os.environ,'DEPLOY_SHA':sha or self.first,'DEPLOY_PATH':str(self.checkout),
                 'DEPLOY_REPO':self.origin.as_uri(),'RUN_DEPLOY_SCRIPT':'1',
-                'WEBCOMPILER_DEPLOY_LOCK_HELD':'0',**extra}
+                'WEBCOMPILER_DEPLOY_LOCK_HELD':'0',
+                'DEPLOY_FRONTEND_ARTIFACT_ID':'123456789',
+                'DEPLOY_FRONTEND_SHA256':'b'*64,
+                'GITHUB_TOKEN':'fixture-token',**extra}
 
     def sync(self,sha=None,**extra):
         return subprocess.run(['bash',str(SYNC)],env=self.environment(sha,**extra),

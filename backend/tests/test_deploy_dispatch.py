@@ -1,4 +1,3 @@
-import hashlib
 import importlib.util
 from pathlib import Path
 import subprocess
@@ -16,6 +15,8 @@ def environment():
     return {'DEPLOY_SHA':'a'*40,'DEPLOY_HOST':'test.example.invalid','DEPLOY_PORT':'10022',
             'DEPLOY_USER':'fixture','DEPLOY_PATH':"/test/fixture's checkout",'DEPLOY_REPO':'https://github.com/test/fixture.git',
             'DEPLOY_KNOWN_HOSTS':'[test.example.invalid]:10022 ssh-ed25519 fixture-key',
+            'DEPLOY_FRONTEND_ARTIFACT_ID':'123456789',
+            'DEPLOY_FRONTEND_SHA256':'b'*64,
             'GITHUB_TOKEN':"fixture-token'never-log-me"}
 
 
@@ -58,87 +59,28 @@ def test_missing_exact_host_key_blocks_ssh():
     assert len(calls) == 1 and calls[0][0] == 'ssh-keygen'
 
 
-def test_frontend_archive_uses_a_dedicated_binary_ssh_stream(tmp_path):
-    archive_bytes = b'frontend archive fixture\x00\xff\n'
-    archive = tmp_path/'frontend.tar.gz'
-    archive.write_bytes(archive_bytes)
+def test_frontend_artifact_metadata_uses_the_small_deploy_payload():
     env = environment()
-    env['DEPLOY_FRONTEND_ARCHIVE'] = str(archive)
     calls = []
 
     def run(command, **kwargs):
         calls.append((command, kwargs))
         if command[0] == 'ssh-keygen':
             return SimpleNamespace(returncode=0)
-        assert command[0] == 'ssh'
-        if kwargs.get('text') is not True:
-            assert kwargs['input'] == archive_bytes
-            assert 'cat >"$TMP_PATH"' in command[-1]
-            assert 'base64' not in command[-1]
-            return SimpleNamespace(returncode=0)
-
         payload = kwargs['input']
-        digest = hashlib.sha256(archive_bytes).hexdigest()
         assert command[-1] == 'bash -s'
-        assert archive_bytes not in payload.encode()
-        assert f'frontend-upload-{"a" * 40}-{digest}.tar.gz' in payload
-        assert f'export WEBCOMPILER_FRONTEND_SHA256={digest}' in payload
+        assert 'export DEPLOY_FRONTEND_ARTIFACT_ID=123456789' in payload
+        assert f"export DEPLOY_FRONTEND_SHA256={'b' * 64}" in payload
+        assert 'frontend-deploy.tar.gz' not in payload
+        assert len(payload.encode()) < 128 * 1024
         return SimpleNamespace(returncode=0)
 
     dispatch.dispatch(env, run=run)
-    assert [command[0] for command, _ in calls] == ['ssh-keygen', 'ssh', 'ssh']
+    assert [command[0] for command, _ in calls] == ['ssh-keygen', 'ssh']
     sync = (ROOT/'scripts/sync_remote_repo.sh').read_text()
-    assert sync.index('flock -n 9') < sync.index('expected_frontend=')
-    assert 'sha256sum "$WEBCOMPILER_FRONTEND_UPLOAD"' in sync
-    assert 'export WEBCOMPILER_FRONTEND_ARCHIVE=' in sync
-
-
-def test_failed_deploy_removes_uploaded_frontend(tmp_path):
-    archive = tmp_path/'frontend.tar.gz'
-    archive.write_bytes(b'frontend')
-    env = environment()
-    env['DEPLOY_FRONTEND_ARCHIVE'] = str(archive)
-    calls = []
-
-    def run(command, **kwargs):
-        calls.append((command, kwargs))
-        if command[0] == 'ssh-keygen':
-            return SimpleNamespace(returncode=0)
-        if len(calls) == 3:
-            raise subprocess.CalledProcessError(1, command)
-        return SimpleNamespace(returncode=0)
-
-    with pytest.raises(subprocess.CalledProcessError):
-        dispatch.dispatch(env, run=run)
-    assert [command[0] for command, _ in calls] == ['ssh-keygen', 'ssh', 'ssh', 'ssh']
-    cleanup_command, cleanup_kwargs = calls[-1]
-    assert 'rm -f --' in cleanup_command[-1]
-    assert cleanup_kwargs['check'] is False
-    assert cleanup_kwargs['stdout'] is subprocess.DEVNULL
-    assert cleanup_kwargs['stderr'] is subprocess.DEVNULL
-
-
-@pytest.mark.parametrize('archive_factory, message', [
-    (lambda path: path/'missing.tar.gz', 'Frontend archive is missing'),
-    (lambda path: path/'directory', 'Frontend archive is unreadable'),
-])
-def test_frontend_archive_path_errors_are_fixed_configuration_errors(tmp_path, archive_factory, message):
-    archive = archive_factory(tmp_path)
-    if archive.name == 'directory':
-        archive.mkdir()
-    env = environment()
-    env['DEPLOY_FRONTEND_ARCHIVE'] = str(archive)
-    with pytest.raises(dispatch.DeployConfigurationError, match=message):
-        dispatch.dispatch(env, run=lambda *args, **kwargs: pytest.fail('Process must not start'))
-
-
-def test_frontend_archive_oversize_is_rejected_before_process_start(tmp_path):
-    archive = tmp_path/'oversize.tar.gz'
-    archive.write_bytes(b'x' * (dispatch.MAX_FRONTEND_ARCHIVE_BYTES + 1))
-    env = environment()
-    env['DEPLOY_FRONTEND_ARCHIVE'] = str(archive)
-    with pytest.raises(dispatch.DeployConfigurationError, match='Frontend archive is too large'):
-        dispatch.dispatch(env, run=lambda *args, **kwargs: pytest.fail('Process must not start'))
+    assert sync.index('flock -n 9') < sync.index('download_deploy_frontend.py')
+    assert sync.index('git -C "$DEPLOY_PATH" checkout') < sync.index('download_deploy_frontend.py')
+    assert 'trap \'rm -f -- "$WEBCOMPILER_FRONTEND_ARCHIVE"\' EXIT' in sync
 
 
 @pytest.mark.parametrize('key,value',[
@@ -146,6 +88,8 @@ def test_frontend_archive_oversize_is_rejected_before_process_start(tmp_path):
     ('DEPLOY_USER','user;evil'),('DEPLOY_PORT','0'),('DEPLOY_PORT','65536'),
     ('DEPLOY_PORT','22;evil'),('DEPLOY_REPO','ext::evil'),('DEPLOY_PATH','/'),
     ('DEPLOY_KNOWN_HOSTS',''),
+    ('DEPLOY_FRONTEND_ARTIFACT_ID','0'),('DEPLOY_FRONTEND_ARTIFACT_ID','12x'),
+    ('DEPLOY_FRONTEND_SHA256','b'*63),('DEPLOY_FRONTEND_SHA256','g'*64),
 ])
 def test_invalid_config_fails_before_process_start(key,value):
     env = environment()
@@ -166,6 +110,10 @@ def test_workflow_checks_ci_before_ssh_and_never_cancels_active_deployment():
     assert 'github.event.workflow_run.head_repository.full_name == github.repository' in pre_checkout
     assert workflow.index('python3 scripts/verify_deploy_ci.py') < workflow.index('Start SSH Agent')
     assert workflow.count('python3 scripts/dispatch_deploy.py') == 1
+    assert 'actions/upload-artifact@v4' in workflow
+    assert 'DEPLOY_FRONTEND_ARTIFACT_ID: ${{ steps.frontend-artifact.outputs.artifact-id }}' in workflow
+    assert 'DEPLOY_FRONTEND_SHA256: ${{ steps.frontend-package.outputs.sha256 }}' in workflow
+    assert 'DEPLOY_FRONTEND_ARCHIVE:' not in workflow
     assert 'ssh-keyscan' not in workflow and 'DEPLOY_BRANCH' not in workflow
     assert 'WEBCOMPILER_DEPLOY_KNOWN_HOSTS' in workflow
     deploy = (ROOT/'scripts/deploy_server.sh').read_text()
