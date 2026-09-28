@@ -22,3 +22,20 @@ PASSWORD_RESET_BASE_URL=https://cuha.cju.ac.kr/webcompiler/reset-password
 4. 새 비밀번호로 로그인할 수 있다.
 
 SMTP 공급자 자격 증명과 수신함 확인 없이 위 마지막 검사를 완료로 기록하지 않는다.
+
+## Outlook.com·Hotmail OAuth2
+
+Outlook.com과 Hotmail은 비밀번호 기반 SMTP 대신 Microsoft OAuth2를 사용한다. 이 저장소는 기존 비밀번호 SMTP와의 호환성을 유지하면서, `scripts/authorize_microsoft_smtp.py`가 만든 버전 지정 자격증명만 `SMTP_PASSWORD`에서 OAuth2로 인식한다. 임의 문자열이나 일반 비밀번호를 OAuth 토큰으로 추측하지 않는다.
+
+Microsoft Entra에 개인 Microsoft 계정을 지원하는 public-client 앱을 등록하고 SMTP delegated scope를 승인한 뒤 운영 서버에서 다음 절차를 실행한다. `<client-id>`는 앱 등록의 Application (client) ID다.
+
+```text
+python3 scripts/authorize_microsoft_smtp.py \
+  --client-id <client-id> \
+  --account creeper0809@hotmail.com \
+  --file /home/vulpo/webcompiler/.deploy/runtime-secrets.env
+```
+
+도구는 Microsoft의 로그인 주소와 일회용 코드만 표시한다. refresh/access token은 출력하지 않는다. 계정 승인이 끝나면 `smtp-mail.outlook.com:587`에 STARTTLS와 XOAUTH2로 실제 인증하고 NOOP까지 성공한 경우에만 배포 잠금 아래 비밀 파일을 원자 교체한다. 설정되는 발신 주소는 `creeper0809@hotmail.com`, 화면에 보이는 발신자 이름은 `CUHA`다.
+
+앱 등록의 client ID와 사용자 계정 동의는 외부 운영 권한이므로 코드가 임의로 생성하거나 완료 처리하지 않는다. SMTP 검증 뒤에도 실제 재설정 메일 수신과 링크 사용 검증은 별도로 수행한다.

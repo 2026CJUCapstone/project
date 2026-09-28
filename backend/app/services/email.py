@@ -1,11 +1,13 @@
+import base64
 import smtplib
 import ssl
 from contextlib import contextmanager
 from email.message import EmailMessage
-from email.utils import parseaddr
+from email.utils import formataddr, parseaddr
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.core.config import settings
+from app.services import microsoft_smtp_oauth
 
 
 class EmailNotConfigured(RuntimeError):
@@ -91,7 +93,17 @@ def _smtp_connection():
             # peer certificate. Authenticate the server before sending creds.
             smtp.starttls(context=ssl.create_default_context())
         if username:
-            smtp.login(username, password or "")
+            credential = password or ""
+            if microsoft_smtp_oauth.is_credential(credential):
+                token = microsoft_smtp_oauth.access_token(credential)
+                payload = base64.b64encode(
+                    f"user={username}\x01auth=Bearer {token}\x01\x01".encode("utf-8")
+                ).decode("ascii")
+                code, response = smtp.docmd("AUTH", "XOAUTH2 " + payload)
+                if code != 235:
+                    raise smtplib.SMTPAuthenticationError(code, response)
+            else:
+                smtp.login(username, credential)
         yield smtp, sender
 
 
@@ -112,5 +124,5 @@ def send_password_reset_email(to_email: str, token: str) -> None:
     message.set_content(_build_reset_body(token))
 
     with _smtp_connection() as (smtp, sender):
-        message["From"] = sender
+        message["From"] = formataddr(("CUHA", sender))
         smtp.send_message(message)
