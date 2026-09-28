@@ -28,7 +28,7 @@ def transition(tmp_path):
     (previous / "backend/app/initialize.py").write_text("RUNTIME_SCHEMA_VERSION = 'v26'\n")
     shutil.copytree(previous, candidate)
     for relative in app.runtime.ALLOWED_CHANGES:
-        if relative == "runtime/bpp-ref.txt":
+        if relative in ("runtime/bpp-ref.txt", "runtime/image-lock.json"):
             continue
         path = candidate / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,6 +39,30 @@ def transition(tmp_path):
     args = dict(previous=previous, candidate=candidate, old_sha="a" * 40, new_sha="b" * 40,
                 old_image="sha256:" + "1" * 64)
     return app, approval, args
+
+
+@pytest.mark.parametrize("fault", [None, "digest", "existing", "other-new", "metadata", "missing"])
+def test_sandbox_base_addition_cannot_change_other_locked_images(transition, fault):
+    app, approval, args = transition
+    original = {"schemaVersion": 1, "images": {"database": {"digest": "untouched"}}}
+    updated = copy.deepcopy(original)
+    updated["images"]["nodeSandbox"] = copy.deepcopy(app.runtime.REVIEWED_SANDBOX_BASE)
+    if fault == "digest": updated["images"]["nodeSandbox"]["digest"] = "sha256:" + "0" * 64
+    if fault == "existing": updated["images"]["database"]["digest"] = "changed"
+    if fault == "other-new": updated["images"]["extra"] = {}
+    if fault == "metadata": updated["schemaVersion"] = 2
+    if fault == "missing": updated["images"].pop("nodeSandbox")
+    for key, data in (("previous", original), ("candidate", updated)):
+        (args[key] / "runtime/image-lock.json").write_text(json.dumps(data))
+    approval["runtime_digest"] = app.runtime.runtime_digest(args["candidate"])
+    if fault is None:
+        app.runtime.validate_approval(approval, **args)
+    elif fault != "missing":
+        with pytest.raises(ValueError, match="Unreviewed"):
+            app.runtime.validate_approval(approval, **args)
+    else:
+        # Identical locks need no new base authorization.
+        app.runtime.validate_approval(approval, **args)
 
 
 def test_exact_reviewed_update_keeps_default_rejection(transition):

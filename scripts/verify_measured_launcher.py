@@ -22,6 +22,7 @@ CASES = {
     'wall':('import time;time.sleep(10)','time_limit_exceeded'),
     'output':("print('x'*8192)",'output_limit_exceeded'),
     'oom':('x=bytearray(256*1024*1024)','memory_limit_exceeded'),
+    'pids':("import os,time\nwhile True:\n try:\n  if os.fork()==0: time.sleep(10);os._exit(0)\n except OSError: print(42);break",'process_limit_exceeded'),
 }
 
 
@@ -52,6 +53,10 @@ def report_file(cid,name):
     return value
 
 
+def phase_spec(code, limits):
+    return dict(version=2,phase='run',argv=['/usr/bin/python3','-I','-c',code],stdin='/dev/null',limits=limits)
+
+
 def run_case(image,launcher,name):
     token=uuid.uuid4().hex
     cid=None
@@ -59,7 +64,7 @@ def run_case(image,launcher,name):
     code,expected=CASES[name]
     limits=dict(cpuMs=100 if name=='cpu' else 1000,wallMs=150 if name=='wall' else 3000,
         memoryBytes=96*1024**2,outputBytes=1024,pids=16,tmpBytes=4*1024**2)
-    spec=dict(version=1,phase='run',argv=['/usr/bin/python3','-I','-c',code],stdin='/dev/null',limits=limits)
+    spec=phase_spec(code,limits)
     try:
         cid=command('create','--pull=never','--name','webcompiler-launcher-probe-'+token,
             '--label','webcompiler.isolated-launcher-probe='+token,

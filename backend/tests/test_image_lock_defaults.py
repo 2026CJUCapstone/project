@@ -33,7 +33,8 @@ def test_application_dockerfiles_use_exact_locked_base_image_lines():
     ]
     assert from_lines("runtime/docker/Dockerfile") == [
         f"FROM {locked_image('nodeRuntime')} AS node-runtime",
-        f"FROM {locked_image('ubuntu')}",
+        f"FROM {locked_image('ubuntu')} AS bpp-build",
+        f"FROM {locked_image('nodeSandbox')} AS sandbox-runtime",
     ]
 
 

@@ -14,42 +14,60 @@ SPEC.loader.exec_module(probe)
 
 
 class NodeProbeContract(unittest.TestCase):
-    def test_preserves_actual_product_prefix(self):
+    def test_preserves_actual_final_alpine_runtime(self):
         source = (ROOT / 'runtime/docker/Dockerfile').read_text(encoding='utf-8')
         actual = probe.dockerfile_prefix(source)
-        prefix = source.split('\nARG BPP_REPO=')[0]
-        tail = '\nWORKDIR /sandbox\n' + source.split('\nWORKDIR /sandbox\n', 1)[1]
-        tail=tail.replace('COPY sandbox/verify_bpp_runtime.py /usr/local/share/verify_bpp_runtime.py\n','')
-        tail=tail.replace('RUN python3 -I /usr/local/share/verify_bpp_runtime.py\n','')
-        self.assertTrue(actual.startswith(prefix + tail))
-        self.assertNotIn('/usr/local/share/verify_bpp_runtime.py',actual)
+        from_lines = [line for line in actual.splitlines() if line.startswith('FROM ')]
+        self.assertEqual(len(from_lines), 3)
+        self.assertTrue(from_lines[-1].endswith(' AS sandbox-runtime'))
+        self.assertIn('COPY --from=bpp-build /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm', actual)
+        self.assertNotIn('COPY --from=bpp-build /usr/local/bin/bpp ', actual)
+        self.assertNotIn('/usr/local/share/verify_bpp_runtime.py', actual)
+        self.assertNotIn('/usr/local/share/verify_bpp_exploration.py', actual)
         self.assertNotIn('git clone', actual)
+        self.assertNotIn('compiler-patches', actual)
         self.assertIn('USER sandboxuser', actual)
         self.assertIn('RUN --network=none /bin/bash /audit/smoke.sh', actual)
         self.assertIn('ENTRYPOINT ["/usr/local/bin/run.sh"]', actual)
         self.assertNotIn('/bin/bash /usr/local/bin/run.sh', probe.SMOKE)
+        self.assertIn('test "$(npm --version)" = 11.19.1', probe.SMOKE)
 
-    def test_node_only_probe_rejects_bpp_gate_drift(self):
+    def test_node_only_probe_rejects_bpp_copy_or_gate_drift(self):
         source=(ROOT/'runtime/docker/Dockerfile').read_text()
-        for old in ('COPY sandbox/verify_bpp_runtime.py','RUN python3 -I /usr/local/share/verify_bpp_runtime.py'):
+        for old in (
+            'COPY --from=bpp-build /usr/local/bin/bpp',
+            'COPY sandbox/verify_bpp_runtime.py',
+            'COPY sandbox/verify_bpp_exploration.py',
+            'RUN python3 -I /usr/local/share/verify_bpp_runtime.py',
+            'RUN python3 -I /usr/local/share/verify_bpp_exploration.py',
+        ):
             with self.subTest(instruction=old), self.assertRaises(ValueError):
                 probe.dockerfile_prefix(source.replace(old,'# changed '+old,1))
 
-    def test_rejects_missing_or_ambiguous_packaging(self):
+    def test_rejects_missing_or_ambiguous_final_packaging(self):
         source = (ROOT / 'runtime/docker/Dockerfile').read_text(encoding='utf-8')
         for modified in (source.replace('\nWORKDIR /sandbox\n', '\nWORKDIR /elsewhere\n'), source + '\nWORKDIR /sandbox\n'):
             with self.subTest(source=modified[-40:]), self.assertRaises(ValueError):
                 probe.dockerfile_prefix(modified)
 
-    def test_rejects_missing_or_ambiguous_boundary(self):
+    def test_rejects_missing_or_ambiguous_builder_boundary(self):
         source = (ROOT / 'runtime/docker/Dockerfile').read_text(encoding='utf-8')
-        for modified in (source.replace('\nARG BPP_REPO=', '\nARG CHANGED='), source + '\nARG BPP_REPO=x'):
+        first = source.index('\nARG BPP_REPO=')
+        for modified in (source[:first] + source[first:].replace('\nARG BPP_REPO=', '\nARG CHANGED=', 1),
+                         source.replace('\nARG BPP_REPO=', '\nARG BPP_REPO=x\nARG BPP_REPO=', 1)):
             with self.subTest(source=modified[-40:]), self.assertRaises(ValueError):
                 probe.dockerfile_prefix(modified)
 
-    def test_rejects_missing_copy_stage(self):
+    def test_rejects_stage_or_final_npm_copy_mismatch(self):
         source = (ROOT / 'runtime/docker/Dockerfile').read_text(encoding='utf-8')
-        for modified in (source.replace('AS node-runtime', 'AS changed'), source.replace('COPY --from=node-runtime ', 'COPY --from=changed ')):
+        for modified in (
+            source.replace('AS node-runtime', 'AS changed'),
+            source.replace('AS bpp-build', 'AS changed'),
+            source.replace('AS sandbox-runtime', 'AS changed'),
+            source.replace('node:24.21.0-alpine@sha256:', 'ubuntu:26.04@sha256:'),
+            source.replace('COPY --from=node-runtime ', 'COPY --from=changed '),
+            source.replace('COPY --from=bpp-build /usr/local/lib/node_modules/npm ', 'COPY --from=changed /usr/local/lib/node_modules/npm '),
+        ):
             with self.subTest(source=modified[:40]), self.assertRaises(ValueError):
                 probe.dockerfile_prefix(modified)
 

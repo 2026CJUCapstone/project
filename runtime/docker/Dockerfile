@@ -1,5 +1,5 @@
 FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS node-runtime
-FROM ubuntu:26.04@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d
+FROM ubuntu:26.04@sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d AS bpp-build
 
 RUN set -eux; \
     if ! (apt-get update -o Acquire::Retries=3 && apt-get install -y --no-install-recommends \
@@ -119,6 +119,54 @@ RUN set -eux; \
       "$BPP_REPO" "$BPP_REF" "$BPP_BOOTSTRAP_TAG" "$BPP_BOOTSTRAP_URL" "$BPP_BOOTSTRAP_SHA256" "$TEST_SKIP_LLVM_BUILD" "$TEST_FAST_IO" "$BPP_TEST_NAME_FILTER" "$RUNTIME_BUILD_SIGNATURE" > /usr/local/share/bpp-build-info.txt; \
     rm -rf /opt/Bpp/.git
 
+# B++ is a freestanding ELF. Keep its bootstrap/build dependencies out of the
+# submitted-code runtime; never copy glibc executables into the musl image.
+RUN readelf -l /usr/local/libexec/bpp/v13_stage1 > /tmp/bpp-elf.txt \
+    && ! grep -q INTERP /tmp/bpp-elf.txt \
+    && rm /tmp/bpp-elf.txt
+
+# Submission runtime: this stage is also exercised by the bounded Node probe.
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS sandbox-runtime
+RUN apk add --no-cache bash binutils ca-certificates coreutils python3 \
+      gcc g++ musl-dev linux-headers openjdk25-jdk nasm make \
+    && rm -rf /usr/local/lib/node_modules/npm
+COPY --from=bpp-build /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+COPY --from=bpp-build /usr/local/bin/bpp /usr/local/bin/bpp
+COPY --from=bpp-build /usr/local/libexec/bpp /usr/local/libexec/bpp
+COPY --from=bpp-build /usr/local/share/bpp /usr/local/share/bpp
+COPY --from=bpp-build /usr/local/share/bpp-build-info.txt /usr/local/share/bpp-build-info.txt
+
+ARG BPP_REPO=https://github.com/Creeper0809/Bpp
+ARG BPP_REF=main
+ARG BPP_BOOTSTRAP_TAG
+ARG BPP_BOOTSTRAP_URL
+ARG BPP_BOOTSTRAP_SHA256
+ARG TEST_SKIP_LLVM_BUILD=1
+ARG TEST_FAST_IO=0
+ARG BPP_TEST_NAME_FILTER="14_print_anything_success|43_language_feature_runtime_bundle_success"
+ARG RUNTIME_BUILD_SIGNATURE=unknown
+ARG RUNTIME_SOURCE_DIGEST=unknown
+ARG WEB_SOURCE_SHA=unknown
+
+LABEL org.opencontainers.image.source="${BPP_REPO}"
+LABEL io.bpp.repo="${BPP_REPO}"
+LABEL io.bpp.ref="${BPP_REF}"
+LABEL io.bpp.bootstrap.tag="${BPP_BOOTSTRAP_TAG}"
+LABEL io.bpp.bootstrap.url="${BPP_BOOTSTRAP_URL}"
+LABEL io.bpp.bootstrap.sha256="${BPP_BOOTSTRAP_SHA256}"
+LABEL io.bpp.test_skip_llvm_build="${TEST_SKIP_LLVM_BUILD}"
+LABEL io.bpp.test_fast_io="${TEST_FAST_IO}"
+LABEL io.bpp.test_name_filter="${BPP_TEST_NAME_FILTER}"
+LABEL io.bpp.runtime_build_signature="${RUNTIME_BUILD_SIGNATURE}"
+LABEL io.bpp.runtime_source_digest="${RUNTIME_SOURCE_DIGEST}"
+LABEL io.webcompiler.source-sha="${WEB_SOURCE_SHA}"
+LABEL io.webcompiler.image-role="sandbox"
+
+ENV BPP_REPO="${BPP_REPO}" BPP_REF="${BPP_REF}" \
+    BPP_BOOTSTRAP_TAG="${BPP_BOOTSTRAP_TAG}" BPP_BOOTSTRAP_URL="${BPP_BOOTSTRAP_URL}" \
+    BPP_BOOTSTRAP_SHA256="${BPP_BOOTSTRAP_SHA256}" TEST_SKIP_LLVM_BUILD="${TEST_SKIP_LLVM_BUILD}" \
+    TEST_FAST_IO="${TEST_FAST_IO}" RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE}"
+
 WORKDIR /sandbox
 
 COPY sandbox/run.sh /usr/local/bin/run.sh
@@ -126,7 +174,9 @@ COPY sandbox/verify_bpp_runtime.py /usr/local/share/verify_bpp_runtime.py
 COPY sandbox/verify_bpp_exploration.py /usr/local/share/verify_bpp_exploration.py
 RUN chmod +x /usr/local/bin/run.sh
 
-RUN useradd -ms /bin/bash sandboxuser
+RUN deluser node \
+    && addgroup -g 1000 sandboxuser \
+    && adduser -D -u 1000 -G sandboxuser -s /bin/bash sandboxuser
 USER sandboxuser
 
 # These installed-compiler checks are mandatory even when the bootstrap test
