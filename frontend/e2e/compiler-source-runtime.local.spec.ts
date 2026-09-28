@@ -28,6 +28,9 @@ test('real Bpp byte ranges map to the exact Unicode source snapshot', async ({ r
     }, { timeout: 55000, intervals: [750, 1000, 2000] }).toBe('completed');
     expect(value?.success, JSON.stringify(value?.errors)).toBe(true);
     expect(value.metadata?.source_range_semantics?.offsetEncoding).toBe('byte');
+    const details = value.ssa?.blocks?.flatMap((block: any) => block.instructionDetails ?? []) ?? [];
+    expect(details.some((detail: any) => Array.isArray(detail.definitions) && Array.isArray(detail.uses) && typeof detail.complete === 'boolean'), 'deployed structured def/use metadata').toBe(true);
+    expect(value.ssa?.optimizationSummaries?.some((summary: any) => summary.scope === 'function' && summary.level === (optimize ? 1 : 0) && summary.evidence === 'compiler-counters-v1'), 'deployed compiler optimization evidence').toBe(true);
     const normalized = mapCompileSource({ ...value, executionTime: value.execution_time,
       metadata: { sourceRangeSemantics: value.metadata.source_range_semantics } }, source)!;
     const items = pipelineItems(normalized);
