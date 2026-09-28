@@ -1,4 +1,4 @@
-"""Bundle exact-SHA frontend output for the single locked SSH deployment."""
+"""Bundle exact-SHA frontend output for the verified deployment artifact."""
 import io
 import json
 import re

@@ -66,9 +66,22 @@ jobs:
           npm run build
 
       - name: Package Verified Frontend
+        id: frontend-package
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-        run: python3 scripts/package_deploy_frontend.py frontend/dist "$RUNNER_TEMP/frontend-deploy.tar.gz" "$DEPLOY_SHA"
+        run: |
+          python3 scripts/package_deploy_frontend.py frontend/dist "$RUNNER_TEMP/frontend-deploy.tar.gz" "$DEPLOY_SHA"
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/frontend-deploy.tar.gz" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Verified Frontend Artifact
+        id: frontend-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: webcompiler-frontend-${{ github.event.workflow_run.head_sha || github.sha }}
+          path: ${{ runner.temp }}/frontend-deploy.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
       - name: Deploy Verified Revision Under One Remote Lock
         env:
@@ -79,6 +92,7 @@ jobs:
           DEPLOY_REPO: ${{ github.server_url }}/${{ github.repository }}.git
           DEPLOY_USER: ${{ secrets.WEBCOMPILER_DEPLOY_USER }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.WEBCOMPILER_DEPLOY_KNOWN_HOSTS }}
-          DEPLOY_FRONTEND_ARCHIVE: ${{ runner.temp }}/frontend-deploy.tar.gz
+          DEPLOY_FRONTEND_ARTIFACT_ID: ${{ steps.frontend-artifact.outputs.artifact-id }}
+          DEPLOY_FRONTEND_SHA256: ${{ steps.frontend-package.outputs.sha256 }}
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/dispatch_deploy.py
