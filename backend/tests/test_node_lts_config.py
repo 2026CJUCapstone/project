@@ -36,27 +36,31 @@ def test_ci_and_frontend_pin_node_lts_exactly():
     assert (ROOT / "frontend" / ".nvmrc").read_text(encoding="utf-8") == NODE_VERSION + "\n"
 
 
-def test_image_lock_records_the_same_node_lts_for_build_and_runtime():
+def test_image_lock_records_node_lts_for_the_glibc_npm_builder_and_alpine_sandbox():
     lock = json.loads(read("runtime/image-lock.json"))
 
     assert lock["images"]["node"]["nodeVersion"] == NODE_VERSION
     assert lock["images"]["nodeRuntime"]["nodeVersion"] == NODE_VERSION
+    assert lock["images"]["nodeSandbox"]["nodeVersion"] == NODE_VERSION
     assert "alpine" not in lock["images"]["nodeRuntime"]["tag"]
+    assert "alpine" in lock["images"]["nodeSandbox"]["tag"]
 
 
-def test_runtime_image_uses_pinned_glibc_node_stage_and_no_nodesource_setup():
+def test_runtime_uses_pinned_glibc_npm_builder_and_final_alpine_sandbox_stage():
     dockerfile = read("runtime/docker/Dockerfile")
-    expected_from = f"FROM {locked_image('nodeRuntime')} AS node-runtime"
+    expected_builder = f"FROM {locked_image('nodeRuntime')} AS node-runtime"
+    expected_sandbox = f"FROM {locked_image('nodeSandbox')} AS sandbox-runtime"
 
-    assert expected_from in dockerfile
-    assert "FROM node:24-alpine" not in dockerfile
+    assert expected_builder in dockerfile
+    assert expected_sandbox in dockerfile
     assert "nodesource" not in dockerfile.lower()
     assert "setup_20" not in dockerfile.lower()
     assert "setup-node" not in dockerfile.lower()
     assert "apt-get install" in dockerfile
+    assert "apk add --no-cache" in dockerfile
 
 
-def test_runtime_copies_only_pinned_node_binary_and_exposes_checked_tools():
+def test_npm_builder_and_final_sandbox_use_their_respective_node_stages():
     dockerfile = read("runtime/docker/Dockerfile")
 
     assert "COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node" in dockerfile
@@ -66,10 +70,12 @@ def test_runtime_copies_only_pinned_node_binary_and_exposes_checked_tools():
     assert "ln -s node /usr/local/bin/nodejs" in dockerfile
     assert f'test "$(node --version)" = v{NODE_VERSION};' in dockerfile
     assert f'test "$(npm --version)" = {NPM_VERSION};' in dockerfile
+    assert "rm -rf /usr/local/lib/node_modules/npm" in dockerfile
+    assert "COPY --from=bpp-build /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm" in dockerfile
     assert "printf '40 2\\n' | node -e" in dockerfile
 
 
-def test_runtime_downloads_and_verifies_the_fixed_npm_tree_before_extracting_it():
+def test_glibc_npm_builder_verifies_the_fixed_tree_before_bpp_checkout_or_alpine_copy():
     dockerfile = read("runtime/docker/Dockerfile")
 
     download_at = dockerfile.index(NPM_TARBALL_URL)
@@ -78,13 +84,15 @@ def test_runtime_downloads_and_verifies_the_fixed_npm_tree_before_extracting_it(
     )
     extract_at = dockerfile.index("tar -xzf /tmp/npm.tgz --strip-components=1 -C /usr/local/lib/node_modules/npm")
     version_at = dockerfile.index(f'test "$(npm --version)" = {NPM_VERSION};')
+    compiler_at = dockerfile.index("\nARG BPP_REPO=", version_at)
+    alpine_copy_at = dockerfile.index("COPY --from=bpp-build /usr/local/lib/node_modules/npm ")
 
-    assert download_at < verify_at < extract_at < version_at
+    assert download_at < verify_at < extract_at < version_at < compiler_at < alpine_copy_at
     assert "mkdir -p /usr/local/lib/node_modules/npm" in dockerfile
     assert "rm /tmp/npm.tgz" in dockerfile
 
 
-def test_runtime_checks_dynamic_libraries_and_actual_submission_user_tools():
+def test_glibc_builder_checks_node_libraries_and_final_alpine_submission_user_checks_tools():
     dockerfile = read("runtime/docker/Dockerfile")
     assert 'ldd /usr/local/bin/node > /tmp/node-libraries.txt' in dockerfile
     assert "! grep -q 'not found' /tmp/node-libraries.txt" in dockerfile

@@ -15,6 +15,7 @@ import stat
 
 ALLOWED_CHANGES = frozenset({
     "runtime/bpp-ref.txt",
+    "runtime/image-lock.json",
     "runtime/docker/Dockerfile",
     "runtime/compiler-patches/apply_exploration.py",
     "runtime/compiler-patches/exploration.bpp",
@@ -24,6 +25,12 @@ REVIEWED_COMPILER_TRANSITION = (
     "2d596233f45973394a5d951c40b11f78171c8870",
     "9859a2dc783c9346be2ab9447e1569218bcc5093",
 )
+REVIEWED_SANDBOX_BASE = {
+    "repository": "library/node", "tag": "24.21.0-alpine",
+    "digest": "sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
+    "linuxAmd64": "sha256:83f1c388c31fb2e51f7cbd4dea949b96260798c98f206e8e4696bc93bd964e3a",
+    "nodeVersion": "24.21.0", "observedOn": "2026-09-28",
+}
 
 
 def runtime_digest(root: Path) -> str:
@@ -72,6 +79,14 @@ def validate_approval(value, *, previous, candidate, old_sha, new_sha, old_image
         refs = tuple((root / "runtime/bpp-ref.txt").read_text().strip() for root in (previous, candidate))
         if refs != REVIEWED_COMPILER_TRANSITION:
             raise ValueError("Unreviewed compiler revision transition")
+    if "runtime/image-lock.json" in changes:
+        old_lock, new_lock = (json.loads((root / "runtime/image-lock.json").read_text())
+                              for root in (previous, candidate))
+        new_images = new_lock.get("images")
+        if not isinstance(new_images, dict) or new_images.pop("nodeSandbox", None) != REVIEWED_SANDBOX_BASE:
+            raise ValueError("Unreviewed sandbox base image")
+        if new_lock != old_lock:
+            raise ValueError("Unreviewed change to existing image locks")
     if value["runtime_digest"] != runtime_digest(candidate):
         raise ValueError("Runtime source approval mismatch")
     return value

@@ -1,7 +1,8 @@
-"""Bounded Linux Node compatibility probe using the real runtime Dockerfile prefix.
+"""Bounded Node compatibility probe for the final Alpine sandbox stage.
 
-This deliberately excludes B++ checkout/build and is not a complete sandbox image
-or judge/queue test. The caller owns/verifies the builder and cleans its image tag.
+This deliberately excludes only B++ checkout, copied B++ artifacts, and its two
+installed-compiler gates.  It is not a complete sandbox image or judge/queue
+test. The caller owns/verifies the builder and cleans its image tag.
 """
 import json
 import shutil
@@ -15,7 +16,7 @@ test "$(id -un)" = sandboxuser
 test "$(id -u)" != 0
 test "$(node --version)" = v24.21.0
 test "$(nodejs --version)" = v24.21.0
-npm --version
+test "$(npm --version)" = 11.19.1
 npx --version
 ldd /usr/local/bin/node > /tmp/node-ldd.txt
 ! grep -q 'not found' /tmp/node-ldd.txt
@@ -42,30 +43,64 @@ printf 'NODE_RUNTIME_PROBE_OK\n'
 
 
 def dockerfile_prefix(source):
-    marker = '\nARG BPP_REPO='
-    if source.count(marker) != 1:
+    """Retain the npm builder prefix and final runtime, omitting only B++ work."""
+    from_lines = [line for line in source.splitlines() if line.startswith('FROM ')]
+    if len(from_lines) != 3:
+        raise ValueError('Exact three-stage product Dockerfile required')
+    if (not from_lines[0].startswith('FROM node:')
+            or 'bookworm-slim@sha256:' not in from_lines[0]
+            or not from_lines[0].endswith(' AS node-runtime')):
+        raise ValueError('Pinned Node npm-builder source stage required')
+    if (not from_lines[1].startswith('FROM ubuntu:26.04@sha256:')
+            or not from_lines[1].endswith(' AS bpp-build')):
+        raise ValueError('Exact B++ builder stage required')
+    if (not from_lines[2].startswith('FROM node:')
+            or '-alpine@sha256:' not in from_lines[2]
+            or not from_lines[2].endswith(' AS sandbox-runtime')):
+        raise ValueError('Exact final Alpine sandbox stage required')
+
+    bpp_stage = source.index('\nFROM ', source.index(from_lines[0])) + 1
+    final_stage = source.index('\nFROM ', bpp_stage) + 1
+    builder = source[bpp_stage:final_stage]
+    runtime = source[final_stage:]
+    compiler_boundary = '\nARG BPP_REPO='
+    if builder.count(compiler_boundary) != 1:
         raise ValueError('Exact product compiler-stage boundary required')
-    prefix = source.split(marker, 1)[0]
-    if 'AS node-runtime\n' not in prefix or 'COPY --from=node-runtime ' not in prefix:
-        raise ValueError('Product pinned Node copy stage required')
-    tail_marker = '\nWORKDIR /sandbox\n'
-    if source.count(tail_marker) != 1:
-        raise ValueError('Exact product runtime packaging boundary required')
-    tail = tail_marker + source.split(tail_marker, 1)[1]
-    if source.index(tail_marker) <= source.index(marker):
-        raise ValueError('Runtime packaging must follow the compiler stage')
-    # This narrowly scoped Node probe has no B++ installation. Omit only the
-    # exact B++ build-gate copy/run instructions as well; product builds keep
-    # them mandatory. Reject drift instead of broadly deleting Python commands.
+    npm_builder = source[:bpp_stage] + builder.split(compiler_boundary, 1)[0]
+    if ('COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node\n' not in npm_builder
+            or 'mkdir -p /usr/local/lib/node_modules/npm' not in npm_builder
+            or 'tar -xzf /tmp/npm.tgz --strip-components=1 -C /usr/local/lib/node_modules/npm' not in npm_builder
+            or 'test "$(npm --version)" = 11.19.1;' not in npm_builder):
+        raise ValueError('Verified npm builder prefix required before B++ checkout')
+    if any(value in npm_builder for value in ('git clone', 'compiler-patches', '/opt/Bpp')):
+        raise ValueError('Node probe must not include compiler checkout')
+    if runtime.count('\nWORKDIR /sandbox\n') != 1:
+        raise ValueError('Exact final runtime packaging boundary required')
+    if ('COPY --from=bpp-build /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm\n'
+            not in runtime):
+        raise ValueError('Final Alpine stage must copy the verified npm tree')
+
+    # This narrow Node probe has no B++ installation. Remove only exact B++
+    # copies and both mandatory installed-compiler gates; reject any drift
+    # rather than broadly dropping Python or final-runtime instructions.
     for instruction in (
+        'COPY --from=bpp-build /usr/local/bin/bpp /usr/local/bin/bpp\n',
+        'COPY --from=bpp-build /usr/local/libexec/bpp /usr/local/libexec/bpp\n',
+        'COPY --from=bpp-build /usr/local/share/bpp /usr/local/share/bpp\n',
+        'COPY --from=bpp-build /usr/local/share/bpp-build-info.txt /usr/local/share/bpp-build-info.txt\n',
         'COPY sandbox/verify_bpp_runtime.py /usr/local/share/verify_bpp_runtime.py\n',
+        'COPY sandbox/verify_bpp_exploration.py /usr/local/share/verify_bpp_exploration.py\n',
         'RUN python3 -I /usr/local/share/verify_bpp_runtime.py\n',
+        'RUN python3 -I /usr/local/share/verify_bpp_exploration.py\n',
     ):
-        if tail.splitlines(keepends=True).count(instruction)!=1:
-            raise ValueError('Exact B++-only gate instruction required')
-        tail=tail.replace(instruction,'',1)
-    # Preserve the remaining actual Node/runtime packaging instructions.
-    return prefix + tail + '''
+        if runtime.splitlines(keepends=True).count(instruction) != 1:
+            raise ValueError('Exact B++-only copy or gate instruction required')
+        runtime = runtime.replace(instruction, '', 1)
+    if any(value in runtime for value in ('/usr/local/bin/bpp', '/usr/local/libexec/bpp',
+                                           '/usr/local/share/bpp', 'verify_bpp_')):
+        raise ValueError('B++ artifacts or gates survived the Node-only probe')
+    # Preserve the actual Alpine stage and non-B++ packaging instructions.
+    return npm_builder + runtime + '''
 COPY fixtures /audit
 RUN --network=none /bin/bash /audit/smoke.sh
 '''
@@ -83,7 +118,7 @@ def run(case, *, source_root, workdir, env, builder_name, container_id, nonce,
     (context / 'fixtures/smoke.sh').write_text(SMOKE, encoding='utf-8')
     verify()
     log_path = workdir / 'node-runtime-build.log'
-    print('Starting actual runtime-prefix Node build (B++ build excluded)', flush=True)
+    print('Starting actual final-Alpine Node build (B++ work excluded)', flush=True)
     arguments = ['docker', 'buildx', 'build', '--builder', builder_name, '--load',
         '--progress', 'plain', '--label', 'io.webcompiler.audit.nonce=' + nonce,
         '--tag', tag, str(context)]
@@ -104,7 +139,7 @@ def run(case, *, source_root, workdir, env, builder_name, container_id, nonce,
             output = log.read()
             case.assertEqual(process.returncode, 0, output[-10000:])
             case.assertIn('NODE_RUNTIME_PROBE_OK', output)
-            print('Actual glibc Node24/nonroot/run.sh checks passed in '
+            print('Actual Alpine Node24/nonroot/run.sh checks passed in '
                 + str(round(time.monotonic() - started, 1)) + 's', flush=True)
         finally:
             if process.poll() is None:
