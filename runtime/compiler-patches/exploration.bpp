@@ -1,5 +1,24 @@
 // Additive, output-only exploration metadata for the pinned Bpp compiler.
 // No optimization decision or generated machine instruction is changed.
+func exploration_function_matches_source(fn: *SSAFunction) -> u64 {
+    if (opt_source_map_user_only() == 0) { return 1; }
+    var blocks: []*SSABlock = fn.blocks;
+    for (var i: u64 = 0; i < slice_len(blocks); i++) {
+        var inst: *SSAInstruction = blocks[i].phi_head;
+        while (inst != 0) {
+            if (ssa_json_inst_matches_source_filter(inst) != 0) { return 1; }
+            inst = inst.next;
+        }
+        inst = blocks[i].inst_head;
+        while (inst != 0) {
+            var op: u64 = op_of(inst);
+            if (op != SSA_OP_NOP && op != SSA_OP_ENTRY && ssa_json_inst_matches_source_filter(inst) != 0) { return 1; }
+            inst = inst.next;
+        }
+    }
+    return 0;
+}
+
 func exploration_emit_reg(reg: u64, first: *u64) -> u64 {
     if (reg == 0) { return 0; }
     if (*first == 0) { emit(","); }

@@ -17,6 +17,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--ssh-host", required=True)
 parser.add_argument("--ssh-port", type=int, required=True)
 parser.add_argument("--image", required=True)
+parser.add_argument("--production-limits", action="store_true",
+                    help="Use the production 1 CPU / 256 MiB / 30 second per-mode contract")
 args = parser.parse_args()
 source_lines = ["import emitln from std.io;", "// 한글 😀", "func main() -> u64 {",
                 '    emitln("안녕 😀");', "    return 0;", "}", ""]
@@ -32,12 +34,12 @@ with tempfile.TemporaryDirectory(dir='/tmp') as directory:
     results = {}
     for mode in ('json', 'dump-ir-json'):
         result = subprocess.run(['/usr/local/bin/run.sh', mode, 'bpp', str(path)],
-                                capture_output=True, text=True, timeout=35)
+                                capture_output=True, text=True, timeout=MODE_TIMEOUT)
         if result.returncode:
             raise RuntimeError(mode + ': ' + result.stderr[:1000])
         results[mode] = json.loads(result.stdout)
     print(json.dumps(results))
-""".replace("SOURCE", repr(source))
+""".replace("SOURCE", repr(source)).replace("MODE_TIMEOUT", str(30 if args.production_limits else 35))
     remote_script = """
 import subprocess, sys
 command = COMMAND
@@ -47,7 +49,9 @@ sys.stderr.write(result.stderr)
 sys.exit(result.returncode)
 """.replace("COMMAND", repr([
         "docker", "run", "--rm", "-i", "--network", "none", "--read-only",
-        "--cpus", "0.5", "--memory", "512m", "--memory-swap", "512m",
+        "--cpus", "1" if args.production_limits else "0.5",
+        "--memory", "256m" if args.production_limits else "512m",
+        "--memory-swap", "256m" if args.production_limits else "512m",
         "--pids-limit", "64", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "--tmpfs", "/tmp:rw,exec,nosuid,size=128m", "--user", "1000:1000",
         "--env", f"COMPILER_OPTIMIZE={optimize}", "--env", "HOME=/tmp",
