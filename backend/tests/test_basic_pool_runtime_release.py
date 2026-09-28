@@ -27,7 +27,7 @@ def transition(tmp_path):
         path.write_text("stable\n", newline="\n")
     (previous / "backend/app/initialize.py").write_text("RUNTIME_SCHEMA_VERSION = 'v26'\n")
     shutil.copytree(previous, candidate)
-    for relative in app.runtime.ALLOWED_CHANGES:
+    for relative in app.runtime.LEGACY_ALLOWED_CHANGES:
         if relative in ("runtime/bpp-ref.txt", "runtime/image-lock.json"):
             continue
         path = candidate / relative
@@ -94,6 +94,30 @@ def test_even_exact_digest_cannot_approve_unreviewed_runtime(transition, relativ
         app.runtime.validate_approval(approval, **args)
 
 
+def test_graph_latency_runtime_requires_the_exact_reviewed_file_set(transition):
+    app, approval, args = transition
+    candidate = args["candidate"].parent / "latency-candidate"
+    shutil.copytree(args["previous"], candidate)
+    for relative in app.runtime.GRAPH_LATENCY_CHANGES:
+        path = candidate / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("reviewed graph latency candidate\n", newline="\n")
+    latency_args = {**args, "candidate": candidate}
+    approval["runtime_digest"] = app.runtime.runtime_digest(candidate)
+    verified = app.runtime.validate_approval(approval, **latency_args)
+    app.check_application_contracts(args["previous"], candidate, runtime_approval=verified)
+
+    missing = candidate / "runtime/compiler-patches/graph_scope.bpp"
+    previous_missing = args["previous"] / "runtime/compiler-patches/graph_scope.bpp"
+    if previous_missing.exists():
+        shutil.copyfile(previous_missing, missing)
+    else:
+        missing.unlink()
+    approval["runtime_digest"] = app.runtime.runtime_digest(candidate)
+    with pytest.raises(ValueError, match="Unreviewed runtime change"):
+        app.runtime.validate_approval(approval, **latency_args)
+
+
 @pytest.mark.parametrize("relative", ["backend/app/initialize.py", "backend/requirements.lock", "docker-compose.yml", "backend/app/core/config.py"])
 def test_approved_runtime_never_authorizes_schema_dependencies_topology(transition, relative):
     app, approval, args = transition
@@ -133,7 +157,12 @@ def test_networkless_candidate_gate_uses_exact_image_and_limits(transition):
     app, approval, _ = transition
     calls = []
     app.runtime.verify_candidate({"images": {"sandbox": approval["candidate_image"]}}, lambda *a, **kw: calls.append((a, kw)))
-    assert len(calls) == 2
+    assert len(calls) == 3
+    assert [command[-1] for command, _ in calls] == [
+        "/usr/local/share/verify_bpp_runtime.py",
+        "/usr/local/share/verify_bpp_exploration.py",
+        "/usr/local/share/verify_bpp_latency.py",
+    ]
     for command, kwargs in calls:
         assert command[command.index("--network") + 1] == "none"
         assert command[command.index("--memory") + 1] == "1g"

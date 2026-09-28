@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from app.services.execution_admission import admit_execution, validate_execution
 from app.services.execution_identity import execution_owner, execution_quota
 from app.services.execution_runtime import execution_queue
 from app.services.public_identity import public_execution_id
+from app.services.execution_wakeup import notify_execution_work
 
 router = APIRouter()
 
@@ -67,6 +69,8 @@ def accept_execution(data: ExecutionRequest, request: Request, response: Respons
             target=data.target if data.kind == 'compile' else None,
             source_size_bytes=len(data.source_code.encode('utf-8')), queued_at=job.received_at))
     db.commit()
+    if job.status == 'queued':
+        notify_execution_work()
     return {'id':public_execution_id(job), 'status':job.status,
             'receivedAt':iso(job.received_at), 'requestId':job.request_id}
 
@@ -98,5 +102,11 @@ def read_execution(job_id: str, request: Request, response: Response,
         result = {'ok':value is not None, 'value':value, 'verdict':raw.get('verdict')}
         if value is None:
             result['error'] = raw.get('message', '실행 서비스를 사용할 수 없습니다.')
-    return {'id':public_execution_id(job), 'status':job.status,
+    body = {'id':public_execution_id(job), 'status':job.status,
             'receivedAt':iso(job.received_at), 'result':result}
+    if job.kind == 'compile':
+        # The validated compile model contains JSON-native fields only. Avoid
+        # FastAPI recursively walking the entire AST/IR/ASM dictionary again.
+        # Ownership/content-expiry checks above and no-store still apply.
+        return JSONResponse(body, headers={'Cache-Control': 'no-store'})
+    return body

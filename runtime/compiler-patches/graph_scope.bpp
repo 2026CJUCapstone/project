@@ -1,0 +1,83 @@
+// Full semantic validation runs before this projection. Keep every displayed
+// function, including unused user functions, plus its transitive callees.
+// Indirect dispatch retains the original whole-program path conservatively.
+var g_exploration_graph_names: *Vec<*NameInfo> = 0;
+var g_exploration_precise_native: u64 = 0;
+
+func exploration_scope_context(ctx: *SSAContext, prog: *AstProgram) -> *SSAContext {
+    if (ctx == 0 || opt_source_map_user_only() == 0 || opt_source_map_file_ptr() == 0) { return ctx; }
+    var names: *Vec<*NameInfo> = new Vec<*NameInfo>{heap_alloc(64 * sizeof(*NameInfo)), 0, 64};
+    g_used_name_membership = new HashMap<u64, u64>{0, 0, 0};
+    g_used_name_membership.ensure_capacity(256);
+    var funcs: []*SSAFunction = ctx.funcs;
+    for (var i: u64 = 0; i < slice_len(funcs); i++) {
+        if (exploration_function_matches_source(funcs[i]) != 0) {
+            used_add_resolved_name(names, funcs[i].name);
+        }
+    }
+    if (program_has_runtime_global_init(prog) != 0) {
+        used_add_resolved_name(names, slice("__global_init", 13));
+    }
+    // Follow the lowered call graph, not native emitter roots. Implicit
+    // operators/methods are already direct calls here. Native startup and
+    // unrelated GC helpers are not roots of a source-only visualization.
+    for (var cursor: u64 = 0; cursor < names.len(); cursor++) {
+        var name: *NameInfo = names.get(cursor);
+        var fn: *SSAFunction = ctx.funcs_by_name.get(slice(name.ptr, name.len));
+        if (fn == 0) { continue; } // external declarations have no body
+        for (var bi: u64 = 0; bi < slice_len(fn.blocks); bi++) {
+            var inst: *SSAInstruction = fn.blocks[bi].inst_head;
+            while (inst != 0) {
+                var op: u64 = op_of(inst);
+                if (op == SSA_OP_CALL_PTR) { return ctx; }
+                // User assembly can name functions without an SSA call edge.
+                if (op == SSA_OP_ASM && exploration_function_matches_source(fn) != 0) { return ctx; }
+                if (op == SSA_OP_CALL) {
+                    var call: *SSACallInfo = (*SSACallInfo)ssa_inst_aux_ptr(inst);
+                    if (call == 0 || call.name.ptr == 0) { return ctx; }
+                    used_add_resolved_name(names, call.name);
+                } else if (op == SSA_OP_CALL_SLICE_STORE) {
+                    var call: *SSACallSliceStoreInfo = (*SSACallSliceStoreInfo)ssa_inst_aux_ptr(inst);
+                    if (call == 0 || call.is_ptr != 0 || call.name.ptr == 0) { return ctx; }
+                    used_add_resolved_name(names, call.name);
+                }
+                inst = inst.next;
+            }
+        }
+    }
+    var retained: **SSAFunction = (**SSAFunction)heap_alloc(slice_len(funcs) * sizeof(*SSAFunction));
+    if (retained == 0) { return ctx; }
+    var count: u64 = 0;
+    var index: *HashMap<u64, *SSAFunction> = new HashMap<u64, *SSAFunction>{0, 0, 0};
+    index.ensure_capacity(256);
+    for (var i: u64 = 0; i < slice_len(funcs); i++) {
+        var fn: *SSAFunction = funcs[i];
+        if (used_has_resolved_name(names, fn.name) != 0) {
+            retained[count] = fn;
+            count = count + 1;
+            index.put(slice(fn.name.ptr, fn.name.len), fn);
+        }
+    }
+    ctx.funcs = slice(retained, count);
+    ctx.funcs_cap = slice_len(funcs);
+    ctx.funcs_by_name = index;
+    g_exploration_graph_names = names;
+    // Only plain direct-call programs omit unrelated implicit operator roots.
+    // collect_used_func_names STILL adds the complete required GC helper set;
+    // pointer parameters alone do not require every stdlib operator body.
+    // Custom operators/destructors/dispatch keep the legacy implicit roots.
+    {
+        var ordinary: u64 = 1;
+        for (var ni: u64 = 0; ni < names.len(); ni++) {
+            var info: *NameInfo = names.get(ni);
+            var name: []u8 = slice(info.ptr, info.len);
+            if (codegen_name_contains(name, slice("__op_", 5)) != 0 ||
+                codegen_name_has_suffix(name, slice("_destructor", 11)) != 0 ||
+                codegen_name_has_suffix(name, slice("_constructor", 12)) != 0 ||
+                codegen_name_has_prefix(name, slice("__thunk_", 8)) != 0 ||
+                codegen_name_has_prefix(name, slice("std_number__", 12)) != 0) { ordinary = 0; }
+        }
+        g_exploration_precise_native = ordinary;
+    }
+    return ctx;
+}

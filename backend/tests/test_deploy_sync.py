@@ -217,6 +217,7 @@ fi
         (project/'runtime/docker/Dockerfile').write_text('FROM scratch\n')
         (project/'runtime/sandbox/run.sh').write_text('# fixture\n')
         (project/'runtime/sandbox/verify_bpp_runtime.py').write_text('# fixture\n')
+        (project/'runtime/sandbox/verify_bpp_latency.py').write_text('# fixture latency verifier\n')
         (project/'runtime/sandbox/verify_bpp_exploration.py').write_text(
             '#!/usr/bin/env python3\n"""Fixture exploration verifier."""\n'
         )
@@ -224,6 +225,8 @@ fi
             '#!/usr/bin/env python3\n"""Fixture compiler patch entry point."""\n'
         )
         (project/'runtime/compiler-patches/exploration.bpp').write_text('// fixture exploration patch\n')
+        (project/'runtime/compiler-patches/apply_performance.py').write_text('# fixture performance patch\n')
+        (project/'runtime/compiler-patches/graph_scope.bpp').write_text('// fixture graph scope\n')
         (project/'runtime/bpp-ref.txt').write_text(self.first+'\n')
         # Trusted CLI fakes only: a Git lookup would fail, and no real Docker
         # executable or daemon is reachable through this fixture invocation.

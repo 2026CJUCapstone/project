@@ -14,7 +14,10 @@ runtime_build_signature() {
     "$PROJECT_ROOT/runtime/sandbox/run.sh" \
     "$PROJECT_ROOT/runtime/sandbox/verify_bpp_runtime.py" \
     "$PROJECT_ROOT/runtime/sandbox/verify_bpp_exploration.py" \
+    "$PROJECT_ROOT/runtime/sandbox/verify_bpp_latency.py" \
     "$PROJECT_ROOT/runtime/compiler-patches/apply_exploration.py" \
+    "$PROJECT_ROOT/runtime/compiler-patches/apply_performance.py" \
+    "$PROJECT_ROOT/runtime/compiler-patches/graph_scope.bpp" \
     "$PROJECT_ROOT/runtime/compiler-patches/exploration.bpp" \
     "$PROJECT_ROOT/scripts/build_sandbox_image.sh" \
     | sha256sum | awk 'NR==1 { print $1 }'

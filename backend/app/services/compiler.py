@@ -15,6 +15,7 @@ from typing import Literal
 import docker
 from docker.errors import APIError, DockerException
 from docker.types import LogConfig, Ulimit
+from requests.exceptions import ReadTimeout
 
 from app.core.config import settings
 from app.services.execution_phase import ExecutionPhaseDecoder
@@ -128,7 +129,7 @@ class DockerCompilerRunner:
         requested_targets = self._resolve_requested_targets(target) if language == "bpp" else set()
 
         result = await self._execute(
-            mode="compile",
+            mode="compile-json" if requested_targets else "compile",
             source_code=source_code,
             language=language,
             optimize=optimize,
@@ -156,12 +157,10 @@ class DockerCompilerRunner:
         resolved_targets: set[str] = set()
 
         if requested_targets:
-            json_result = await self._execute(
-                mode="json",
-                source_code=source_code,
-                language=language,
-                optimize=optimize,
-            )
+            # The sandbox returns JSON only after assembling and linking the
+            # same compilation's full native output. Older images fail closed
+            # on this mode instead of silently bypassing native validation.
+            json_result = result
             if json_result["exit_code"] == 0:
                 pipeline = build_bpp_pipeline_from_json(
                     json_result["stdout"],
@@ -185,9 +184,9 @@ class DockerCompilerRunner:
 
         missing_targets = requested_targets - resolved_targets
 
-        # Pinned Bpp supports -dump-ir-json, but its unified JSON currently
-        # omits IR even when --views includes it. Keep byte provenance instead
-        # of immediately falling back to the unmapped human-readable dump.
+        # Compatibility fallback for older/incomplete unified payloads only.
+        # Modern Bpp supplies views.ir in a stage="ir" SSA envelope, which
+        # the parser consumes without starting another compiler/container.
         if "ir" in missing_targets:
             ir_json = await self._execute(
                 mode="dump-ir-json", source_code=source_code,
@@ -266,7 +265,7 @@ class DockerCompilerRunner:
     async def _execute(
         self,
         *,
-        mode: Literal["compile", "run", "dump-ir", "dump-ir-json", "dump-ssa", "asm", "json"],
+        mode: Literal["compile", "compile-json", "run", "dump-ir", "dump-ir-json", "dump-ssa", "asm", "json"],
         source_code: str,
         language: str,
         stdin: str = "",
@@ -342,9 +341,7 @@ class DockerCompilerRunner:
             output_stream = await asyncio.to_thread(container.attach, stream=True, logs=False, demux=True)
             output_task = asyncio.create_task(asyncio.to_thread(self._collect_output, output_stream, container, phase))
             await self._start_container(container)
-            await self._wait_for_exit(container)
-
-            wait_result = await asyncio.to_thread(container.wait)
+            wait_result = await self._wait_for_exit(container)
             stdout, stderr, output_exceeded = await asyncio.wait_for(asyncio.shield(output_task), timeout=settings.EXECUTION_TIMEOUT)
             exit_code = int(wait_result.get("StatusCode", 1))
             if container.attrs.get('State', {}).get('OOMKilled') is True:
@@ -371,17 +368,21 @@ class DockerCompilerRunner:
         except Exception as exc:
             raise SandboxExecutionError(f"샌드박스 실행 중 오류가 발생했습니다: {exc}") from exc
         finally:
-            if container is not None:
-                await self._remove_container(container)
-            if output_stream is not None:
-                with contextlib.suppress(Exception):
-                    await asyncio.to_thread(output_stream.close)
-            if output_task is not None:
-                if not output_task.done():
-                    output_task.cancel()
-                with contextlib.suppress(Exception, asyncio.CancelledError):
-                    await output_task
-            await self._remove_workdir(temp_dir)
+            # One durable cleanup intent can cover both resources. Keep the
+            # container-first order, and never delete the mounted source after
+            # an uncertain daemon response. The worker still confirms complete
+            # claim absence before releasing capacity/publishing the receipt.
+            try:
+                await self._remove_execution_resources(container, temp_dir)
+            finally:
+                if output_stream is not None:
+                    with contextlib.suppress(Exception):
+                        await asyncio.to_thread(output_stream.close)
+                if output_task is not None:
+                    if not output_task.done():
+                        output_task.cancel()
+                    with contextlib.suppress(Exception, asyncio.CancelledError):
+                        await output_task
 
         elapsed_ms = round((time.monotonic() - start_time) * 1000, 2)
         return {
@@ -461,15 +462,10 @@ class DockerCompilerRunner:
     def _pipeline_target_has_data(self, target: str, value: object) -> bool:
         if not isinstance(value, dict):
             return False
-        if target == "ast":
-            return bool(value.get("nodes"))
-        if target == "ssa":
-            return bool(value.get("blocks"))
-        if target == "ir":
-            return bool(value.get("instructions"))
-        if target == "asm":
-            return bool(value.get("lines"))
-        return False
+        # A successfully parsed, empty view is still complete (for example
+        # when source filtering removes all generated instructions).
+        field = {"ast": "nodes", "ssa": "blocks", "ir": "instructions", "asm": "lines"}.get(target)
+        return field is not None and isinstance(value.get(field), list)
 
     def _get_client(self) -> docker.DockerClient:
         if self.client_factory is not None:
@@ -481,16 +477,22 @@ class DockerCompilerRunner:
         except DockerException as exc:
             raise SandboxExecutionError(f"Docker 실행 환경을 찾을 수 없습니다: {exc}") from exc
 
-    async def _wait_for_exit(self, container: docker.models.containers.Container) -> None:
-        deadline = time.monotonic() + settings.EXECUTION_TIMEOUT
-
-        while True:
-            await asyncio.to_thread(container.reload)
-            if container.status in {"exited", "dead"}:
-                return
-            if time.monotonic() >= deadline:
-                raise TimeoutError("Sandbox execution timed out")
-            await asyncio.sleep(0.1)
+    async def _wait_for_exit(self, container: docker.models.containers.Container) -> dict:
+        # Docker's wait endpoint wakes at exit. Polling inspect adds an extra
+        # interval (and repeated daemon calls) to every short compilation.
+        # Bound both the coroutine and the underlying HTTP request: cancelling
+        # to_thread alone does not cancel its socket. The caller always kills /
+        # removes the sandbox on timeout or cancellation before releasing its
+        # lease. Inspect once afterwards to retain the authoritative OOM flag.
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(container.wait, timeout=settings.EXECUTION_TIMEOUT),
+                timeout=settings.EXECUTION_TIMEOUT,
+            )
+        except ReadTimeout as exc:
+            raise TimeoutError("Sandbox execution timed out") from exc
+        await asyncio.to_thread(container.reload)
+        return result
 
     async def _kill_container(self, container: docker.models.containers.Container) -> None:
         with contextlib.suppress(DockerException, APIError):
@@ -507,16 +509,28 @@ class DockerCompilerRunner:
         return await asyncio.to_thread(self.cleanup_guard,action)
 
     async def _remove_workdir(self, directory):
+        return await self._cleanup(lambda: self._delete_workdir(directory))
+
+    async def _remove_execution_resources(self, container, directory):
         def remove():
-            try:
-                shutil.rmtree(directory)
-            except FileNotFoundError:
-                return
-            # A cleanup guard may execute on a delayed/remote filesystem. Do
-            # not publish a terminal receipt unless absence is observable.
-            if directory.exists():
-                raise RuntimeError('Sandbox work directory cleanup was not confirmed')
+            if container is not None:
+                try:
+                    container.remove(force=True)
+                except docker.errors.NotFound:
+                    pass
+            self._delete_workdir(directory)
         return await self._cleanup(remove)
+
+    @staticmethod
+    def _delete_workdir(directory):
+        try:
+            shutil.rmtree(directory)
+        except FileNotFoundError:
+            return
+        # A cleanup guard may execute on a delayed/remote filesystem. Do not
+        # publish a terminal receipt unless absence is observable.
+        if directory.exists():
+            raise RuntimeError('Sandbox work directory cleanup was not confirmed')
 
     def _resolve_filename(self, language: str, source_code: str) -> str:
         if language == "java":

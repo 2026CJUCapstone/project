@@ -87,7 +87,9 @@ def test_exploration_resolves_call_payloads_through_typed_table():
 def test_filtered_functions_have_correct_json_separator_and_buffer_flush():
     patched = _PATCHER.patch_source(_pinned_shape(), 'extension')
     assert patched.index('exploration_function_matches_source(fn) == 0') < patched.index('if (first_function == 0)')
-    assert 'defer io_set_emit_buffering(0);' in patched
+    # Nested IR/SSA must not disable the outer unified writer before ASM.
+    # Standalone IR/SSA still flushes and restores unbuffered output.
+    assert 'defer io_set_emit_buffering(opt_get_output_mode() == OUT_UNIFIED_JSON);' in patched
     assert 'if (i != 0) { emit(","); }' not in patched
 
 

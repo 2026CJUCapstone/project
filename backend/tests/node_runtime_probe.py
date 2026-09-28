@@ -1,6 +1,6 @@
 """Bounded Node compatibility probe for the final Alpine sandbox stage.
 
-This deliberately excludes only B++ checkout, copied B++ artifacts, and its two
+This deliberately excludes only B++ checkout, copied B++ artifacts, and its
 installed-compiler gates.  It is not a complete sandbox image or judge/queue
 test. The caller owns/verifies the builder and cleans its image tag.
 """
@@ -81,7 +81,7 @@ def dockerfile_prefix(source):
         raise ValueError('Final Alpine stage must copy the verified npm tree')
 
     # This narrow Node probe has no B++ installation. Remove only exact B++
-    # copies and both mandatory installed-compiler gates; reject any drift
+    # copies and mandatory installed-compiler gates; reject any drift
     # rather than broadly dropping Python or final-runtime instructions.
     for instruction in (
         'COPY --from=bpp-build /usr/local/bin/bpp /usr/local/bin/bpp\n',
@@ -90,8 +90,10 @@ def dockerfile_prefix(source):
         'COPY --from=bpp-build /usr/local/share/bpp-build-info.txt /usr/local/share/bpp-build-info.txt\n',
         'COPY sandbox/verify_bpp_runtime.py /usr/local/share/verify_bpp_runtime.py\n',
         'COPY sandbox/verify_bpp_exploration.py /usr/local/share/verify_bpp_exploration.py\n',
+        'COPY sandbox/verify_bpp_latency.py /usr/local/share/verify_bpp_latency.py\n',
         'RUN python3 -I /usr/local/share/verify_bpp_runtime.py\n',
         'RUN python3 -I /usr/local/share/verify_bpp_exploration.py\n',
+        'RUN python3 -I /usr/local/share/verify_bpp_latency.py\n',
     ):
         if runtime.splitlines(keepends=True).count(instruction) != 1:
             raise ValueError('Exact B++-only copy or gate instruction required')

@@ -36,6 +36,78 @@ def runtime(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_wakeup_only_observes_committed_receipt(runtime, monkeypatch):
+    _, factory = runtime
+    observed = []
+    def notified():
+        with factory() as db:
+            job = db.query(ExecutionJob).one()
+            observed.append((job.status, job.payload['code']))
+    monkeypatch.setattr(executions, 'notify_execution_work', notified)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as client:
+        response = await client.post('/api/v1/executions', json={'language':'python', 'code':'print(42)'})
+    assert response.status_code == 202
+    assert observed == [('queued', 'print(42)')]
+
+
+@pytest.mark.asyncio
+async def test_failed_commit_never_publishes_hint(runtime, monkeypatch):
+    from sqlalchemy.orm import Session
+    from unittest.mock import Mock
+    notified = Mock()
+    monkeypatch.setattr(executions, 'notify_execution_work', notified)
+    monkeypatch.setattr(Session, 'commit', Mock(side_effect=RuntimeError('commit failed')))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as client:
+        with pytest.raises(RuntimeError, match='commit failed'):
+            await client.post('/api/v1/executions', json={'language':'python', 'code':'print(42)'})
+    notified.assert_not_called()
+    with runtime[1]() as db:
+        assert db.query(ExecutionJob).count() == 0
+
+
+@pytest.mark.asyncio
+async def test_compile_json_fast_path_keeps_schema_privacy_and_expiry(runtime):
+    from app.models.schemas import CompileResponse
+    from app.services.contest_access import now_utc
+    queue, factory = runtime
+    value = {'success': True, 'execution_time': 123.4,
+             'ast': {'nodes': [{'id': 'unicode', 'label': '안녕 😀', 'sourceRanges': [
+                 {'startLine': 1, 'startColumn': 1, 'endLine': 1, 'endColumn': 4}]}], 'edges': []},
+             'ssa': {'blocks': []}, 'ir': {'instructions': []}, 'asm': {'lines': []}}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as client:
+        receipt = await client.post('/api/v1/executions', json={'kind': 'compile', 'language': 'bpp', 'code': 'private source'})
+        assert receipt.status_code == 202
+        path = '/api/v1/executions/' + receipt.json()['id']
+        claim = queue.claim()
+        assert queue.finish(claim.id, claim.token, {'verdict': 'finished', 'value': value})
+        response = await client.get(path)
+        assert response.status_code == 200
+        assert response.headers['cache-control'] == 'no-store'
+        assert response.headers['content-type'] == 'application/json'
+        assert response.json()['result']['value'] == CompileResponse(**value).model_dump(by_alias=True)
+        assert 'private source' not in response.text and 'payload' not in response.json()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as other:
+            assert (await other.get(path)).status_code == 404
+        with factory() as db:
+            db.get(ExecutionJob, claim.id).content_expired_at = now_utc()
+            db.commit()
+        assert (await client.get(path)).status_code == 410
+
+
+@pytest.mark.asyncio
+async def test_compile_terminal_error_fast_path_keeps_error_contract(runtime):
+    queue, _ = runtime
+    queue.max_attempts = 1  # Inspect a terminal error, not the retry receipt.
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as client:
+        receipt = await client.post('/api/v1/executions', json={'kind': 'compile', 'language': 'bpp', 'code': 'invalid'})
+        claim = queue.claim()
+        assert queue.finish(claim.id, claim.token, {'verdict': 'system_error', 'message': '실행 서비스를 사용할 수 없습니다.'})
+        response = await client.get('/api/v1/executions/' + receipt.json()['id'])
+    assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
+    assert response.json()['result'] == {'ok': False, 'value': None, 'verdict': 'system_error', 'error': '실행 서비스를 사용할 수 없습니다.'}
+
+
+@pytest.mark.asyncio
 async def test_receipt_commits_code_before_judging_and_is_readable_after_worker_restart(runtime):
     queue, factory = runtime
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as client:

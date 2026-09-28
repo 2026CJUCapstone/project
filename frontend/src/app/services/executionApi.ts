@@ -13,6 +13,16 @@ export interface ExecutionWaitOptions {
 }
 
 const abortError = () => new DOMException('요청이 취소되었습니다.', 'AbortError');
+const DEFAULT_POLL_INTERVAL_MS = 750;
+const INITIAL_POLL_INTERVAL_MS = 150;
+const INITIAL_POLL_WINDOW_MS = 3_000;
+
+function nextPollInterval(started: number, options: ExecutionWaitOptions): number {
+  if (options.pollIntervalMs !== undefined) return options.pollIntervalMs;
+  return Date.now() - started < INITIAL_POLL_WINDOW_MS
+    ? INITIAL_POLL_INTERVAL_MS
+    : DEFAULT_POLL_INTERVAL_MS;
+}
 
 function retryDelay(response: Response, fallbackMs: number) {
   const raw = response.headers.get('Retry-After');
@@ -70,11 +80,12 @@ export async function waitForExecution<T>(executionId: string, options: Executio
   const maximum = options.maxWaitMs ?? 300_000;
   while (Date.now() - started <= maximum) {
     if (options.signal?.aborted) throw abortError();
+    const requestedAt = Date.now();
     const response = await fetch(`${API_BASE_URL}/api/v1/executions/${encodeURIComponent(executionId)}`, {
       credentials: 'include', signal: options.signal, headers: { Accept: 'application/json', ...getAuthHeaders() },
     });
     if (response.status === 429) {
-      await wait(retryDelay(response, options.pollIntervalMs ?? 750), options.signal);
+      await wait(retryDelay(response, options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS), options.signal);
       continue;
     }
     if (!response.ok) throw new Error(await errorMessage(response));
@@ -84,7 +95,12 @@ export async function waitForExecution<T>(executionId: string, options: Executio
       throw new Error(execution.result?.error || '실행 결과가 없습니다.');
     }
     if (execution.status === 'failed') throw new Error(execution.result?.error || '실행 작업이 실패했습니다.');
-    await wait(options.pollIntervalMs ?? 750, options.signal);
+    const interval = nextPollInterval(started, options);
+    // Count transport/JSON time inside the default cadence rather than adding
+    // it again. Requests remain serial and at most one starts per interval.
+    // Explicit caller delays and server Retry-After retain their old semantics.
+    const elapsed = options.pollIntervalMs === undefined ? Math.max(0, Date.now() - requestedAt) : 0;
+    await wait(Math.max(0, interval - elapsed), options.signal);
   }
   throw new Error(`실행 대기 시간이 초과되었습니다. 작업 ID ${executionId}는 서버에서 계속 처리될 수 있으며 자동으로 다시 제출하지 않았습니다.`);
 }

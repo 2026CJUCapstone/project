@@ -45,10 +45,12 @@ Dockerfile의 `io.bpp.runtime_source_digest` label, compiler ref/repo/build poli
 확인한다. label은 운영자가 수행한 빌드 기록을 묶는 값이지 별도 서명된 provenance가
 아니다. 정확한 committed archive, 빌드 로그, 검증 결과를 함께 보존한다.
 
-허용 변경은 runtime Dockerfile, 두 exploration 패치 파일, exploration 검증기와
-compiler pin뿐이다. pin 변경은 기존 `2d596233f45973394a5d951c40b11f78171c8870`에서
+기존 그래프 런타임 승인 프로필은 runtime Dockerfile, 두 exploration 패치 파일,
+exploration 검증기와 compiler pin만 허용한다. pin 변경은 기존 `2d596233f45973394a5d951c40b11f78171c8870`에서
 수정 후보 `9859a2dc783c9346be2ab9447e1569218bcc5093`로 가는 정확한 전환만 허용한다.
-다른 ref나 mutable branch는 승인 digest가 있어도 거부한다. launcher, 나머지 runtime 파일, 스키마, 의존성, 보안 설정, topology는
+후속 그래프 응답 속도 프로필은 Dockerfile·launcher·지연 검증기·exploration 적용기·성능 패치·그래프 범위 패치의 **정확한 여섯 파일 집합**만 허용한다. 일부만 바꾸거나 다른 runtime 파일을 함께 바꾸면 정확한 이미지 ID와 digest가 있어도 거부한다. 배포 직전에는 기존 runtime·exploration 검사와 새 지연/네이티브 검사까지 제한된 네트워크 없는 컨테이너에서 다시 실행한다.
+
+다른 ref나 mutable branch는 승인 digest가 있어도 거부한다. 나머지 runtime 파일, 스키마, 의존성, 보안 설정, topology는
 기존과 동일해야 한다. 파일 삭제도 거부한다. 이전 배포에 소비된 승인은 이후 변경에
 재사용되지 않는다. 잘못된 승인/이미지/계약은 점검 화면에 진입하기 전에 중단된다.
 

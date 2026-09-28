@@ -409,7 +409,7 @@ def build_bpp_pipeline_from_json(
 def build_bpp_ast_graph_from_json(payload: dict, source_filename: str | None = None) -> dict | None:
     raw_nodes = payload.get("nodes")
     raw_edges = payload.get("edges")
-    if not isinstance(raw_nodes, list):
+    if not isinstance(raw_nodes, list) or any(not isinstance(node, dict) for node in raw_nodes):
         return None
 
     nodes: list[dict] = []
@@ -494,7 +494,7 @@ def build_bpp_ast_graph_from_json(payload: dict, source_filename: str | None = N
 def build_bpp_ssa_graph_from_json(payload: dict, source_code: str, source_filename: str | None = None) -> dict | None:
     ssa_payload = payload.get("ssa") if isinstance(payload.get("ssa"), dict) else payload
     raw_functions = ssa_payload.get("functions") if isinstance(ssa_payload, dict) else None
-    if not isinstance(raw_functions, list):
+    if not isinstance(raw_functions, list) or any(not isinstance(fn, dict) for fn in raw_functions):
         return None
 
     source_names = extract_user_function_names(source_code)
@@ -639,19 +639,29 @@ def _instruction_details(raw: object, instruction_id: str) -> dict:
 
 def build_bpp_ir_from_json(payload: dict, source_code: str, source_filename: str | None = None) -> dict | None:
     ir_payload = payload.get("ir") if isinstance(payload.get("ir"), dict) else payload
+    # Both --emit-json views.ir and -dump-ir-json use the SSA envelope.
+    # The stage discriminator matters: an SSA graph is not pre-SSA IR.
+    if isinstance(ir_payload.get("ssa"), dict):
+        ir_payload = ir_payload["ssa"]
+        if ir_payload.get("stage") not in {"ir", "machine-ir"}:
+            return None
     if not isinstance(ir_payload, dict):
+        return None
+    if ir_payload.get("stage") not in {None, "ir", "machine-ir"}:
         return None
 
     source_names = extract_user_function_names(source_code)
     instructions: list[dict] = []
     raw_instructions = ir_payload.get("instructions")
     if isinstance(raw_instructions, list):
+        if any(not isinstance(item, (dict, str)) for item in raw_instructions):
+            return None
         for index, raw_instruction in enumerate(raw_instructions):
             instructions.append(_normalize_json_ir_instruction(raw_instruction, f"ir-{index}", source_filename))
         return {"instructions": instructions}
 
     raw_functions = ir_payload.get("functions")
-    if not isinstance(raw_functions, list):
+    if not isinstance(raw_functions, list) or any(not isinstance(fn, dict) for fn in raw_functions):
         return None
 
     line_index = 0
@@ -710,7 +720,7 @@ def build_bpp_asm_from_json(output: str, source_filename: str | None = None) -> 
     if isinstance(asm_payload, dict) and isinstance(asm_payload.get("asm"), dict):
         asm_payload = asm_payload.get("asm")
     raw_lines = asm_payload.get("lines") if isinstance(asm_payload, dict) else None
-    if not isinstance(raw_lines, list):
+    if not isinstance(raw_lines, list) or any(not isinstance(line, dict) for line in raw_lines):
         return None
 
     lines: list[dict] = []
