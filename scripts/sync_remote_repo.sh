@@ -21,7 +21,17 @@ mkdir -p "$DEPLOY_PATH/.deploy"
 # second workflow/SSH process must never move HEAD while the first is building.
 exec 9>"$DEPLOY_PATH/.deploy/deploy.lock"
 flock -n 9 || { echo 'Another deployment is already running' >&2; exit 1; }
-# DEPLOY_FRONTEND_PAYLOAD
+if [[ -n "${WEBCOMPILER_FRONTEND_UPLOAD:-}" ]]; then
+  : "${WEBCOMPILER_FRONTEND_SHA256:?Frontend SHA-256 is required}"
+  expected_frontend="$DEPLOY_PATH/.deploy/frontend-upload-$DEPLOY_SHA-$WEBCOMPILER_FRONTEND_SHA256.tar.gz"
+  [[ "$WEBCOMPILER_FRONTEND_UPLOAD" == "$expected_frontend" ]] || exit 2
+  [[ -f "$WEBCOMPILER_FRONTEND_UPLOAD" && ! -L "$WEBCOMPILER_FRONTEND_UPLOAD" ]] || exit 2
+  actual_frontend_sha256="$(sha256sum "$WEBCOMPILER_FRONTEND_UPLOAD" | awk '{print $1}')"
+  [[ "$actual_frontend_sha256" == "$WEBCOMPILER_FRONTEND_SHA256" ]] || exit 1
+  chmod 600 "$WEBCOMPILER_FRONTEND_UPLOAD"
+  export WEBCOMPILER_FRONTEND_ARCHIVE="$WEBCOMPILER_FRONTEND_UPLOAD"
+  trap 'rm -f -- "$WEBCOMPILER_FRONTEND_UPLOAD"' EXIT
+fi
 
 if [ ! -d "$DEPLOY_PATH/.git" ]; then
   [[ ! -e "$DEPLOY_PATH/.git" ]] || exit 2

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Single SSH deployment with pinned host identity and stdin-only credentials.
+"""Pinned SSH deployment with a dedicated frontend upload stream.
 
 This helper does not choose a revision. verify_deploy_ci.py must first prove the
 provided full SHA passed CI. No host-key scan or branch fallback is allowed.
 """
-import base64
 import hashlib
 import os
 from pathlib import Path
@@ -19,8 +18,6 @@ class DeployConfigurationError(ValueError):
 
 
 MAX_FRONTEND_ARCHIVE_BYTES = 32 * 1024 * 1024
-FRONTEND_PAYLOAD_MARKER = '# DEPLOY_FRONTEND_PAYLOAD'
-FRONTEND_PAYLOAD_DELIMITER = '__DEPLOY_FRONTEND_PAYLOAD__'
 
 
 def configuration(env):
@@ -60,38 +57,62 @@ def _read_frontend_archive(path):
     return data, hashlib.sha256(data).hexdigest()
 
 
-def _inject_frontend_payload(script, archive):
+def _ssh_command(config, known_hosts):
+    return [
+        'ssh', '-F', '/dev/null', '-o', 'BatchMode=yes',
+        '-o', 'StrictHostKeyChecking=yes',
+        '-o', f'UserKnownHostsFile={known_hosts}',
+        '-o', 'GlobalKnownHostsFile=/dev/null', '-o', 'UpdateHostKeys=no',
+        '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=30',
+        '-o', 'ServerAliveCountMax=20', '-p', config['DEPLOY_PORT'],
+        config['DEPLOY_USER'] + '@' + config['DEPLOY_HOST'],
+    ]
+
+
+def _upload_frontend(config, known_hosts, archive, *, run):
+    """Stream the archive directly to cat; never make Bash parse binary data."""
     data, digest = archive
-    # Do not send the archive as one multi-megabyte shell line.  Bash reads a
-    # here-document a line at a time; one unbounded line can leave the remote
-    # shell waiting indefinitely while SSH still considers the channel alive.
-    # MIME-style wrapping is accepted by GNU base64 --decode and keeps the
-    # transport/parser buffers bounded.
-    encoded = base64.encodebytes(data).decode('ascii').rstrip('\n')
-    payload = (
-        f'{FRONTEND_PAYLOAD_MARKER}\n'
-        'umask 077\n'
-        'WEBCOMPILER_FRONTEND_ARCHIVE="$(mktemp '
-        '"$DEPLOY_PATH/.deploy/frontend-$DEPLOY_SHA-XXXXXX.tar.gz")"\n'
-        'base64 --decode >"$WEBCOMPILER_FRONTEND_ARCHIVE" '
-        f'<<\'{FRONTEND_PAYLOAD_DELIMITER}\'\n'
-        f'{encoded}\n'
-        f'{FRONTEND_PAYLOAD_DELIMITER}\n'
-        'chmod 600 "$WEBCOMPILER_FRONTEND_ARCHIVE"\n'
-        'export WEBCOMPILER_FRONTEND_ARCHIVE\n'
-        f"export WEBCOMPILER_FRONTEND_SHA256='{digest}'"
+    upload_path = (
+        f"{config['DEPLOY_PATH'].rstrip('/')}/.deploy/"
+        f"frontend-upload-{config['DEPLOY_SHA']}-{digest}.tar.gz"
     )
-    if script.count(FRONTEND_PAYLOAD_MARKER) != 1:
-        raise DeployConfigurationError('Frontend payload marker is invalid')
-    return script.replace(FRONTEND_PAYLOAD_MARKER, payload, 1)
+    script = '\n'.join((
+        'set -euo pipefail',
+        'umask 077',
+        f"DEPLOY_PATH={shlex.quote(config['DEPLOY_PATH'])}",
+        f"UPLOAD_PATH={shlex.quote(upload_path)}",
+        '[[ "$DEPLOY_PATH" == /* && "$DEPLOY_PATH" != / && ! -L "$DEPLOY_PATH" ]]',
+        'mkdir -p "$DEPLOY_PATH/.deploy"',
+        '[[ ! -L "$DEPLOY_PATH/.deploy" && ! -L "$UPLOAD_PATH" ]]',
+        'TMP_PATH="$UPLOAD_PATH.part.$$"',
+        "trap 'rm -f -- \"$TMP_PATH\"' EXIT",
+        'cat >"$TMP_PATH"',
+        'chmod 600 "$TMP_PATH"',
+        'mv -f -- "$TMP_PATH" "$UPLOAD_PATH"',
+        'trap - EXIT',
+    ))
+    command = _ssh_command(config, known_hosts) + [f"bash -c {shlex.quote(script)}"]
+    run(command, input=data, check=True)
+    return upload_path, digest
+
+
+def _remove_frontend_upload(config, known_hosts, upload_path, *, run):
+    cleanup = f"rm -f -- {shlex.quote(upload_path)}"
+    run(
+        _ssh_command(config, known_hosts) + [f"bash -c {shlex.quote(cleanup)}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
 
 
 def dispatch(env, *, run=subprocess.run):
     config = configuration(env)
     script = Path(__file__).with_name('sync_remote_repo.sh').read_text(encoding='utf-8')
     archive_path = env.get('DEPLOY_FRONTEND_ARCHIVE')
+    archive = None
     if archive_path:
-        script = _inject_frontend_payload(script, _read_frontend_archive(archive_path))
+        archive = _read_frontend_archive(archive_path)
     # Never put the token or secret fields in the SSH command line or a log.
     values = {key:config[key] for key in ('DEPLOY_SHA','DEPLOY_PATH','DEPLOY_REPO')}
     if env.get('GITHUB_TOKEN'):
@@ -107,12 +128,21 @@ def dispatch(env, *, run=subprocess.run):
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         if found.returncode:
             raise DeployConfigurationError('Pinned key for the exact host and port is missing')
-        command = ['ssh','-F','/dev/null','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes',
-                   '-o',f'UserKnownHostsFile={known_hosts}', '-o','GlobalKnownHostsFile=/dev/null',
-                   '-o','UpdateHostKeys=no','-o','ConnectTimeout=15','-o','ServerAliveInterval=30',
-                   '-o','ServerAliveCountMax=20','-p',config['DEPLOY_PORT'],
-                   config['DEPLOY_USER']+'@'+config['DEPLOY_HOST'], 'bash -s']
-        run(command, input=payload, text=True, check=True)
+        upload_path = None
+        if archive is not None:
+            upload_path, digest = _upload_frontend(config, known_hosts, archive, run=run)
+            payload = (
+                f'export WEBCOMPILER_FRONTEND_UPLOAD={shlex.quote(upload_path)}\n'
+                f'export WEBCOMPILER_FRONTEND_SHA256={shlex.quote(digest)}\n'
+                + payload
+            )
+        command = _ssh_command(config, known_hosts) + ['bash -s']
+        try:
+            run(command, input=payload, text=True, check=True)
+        except (OSError, subprocess.SubprocessError):
+            if upload_path is not None:
+                _remove_frontend_upload(config, known_hosts, upload_path, run=run)
+            raise
 
 
 def main():
