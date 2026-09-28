@@ -552,7 +552,7 @@ function convertSSAGraph(ssaGraph: SSAGraph, selection: SelectionContext): { nod
         metadata: block.metadata,
         searchText: `${block.label} ${block.id} ${block.instructions.join(' ')}`.toLowerCase(),
         w: 330,
-        h: 72 + block.instructions.reduce((height, text, index) => height + 44 + Math.floor(text.length / 48) * 16 + Math.floor((block.instructionDetails?.[index]?.uses.length ?? 0) / 6) * 20, 0),
+        h: 72 + block.instructions.reduce((height, text, index) => height + 56 + Math.floor(text.length / 48) * 16 + Math.floor((block.instructionDetails?.[index]?.uses.length ?? 0) / 6) * 20, 0),
       },
       position: { x: 0, y: 0 },
     };
