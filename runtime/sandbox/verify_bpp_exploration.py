@@ -4,9 +4,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-SOURCE = '''func increment(value: u64) -> u64 { return value + 1; }
+SOURCE = '''import emitln from std.io;
+func increment(value: u64) -> u64 { return value + 1; }
 func main() -> u64 {
     var input: u64 = 4;
+    emitln("graph gate");
     if (input > 2) { return increment(input); }
     return 0;
 }
@@ -43,6 +45,7 @@ def main():
         path.write_text(SOURCE, encoding='utf-8')
         for level in ('O0', 'O1'):
             result = subprocess.run(['bpp', '-' + level, '--emit-json', '--source-map-user-only', '--ast-no-std', str(path)], capture_output=True, text=True, timeout=60, check=True)
+            assert len(result.stdout.encode('utf-8')) <= 1_048_576, 'Exploration output exceeds production output cap'
             validate(json.loads(result.stdout), optimized=level == 'O1')
     print('B++ exploration JSON gate passed (O0/O1, calls, compiler counters).')
 
