@@ -13,6 +13,7 @@ _SPEC.loader.exec_module(_PATCHER)
 
 def _pinned_shape() -> str:
     return r'''func ssa_json_emit_inst(inst: *SSAInstruction, first: *u64) -> u64 {
+    var info_ptr: u64 = ssa_inst_aux_ptr(inst);
     if (normal != 0) {
     emit("],\"sourceRanges\":");
     }
@@ -60,3 +61,16 @@ def test_patcher_fails_closed_when_a_pinned_anchor_is_missing():
 
     with pytest.raises(ValueError, match='patch anchor'):
         _PATCHER.patch_source(source, 'func exploration_emit_flow(inst: *SSAInstruction) -> u64 { return 0; }')
+
+
+def test_patcher_rejects_legacy_operand_pointer_contract():
+    source = _pinned_shape().replace('ssa_inst_aux_ptr(inst)', 'operand_value(inst.src1)')
+    with pytest.raises(ValueError, match='typed auxiliary'):
+        _PATCHER.patch_source(source, 'extension')
+
+
+def test_exploration_resolves_call_payloads_through_typed_table():
+    extension = _PATCHER_PATH.with_name('exploration.bpp').read_text()
+    assert extension.count('ssa_inst_aux_ptr(inst)') == 4
+    assert 'operand_value(inst.src1)' not in extension
+    assert 'op == SSA_OP_RET_SLICE_HEAP || op == SSA_OP_ASM' in extension

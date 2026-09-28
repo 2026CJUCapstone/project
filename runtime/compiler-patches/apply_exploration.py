@@ -11,6 +11,8 @@ def patch_source(source: str, extension: str) -> str:
     if "func exploration_emit_flow(" in source:
         raise ValueError("Exploration extension already applied; use a clean source checkout")
     source = source.replace("\r\n", "\n")
+    if 'var info_ptr: u64 = ssa_inst_aux_ptr(inst);' not in source:
+        raise ValueError("Pinned compiler must use typed auxiliary payloads")
     anchors = [
         ('func ssa_json_emit_inst(inst: *SSAInstruction, first: *u64) -> u64 {',
          extension + '\nfunc ssa_json_emit_inst(inst: *SSAInstruction, first: *u64) -> u64 {', 1),

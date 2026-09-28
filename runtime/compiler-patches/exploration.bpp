@@ -40,19 +40,19 @@ func exploration_emit_flow(inst: *SSAInstruction) -> u64 {
         var arg: *SSAPhiArg = (*SSAPhiArg)inst.src1;
         while (arg != 0) { exploration_emit_reg(arg.val, &first); arg = arg.next; }
     } else if (op == SSA_OP_CALL) {
-        var call: *SSACallInfo = (*SSACallInfo)operand_value(inst.src1);
+        var call: *SSACallInfo = (*SSACallInfo)ssa_inst_aux_ptr(inst);
         if (call != 0) { exploration_emit_args(call.args_vec, call.nargs, &first); }
     } else if (op == SSA_OP_CALL_PTR) {
-        var ptr: *SSACallPtrInfo = (*SSACallPtrInfo)operand_value(inst.src1);
+        var ptr: *SSACallPtrInfo = (*SSACallPtrInfo)ssa_inst_aux_ptr(inst);
         if (ptr != 0) {
             exploration_emit_reg(ptr.callee_reg, &first);
             exploration_emit_args(ptr.args_vec, ptr.nargs, &first);
         }
     } else if (op == SSA_OP_CALL_SLICE_STORE) {
-        var slice_call: *SSACallSliceStoreInfo = (*SSACallSliceStoreInfo)operand_value(inst.src1);
+        var slice_call: *SSACallSliceStoreInfo = (*SSACallSliceStoreInfo)ssa_inst_aux_ptr(inst);
         if (slice_call != 0) {
             if (slice_call.is_ptr > 1) {
-                var plain: *SSACallInfo = (*SSACallInfo)operand_value(inst.src1);
+                var plain: *SSACallInfo = (*SSACallInfo)ssa_inst_aux_ptr(inst);
                 exploration_emit_args(plain.args_vec, plain.nargs, &first);
             } else {
                 if (slice_call.is_ptr != 0) { exploration_emit_reg(slice_call.callee_reg, &first); }
@@ -66,7 +66,7 @@ func exploration_emit_flow(inst: *SSAInstruction) -> u64 {
     }
     emit("],\"complete\":");
     // Heap-slice return uses an out-of-line descriptor, not src1/src2.
-    if (op == SSA_OP_RET_SLICE_HEAP) { emit("false"); } else { emit("true"); }
+    if (op == SSA_OP_RET_SLICE_HEAP || op == SSA_OP_ASM) { emit("false"); } else { emit("true"); }
     emit("}");
     return 0;
 }
