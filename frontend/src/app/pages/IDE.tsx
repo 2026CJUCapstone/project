@@ -28,7 +28,7 @@ function useMobileLayout() {
 
 export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail } = {}) {
   const location = useLocation();
-  const { code, setCode, language, isGraphViewerOpen } = useCompilerStore();
+  const { code, setCode, language, isGraphViewerOpen, sourceNavigationRequest } = useCompilerStore();
   const supportsGraphs = language === "bpp";
   const showGraph = supportsGraphs && isGraphViewerOpen;
   const challenge = contestProblem ?? location.state?.challenge;
@@ -36,6 +36,10 @@ export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail 
   const isMobile = useMobileLayout();
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("editor");
   const wasGraphOpen = useRef(isGraphViewerOpen);
+
+  useEffect(() => {
+    if (sourceNavigationRequest && sourceNavigationRequest.revealEditor !== false && isMobile) setMobilePanel('editor');
+  }, [sourceNavigationRequest, isMobile]);
 
   useEffect(() => {
     if (isMobile && supportsGraphs && isGraphViewerOpen && !wasGraphOpen.current) setMobilePanel("graph");
@@ -135,7 +139,7 @@ export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail 
         )}
 
         {/* 메인 패널: 에디터 및 콘솔 */}
-        <Panel defaultSize={challenge ? (showGraph ? 43 : 68) : (showGraph ? 75 : 100)} minSize={30} id="editor-console-panel" order={challenge ? 2 : 1}>
+        <Panel defaultSize={challenge ? (showGraph ? 43 : 68) : (showGraph ? 60 : 100)} minSize={30} id="editor-console-panel" order={challenge ? 2 : 1}>
           <PanelGroup direction="vertical" className="w-full h-full" id="editor-vertical-group">
             <Panel defaultSize={70} minSize={20} id="editor-panel" order={1}>
               <CodeEditor onCodeChange={setCode} />
@@ -158,7 +162,7 @@ export function IDE({ contestProblem }: { contestProblem?: ContestProblemDetail 
             </PanelResizeHandle>
 
             {/* 오른쪽 패널: AST 및 SSA 파이프라인 그래프 */}
-            <Panel defaultSize={25} minSize={20} id="graph-viewer-panel" order={challenge ? 3 : 2}>
+            <Panel defaultSize={challenge ? 25 : 40} minSize={20} id="graph-viewer-panel" order={challenge ? 3 : 2}>
               <CompilerGraphViewer code={code} />
             </Panel>
           </>

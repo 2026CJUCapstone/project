@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getHighlightedCodeLineIndexes, type SelectionContext } from './CompilerGraphViewer';
+import { getConnectedNodeIds, getDescendantNodeIds, getHighlightedCodeLineIndexes, type SelectionContext } from './CompilerGraphViewer';
+import type { Edge } from '@xyflow/react';
 import type { SourceRange } from '../services/compilerApi';
 
 const broadWhileRange: SourceRange = {
@@ -113,5 +114,27 @@ describe('getHighlightedCodeLineIndexes', () => {
     );
 
     expect([...highlighted]).toEqual([1]);
+  });
+});
+
+describe('graph relationship helpers', () => {
+  const edges: Edge[] = [
+    { id: 'ab', source: 'a', target: 'b' },
+    { id: 'bc', source: 'b', target: 'c' },
+    { id: 'bd', source: 'b', target: 'd' },
+    { id: 'de', source: 'd', target: 'e' },
+  ];
+
+  it('finds only the direct neighborhood for relationship focus', () => {
+    expect([...getConnectedNodeIds(edges, 'b')].sort()).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('finds every nested descendant for AST subtree collapse', () => {
+    expect([...getDescendantNodeIds(edges, 'b')].sort()).toEqual(['c', 'd', 'e']);
+  });
+
+  it('does not loop forever when malformed graph data contains a cycle', () => {
+    const cyclic = [...edges, { id: 'ea', source: 'e', target: 'a' }];
+    expect([...getDescendantNodeIds(cyclic, 'b')].sort()).toEqual(['a', 'c', 'd', 'e']);
   });
 });

@@ -8,12 +8,6 @@ import { getAuthOwner, subscribeAuthIdentity } from '../services/authIdentity';
 
 import { CODE_TEMPLATES } from "../store/codeTemplates";
 
-const utf8Encoder = new TextEncoder();
-
-function utf8ByteOffset(text: string, utf16Offset: number): number {
-  return utf8Encoder.encode(text.slice(0, Math.max(0, utf16Offset))).length;
-}
-
 export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => void }) {
   const monaco = useMonaco();
   const location = useLocation();
@@ -21,6 +15,7 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const {
     setSelectedText,
     setSelectedSourceRange,
+    sourceNavigationRequest,
     autoSaveEnabled,
     lastSavedTime,
     saveCode,
@@ -61,6 +56,30 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
   const editorLanguage = language === 'c' || language === 'bpp' ? 'cpp' : language;
 
   const { theme } = useCompilerStore();
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !sourceNavigationRequest || typeof editor.getModel !== 'function') return;
+    const model = editor.getModel();
+    if (!model) return;
+
+    const requested = sourceNavigationRequest.range;
+    const lineCount = model.getLineCount();
+    const startLineNumber = Math.min(Math.max(1, requested.startLine), lineCount);
+    const endLineNumber = Math.min(Math.max(startLineNumber, requested.endLine), lineCount);
+    const startColumn = Math.min(
+      Math.max(1, requested.startColumn),
+      model.getLineMaxColumn(startLineNumber),
+    );
+    const endColumn = Math.min(
+      Math.max(1, requested.endColumn),
+      model.getLineMaxColumn(endLineNumber),
+    );
+    const range = { startLineNumber, startColumn, endLineNumber, endColumn };
+
+    editor.setSelection(range);
+    editor.revealRangeInCenter(range);
+  }, [sourceNavigationRequest]);
 
   useEffect(() => {
     if (monaco) {
@@ -418,20 +437,14 @@ export function CodeEditor({ onCodeChange }: { onCodeChange?: (code: string) => 
                         endLine: selection.endLineNumber,
                         startColumn: selection.startColumn,
                         endColumn: selection.endColumn,
-                        startOffset: utf8ByteOffset(
-                          model.getValue(),
-                          model.getOffsetAt({
+                        startOffset: model.getOffsetAt({
                             lineNumber: selection.startLineNumber,
                             column: selection.startColumn,
                           }),
-                        ),
-                        endOffset: utf8ByteOffset(
-                          model.getValue(),
-                          model.getOffsetAt({
+                        endOffset: model.getOffsetAt({
                             lineNumber: selection.endLineNumber,
                             column: selection.endColumn,
                           }),
-                        ),
                       }
                     : null,
                 );

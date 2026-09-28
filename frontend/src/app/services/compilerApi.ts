@@ -78,10 +78,13 @@ export interface ASTGraph {
 
 export interface SSABlock {
   id: string;
+  functionId?: string;
+  isEntry?: boolean;
   label: string;
   instructions: string[];
   instructionSourceRanges?: SourceRange[][];
   instructionIds?: string[];
+  instructionDetails?: SSAInstructionDetail[];
   sourceRanges?: SourceRange[];
   predecessors: string[];
   successors: string[];
@@ -90,8 +93,29 @@ export interface SSABlock {
   metadata?: Record<string, any>;
 }
 
+export interface SSAInstructionDetail {
+  id: string;
+  opcode: string;
+  result?: string | null;
+  definitions?: string[];
+  uses: string[];
+  complete?: boolean;
+  generated?: boolean;
+  generatedReason?: string;
+}
+
+export interface OptimizationSummary {
+  functionId: string;
+  functionName: string;
+  level: number;
+  scope: 'function';
+  evidence: 'compiler-counters-v1';
+  counters: Record<string, number>;
+}
+
 export interface SSAGraph {
   blocks: SSABlock[];
+  optimizationSummaries?: OptimizationSummary[];
   edges: {
     from: string;
     to: string;

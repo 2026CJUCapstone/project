@@ -185,6 +185,24 @@ class DockerCompilerRunner:
 
         missing_targets = requested_targets - resolved_targets
 
+        # Pinned Bpp supports -dump-ir-json, but its unified JSON currently
+        # omits IR even when --views includes it. Keep byte provenance instead
+        # of immediately falling back to the unmapped human-readable dump.
+        if "ir" in missing_targets:
+            ir_json = await self._execute(
+                mode="dump-ir-json", source_code=source_code,
+                language=language, optimize=optimize,
+            )
+            if ir_json["exit_code"] == 0:
+                ir_pipeline = build_bpp_pipeline_from_json(
+                    ir_json["stdout"], source_code, source_filename, {"ir"},
+                )
+                if ir_pipeline and self._pipeline_target_has_data("ir", ir_pipeline.get("ir")):
+                    response["ir"] = ir_pipeline["ir"]
+                    missing_targets.remove("ir")
+                    if isinstance(ir_pipeline.get("sourceRangeSemantics"), dict):
+                        response["metadata"]["source_range_semantics"] = ir_pipeline["sourceRangeSemantics"]
+
         if "ast" in missing_targets:
             ast_graph = build_bpp_ast_graph(source_code)
             response["ast"] = ast_graph
@@ -248,7 +266,7 @@ class DockerCompilerRunner:
     async def _execute(
         self,
         *,
-        mode: Literal["compile", "run", "dump-ir", "dump-ssa", "asm", "json"],
+        mode: Literal["compile", "run", "dump-ir", "dump-ir-json", "dump-ssa", "asm", "json"],
         source_code: str,
         language: str,
         stdin: str = "",
@@ -273,7 +291,7 @@ class DockerCompilerRunner:
         try:
             temp_dir.chmod(0o755)
             source_path = temp_dir / self._resolve_filename(language, source_code)
-            source_path.write_text(source_code, encoding="utf-8")
+            source_path.write_text(source_code, encoding="utf-8", newline="")
             source_path.chmod(0o644)
             stdin_path: Path | None = None
 

@@ -13,6 +13,9 @@ runtime_build_signature() {
     "$PROJECT_ROOT/runtime/docker/Dockerfile" \
     "$PROJECT_ROOT/runtime/sandbox/run.sh" \
     "$PROJECT_ROOT/runtime/sandbox/verify_bpp_runtime.py" \
+    "$PROJECT_ROOT/runtime/sandbox/verify_bpp_exploration.py" \
+    "$PROJECT_ROOT/runtime/compiler-patches/apply_exploration.py" \
+    "$PROJECT_ROOT/runtime/compiler-patches/exploration.bpp" \
     "$PROJECT_ROOT/scripts/build_sandbox_image.sh" \
     | sha256sum | awk 'NR==1 { print $1 }'
 }
@@ -65,6 +68,7 @@ docker buildx build --builder "${WEBCOMPILER_BUILD_BUILDER:?Explicit bounded bui
   --build-arg "TEST_FAST_IO=$TEST_FAST_IO" \
   --build-arg "BPP_TEST_NAME_FILTER=$BPP_TEST_NAME_FILTER" \
   --build-arg "RUNTIME_BUILD_SIGNATURE=$RUNTIME_BUILD_SIGNATURE" \
+  --build-arg "RUNTIME_SOURCE_DIGEST=$(python3 "$PROJECT_ROOT/scripts/basic_pool_runtime_release.py" digest "$PROJECT_ROOT")" \
   -t "$SANDBOX_IMAGE" \
   -f "$PROJECT_ROOT/runtime/docker/Dockerfile" \
   "$PROJECT_ROOT/runtime"

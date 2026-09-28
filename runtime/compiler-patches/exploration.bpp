@@ -1,0 +1,92 @@
+// Additive, output-only exploration metadata for the pinned Bpp compiler.
+// No optimization decision or generated machine instruction is changed.
+func exploration_emit_reg(reg: u64, first: *u64) -> u64 {
+    if (reg == 0) { return 0; }
+    if (*first == 0) { emit(","); }
+    *first = 0;
+    emit("\"r"); emit_u64(reg); emit("\"");
+    return 0;
+}
+
+func exploration_emit_operand(opr: u64, first: *u64) -> u64 {
+    if (opr != 0 && operand_is_const(opr) == 0) {
+        exploration_emit_reg(operand_value(opr), first);
+    }
+    return 0;
+}
+
+func exploration_emit_args(args: *Vec<u64>, nargs: u64, first: *u64) -> u64 {
+    if (args == 0) { return 0; }
+    var n: u64 = nargs;
+    if (n == 0 || n > args.len()) { n = args.len(); }
+    for (var i: u64 = 0; i < n; i++) { exploration_emit_reg(args.get(i), first); }
+    return 0;
+}
+
+func exploration_emit_flow(inst: *SSAInstruction) -> u64 {
+    var op: u64 = op_of(inst);
+    var first: u64 = 1;
+    emit(",\"valueFlow\":{\"version\":1,\"definitions\":[");
+    if (op != SSA_OP_BR && op != SSA_OP_JMP && op != SSA_OP_RET && op != SSA_OP_RET_SLICE_HEAP &&
+        op != SSA_OP_STORE && op != SSA_OP_STORE8 && op != SSA_OP_STORE16 &&
+        op != SSA_OP_STORE32 && op != SSA_OP_STORE64 && op != SSA_OP_STORE_SLICE &&
+        op != SSA_OP_CALL_SLICE_STORE) {
+        exploration_emit_reg(inst.dest, &first);
+    }
+    if (op == SSA_OP_CALL || op == SSA_OP_CALL_PTR) { exploration_emit_operand(inst.src2, &first); }
+    emit("],\"uses\":[");
+    first = 1;
+    if (op == SSA_OP_PHI) {
+        var arg: *SSAPhiArg = (*SSAPhiArg)inst.src1;
+        while (arg != 0) { exploration_emit_reg(arg.val, &first); arg = arg.next; }
+    } else if (op == SSA_OP_CALL) {
+        var call: *SSACallInfo = (*SSACallInfo)operand_value(inst.src1);
+        if (call != 0) { exploration_emit_args(call.args_vec, call.nargs, &first); }
+    } else if (op == SSA_OP_CALL_PTR) {
+        var ptr: *SSACallPtrInfo = (*SSACallPtrInfo)operand_value(inst.src1);
+        if (ptr != 0) {
+            exploration_emit_reg(ptr.callee_reg, &first);
+            exploration_emit_args(ptr.args_vec, ptr.nargs, &first);
+        }
+    } else if (op == SSA_OP_CALL_SLICE_STORE) {
+        var slice_call: *SSACallSliceStoreInfo = (*SSACallSliceStoreInfo)operand_value(inst.src1);
+        if (slice_call != 0) {
+            if (slice_call.is_ptr > 1) {
+                var plain: *SSACallInfo = (*SSACallInfo)operand_value(inst.src1);
+                exploration_emit_args(plain.args_vec, plain.nargs, &first);
+            } else {
+                if (slice_call.is_ptr != 0) { exploration_emit_reg(slice_call.callee_reg, &first); }
+                exploration_emit_args(slice_call.args_vec, slice_call.nargs, &first);
+            }
+        }
+        exploration_emit_operand(inst.src2, &first);
+    } else if (op != SSA_OP_RET_SLICE_HEAP) {
+        exploration_emit_operand(inst.src1, &first);
+        exploration_emit_operand(inst.src2, &first);
+    }
+    emit("],\"complete\":");
+    // Heap-slice return uses an out-of-line descriptor, not src1/src2.
+    if (op == SSA_OP_RET_SLICE_HEAP) { emit("false"); } else { emit("true"); }
+    emit("}");
+    return 0;
+}
+
+func exploration_emit_counter(name: u64, count: u64) -> u64 {
+    emit(",\""); emit_len(name, str_len(name)); emit("\":"); emit_u64(count);
+    return 0;
+}
+
+func exploration_emit_summary(fn: *SSAFunction) -> u64 {
+    emit(",\"optimizationSummary\":{\"version\":1,\"scope\":\"function\",\"level\":");
+    emit_u64(opt_get_level());
+    exploration_emit_counter("constantOperands", fn.opt_o1_sccp_const_operand_count);
+    exploration_emit_counter("constantBranches", fn.opt_o1_cfg_branch_fold_count);
+    exploration_emit_counter("commonExpressions", fn.opt_o1_cse_elim_count);
+    exploration_emit_counter("unusedCopies", fn.opt_o1_copy_elim_count);
+    exploration_emit_counter("deadStores", fn.opt_o1_store_kill_count);
+    exploration_emit_counter("unreachableBlocks", fn.opt_o1_cfg_unreachable_block_count);
+    exploration_emit_counter("simplifiedPhi", fn.opt_o1_phi_simplify_count);
+    exploration_emit_counter("algebraicSimplifications", fn.opt_o1_algebraic_simplify_count);
+    emit("}");
+    return 0;
+}

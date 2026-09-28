@@ -24,6 +24,12 @@ export type SourceSelectionRange = {
   endOffset?: number;
 };
 
+export type SourceNavigationRequest = {
+  id: number;
+  range: SourceSelectionRange;
+  revealEditor?: boolean;
+};
+
 interface CompilerState {
   isEditorReady: boolean;
   setEditorReady: (ready: boolean) => void;
@@ -50,6 +56,8 @@ interface CompilerState {
   setSelectedText: (text: string) => void;
   selectedSourceRange: SourceSelectionRange | null;
   setSelectedSourceRange: (range: SourceSelectionRange | null) => void;
+  sourceNavigationRequest: SourceNavigationRequest | null;
+  navigateToSource: (range: SourceSelectionRange, revealEditor?: boolean) => void;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   // 컴파일 관련 상태
@@ -86,6 +94,16 @@ const MAIN_STORAGE_SCOPE = 'main';
 let activeRunController: AbortController | null = null;
 let activeTerminalSocket: WebSocket | null = null;
 let terminalStopRequested = false;
+let compileGeneration = 0;
+let activeCompileController: AbortController | null = null;
+
+function invalidateCompilation() {
+  compileGeneration++;
+  activeCompileController?.abort();
+  activeCompileController = null;
+  return { isCompiling: false, lastCompile: null, lastCompiledCode: null,
+    selectedText: '', selectedSourceRange: null, sourceNavigationRequest: null };
+}
 
 const INITIAL_OUTPUT: OutputLine[] = [
   { type: 'info', text: 'B++ 컴파일러 v1.0.0 초기화 중...' },
@@ -198,7 +216,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   isEditorReady: false,
   setEditorReady: (ready) => set({ isEditorReady: ready }),
   language: 'bpp',
-  setLanguage: (language) => set({ language }),
+  setLanguage: (language) => { if (get().language !== language) set({ ...invalidateCompilation(), language }); },
   selectLanguage: (language) => {
     if (get().isCompiling || get().isRunning || get().language === language) return;
     set({
@@ -210,6 +228,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
       lastError: null,
       selectedText: '',
       selectedSourceRange: null,
+      sourceNavigationRequest: null,
     });
   },
   isGraphViewerOpen: true,
@@ -245,6 +264,16 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   setSelectedText: (text) => set({ selectedText: text }),
   selectedSourceRange: null,
   setSelectedSourceRange: (range) => set({ selectedSourceRange: range }),
+  sourceNavigationRequest: null,
+  navigateToSource: (range, revealEditor) => set((state) => ({
+    selectedText: '',
+    selectedSourceRange: range,
+    sourceNavigationRequest: {
+      id: (state.sourceNavigationRequest?.id ?? 0) + 1,
+      range,
+      ...(revealEditor === false ? { revealEditor: false } : {}),
+    },
+  })),
   theme: 'dark',
   toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
   
@@ -254,7 +283,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   lastCompiledCode: null,
 
   compile: async () => {
-    const { code, codeStorageScope, isCompiling, language } = get();
+    const { code, codeStorageScope, codeStorageOwner, isCompiling, language } = get();
     if (isCompiling) return;
 
     if (!code.trim()) {
@@ -267,6 +296,11 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
       return;
     }
 
+    const generation = ++compileGeneration;
+    const controller = new AbortController();
+    activeCompileController = controller;
+    const isRelevant = () => generation === compileGeneration && !controller.signal.aborted
+      && get().codeStorageScope === codeStorageScope && get().codeStorageOwner === codeStorageOwner && get().language === language;
     set((state) => ({
       isCompiling: true,
       lastError: null,
@@ -282,7 +316,9 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
         language,
         problemId: problemIdFromScope(codeStorageScope),
         options: { optimize: false, target: 'all' },
-      });
+      }, { signal: controller.signal });
+
+      if (!isRelevant()) return;
 
       const nextOutput: OutputLine[] = [
         ...get().output.filter((line) => line.type !== 'input'),
@@ -322,6 +358,7 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
         output: appendPrompt(nextOutput),
       });
     } catch (error) {
+      if (!isRelevant()) return;
       const message = error instanceof Error ? error.message : '컴파일 중 알 수 없는 오류가 발생했습니다.';
       set((state) => ({
         isCompiling: false,
@@ -331,14 +368,18 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
           { type: 'error', text: `> ${message}` },
         ]),
       }));
+    } finally {
+      if (activeCompileController === controller) activeCompileController = null;
     }
   },
 
   compileAndRun: async () => {
-    const { compile, runCode } = get();
+    const { compile, runCode, code, isCompiling } = get();
+    if (isCompiling) return;
+    const expectedGeneration = compileGeneration + 1;
     await compile();
-    const { lastCompile } = get();
-    if (lastCompile?.success) {
+    const { lastCompile, lastCompiledCode } = get();
+    if (compileGeneration === expectedGeneration && lastCompile?.success && get().code === code && lastCompiledCode === code) {
       await runCode();
     }
   },
@@ -349,10 +390,11 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
       return;
     }
 
+    const expectedGeneration = compileGeneration + 1;
     await compile();
 
     const { lastCompile, lastCompiledCode } = get();
-    if (!lastCompile?.success || lastCompiledCode !== code) {
+    if (compileGeneration !== expectedGeneration || !lastCompile?.success || lastCompiledCode !== code || get().code !== code) {
       return;
     }
 
@@ -499,8 +541,8 @@ export const useCompilerStore = create<CompilerState>((set, get) => ({
   setAutoSaveEnabled: (enabled) => set({ autoSaveEnabled: enabled }),
   codeStorageScope: MAIN_STORAGE_SCOPE,
   codeStorageOwner: getAuthOwner(),
-  setCodeStorageOwner: (owner) => set({ codeStorageOwner: owner, lastSavedTime: null }),
-  setCodeStorageScope: (scope) => set({ codeStorageScope: normalizeStorageScope(scope) }),
+  setCodeStorageOwner: (owner) => { if (get().codeStorageOwner !== owner) set({ ...invalidateCompilation(), codeStorageOwner: owner, lastSavedTime: null }); },
+  setCodeStorageScope: (scope) => { const normalized = normalizeStorageScope(scope); if (get().codeStorageScope !== normalized) set({ ...invalidateCompilation(), codeStorageScope: normalized }); },
   
   saveCode: (code, scope) => {
     try {
