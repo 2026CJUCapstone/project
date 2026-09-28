@@ -177,7 +177,8 @@ def test_rollback_uses_new_incarnation_without_restoring_database(deploy, tmp_pa
 def test_basic_dispatch_precedes_every_managed_side_effect():
     script = (ROOT / 'scripts/deploy_server.sh').read_text()
     assert script.index('deploy_guard.sh') < script.index('basic-pool.json') < script.index('validate_ingress.py')
-    assert 'exec python3 -I "$PROJECT_ROOT/scripts/basic_pool_deploy.py"' in script
+    assert 'export WEBCOMPILER_APPLICATION_RELEASE=approved' in script
+    assert 'exec python3 -I "$PROJECT_ROOT/scripts/basic_pool_application_release.py"' in script
 
 
 @pytest.mark.parametrize('role,allowed', [('backend', 'backend/app/api.py'), ('frontend', 'frontend-dist/index.html'), ('sandbox', 'runtime/sandbox/run.sh')])

@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -22,6 +23,7 @@ from app.services.rating import rating_stats_for_user, tag_proficiencies_for_use
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+logger = logging.getLogger(__name__)
 
 
 def _client_key(request: Request, purpose: str, identity: str = "") -> str:
@@ -236,13 +238,16 @@ def request_password_reset(
     if email_service.is_email_configured():
         try:
             email_service.send_password_reset_email(user.email, token)
-        except Exception as exc:
+        except Exception:
             db.query(db_models.PasswordResetToken).filter(
                 db_models.PasswordResetToken.token_hash == _hash_reset_token(token),
                 db_models.PasswordResetToken.used_at.is_(None),
             ).update({db_models.PasswordResetToken.used_at: _utc_now()}, synchronize_session=False)
             db.commit()
-            raise HTTPException(status_code=503, detail="비밀번호 재설정 메일 전송에 실패했습니다.") from exc
+            # Keep the public response identical for existing and unknown
+            # identities. Provider errors can contain recipient addresses, so
+            # record only a fixed operator diagnostic.
+            logger.error("Password reset email delivery failed")
 
     response = schemas.PasswordResetResponse(message=RESET_REQUEST_MESSAGE)
     if settings.ENVIRONMENT != "production":

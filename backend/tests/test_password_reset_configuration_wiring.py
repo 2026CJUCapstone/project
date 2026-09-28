@@ -109,7 +109,7 @@ def test_fake_smtp_receives_reset_url_tls_auth_and_message(monkeypatch):
     assert message["From"] == "no-reply@fixture.invalid"
     assert message["To"] == "recipient@fixture.invalid"
     body = message.get_content()
-    assert "https://frontend.fixture.invalid/webcompiler/?resetToken=token%2B/fixture" in body
+    assert "https://frontend.fixture.invalid/webcompiler/?resetToken=token%2B%2Ffixture" in body
     assert "fixture-password" not in body
 
 

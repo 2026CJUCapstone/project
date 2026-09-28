@@ -6,6 +6,7 @@ resource names must be supplied before preflight, not changed between phases.
 """
 import argparse
 from contextlib import contextmanager
+from email.utils import parseaddr
 import os
 from pathlib import Path
 import re
@@ -13,6 +14,7 @@ import secrets
 import shlex
 import stat
 import sys
+from urllib.parse import urlsplit
 
 
 MAX_BYTES=65536
@@ -24,6 +26,65 @@ ALLOWED_KEYS=frozenset(('WEBCOMPILER_SECRET_KEY','WEBCOMPILER_ADMIN_PASSWORD','W
 
 class RuntimeSecretsError(ValueError):
     pass
+
+
+def _effective(values, environment, key):
+    direct = values.get(key, environment.get(key))
+    prefixed_key = 'WEBCOMPILER_' + key
+    prefixed = values.get(prefixed_key, environment.get(prefixed_key))
+    if direct is not None and prefixed is not None and direct != prefixed:
+        raise RuntimeSecretsError('Conflicting runtime mail aliases are not allowed')
+    return direct if direct is not None else prefixed
+
+
+def validate_mail(values, environment, *, required=False):
+    fields = {key:_effective(values,environment,key) for key in MAIL_KEYS}
+    base_url = _effective(values,environment,'PASSWORD_RESET_BASE_URL')
+    configured = any(fields.get(key) for key in ('SMTP_HOST','SMTP_USERNAME','SMTP_PASSWORD','SMTP_FROM'))
+    if not configured:
+        if required:
+            raise RuntimeSecretsError('Complete SMTP settings are required for this deployment')
+        return False
+    host = fields.get('SMTP_HOST','')
+    sender = fields.get('SMTP_FROM','')
+    if (not isinstance(host,str) or not host.strip() or len(host)>255
+            or any(char in host for char in '\r\n\0')):
+        raise RuntimeSecretsError('SMTP host is invalid')
+    if not isinstance(sender,str) or parseaddr(sender)[1] != sender or '@' not in sender:
+        raise RuntimeSecretsError('SMTP sender is invalid')
+    username, password = fields.get('SMTP_USERNAME'), fields.get('SMTP_PASSWORD')
+    if bool(username) != bool(password):
+        raise RuntimeSecretsError('SMTP authentication must include username and password')
+    try:
+        port = int(fields.get('SMTP_PORT') or '587')
+    except (TypeError,ValueError):
+        raise RuntimeSecretsError('SMTP port is invalid') from None
+    if not 1 <= port <= 65535:
+        raise RuntimeSecretsError('SMTP port is invalid')
+    starttls = str(fields.get('SMTP_STARTTLS') or 'true').lower()
+    if starttls not in ('true','false'):
+        raise RuntimeSecretsError('SMTP_STARTTLS must be true or false')
+    if username and starttls != 'true':
+        raise RuntimeSecretsError('Authenticated SMTP requires verified STARTTLS')
+    if not isinstance(base_url,str):
+        raise RuntimeSecretsError('Password reset URL is required with SMTP')
+    reset = urlsplit(base_url)
+    if (reset.scheme != 'https' or not reset.netloc or reset.username or reset.password
+            or reset.fragment or not reset.path.rstrip('/').endswith('/reset-password')):
+        raise RuntimeSecretsError('Password reset URL must be an HTTPS reset-password page')
+    return True
+
+
+def mail_environment(values, environment=None, *, required=False):
+    environment = environment or {}
+    if not validate_mail(values,environment,required=required):
+        return {}
+    resolved = {
+        key:str(_effective(values,environment,key) or ('587' if key=='SMTP_PORT' else 'true' if key=='SMTP_STARTTLS' else ''))
+        for key in MAIL_KEYS
+    }
+    resolved['PASSWORD_RESET_BASE_URL'] = str(_effective(values,environment,'PASSWORD_RESET_BASE_URL'))
+    return resolved
 
 
 @contextmanager
@@ -115,6 +176,7 @@ def validate_deployment(values,environment):
         if value and (any(char in value for char in ('\0','\r','\n'))
                       or len((prefixed+'='+shlex.quote(value)).encode())>4096):
             raise RuntimeSecretsError('Application credentials must fit a single literal assignment')
+    validate_mail(values,environment)
 
 
 def ensure(path,environment):

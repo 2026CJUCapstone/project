@@ -29,6 +29,7 @@ def _load(name: str):
 
 b = _load("basic_pool_deploy")
 m = _load("basic_pool_migration_release")
+r = _load("runtime_secrets")
 # The migration helper loads its own copy of the base module.  Rebind it so
 # every reused helper observes this release's configured ROOT/STATE/SHA.
 m.b = b
@@ -44,33 +45,15 @@ APPLICATION_CONTRACTS = (
     "frontend/Dockerfile",
     "frontend/package.json",
     "frontend/package-lock.json",
+    "frontend/nginx.conf",
     "docker-compose.yml",
     "docker-compose.lb.yml",
     "scripts/basic-lb.compose.yml",
     "scripts/basic-lb.production.compose.yml",
     "runtime/sandbox/run.sh",
     "runtime/bpp-ref.txt",
+    "runtime/docker/Dockerfile",
 )
-
-# These exact source-only changes are build gates for a future sandbox image.
-# This release neither builds nor selects them.  Hashes are over LF-normalized
-# repository bytes so a historical Windows archive cannot bypass the check.
-NONDEPLOYED_RUNTIME_HASHES = {
-    "runtime/docker/Dockerfile": "b0200b5918d4a987bbceb688bb5189016d4c745c0f756af55dd7e690c6987cb8",
-    "runtime/sandbox/verify_bpp_runtime.py": "8d4dbf3a25df5c4cdf29250c9f65943afdb81500e4e525298de529243357f536",
-}
-DEPLOYED_CHANGED_CONTRACT_HASHES = {
-    "frontend/nginx.conf": "e99ffcaa1519da292843be84e3a7705e6b2c8fb9e68438055ef52a082a6190dd",
-}
-
-EXPECTED_PREVIOUS_RELEASE = "2e8e08841e7463a654e35460592913bca3c65f03"
-EXPECTED_REVIEWED_BASE = "2e8e08841e7463a654e35460592913bca3c65f03"
-EXPECTED_RELEASE_DELTA = {
-    "backend/app/services/public_identity.py",
-    "backend/tests/test_leaderboard.py",
-    "backend/tests/test_basic_pool_application_release.py",
-    "scripts/basic_pool_application_release.py",
-}
 
 
 def _runtime_files(root: Path) -> set[str]:
@@ -87,9 +70,6 @@ def check_application_contracts(previous: Path, candidate: Path) -> None:
             "Application-only release contract changed: " + relative
         )
     assert m._marker(previous) == m._marker(candidate), "Schema marker changed"
-    for relative, expected in DEPLOYED_CHANGED_CONTRACT_HASHES.items():
-        actual = hashlib.sha256(b.contract_bytes(candidate / relative)).hexdigest()
-        assert actual == expected, "Unexpected deployed contract source: " + relative
 
     old_modules = {
         path.relative_to(previous / "backend/app").as_posix()
@@ -103,17 +83,11 @@ def check_application_contracts(previous: Path, candidate: Path) -> None:
 
     old_runtime = _runtime_files(previous)
     new_runtime = _runtime_files(candidate)
-    expected_additions: set[str] = set()
-    assert new_runtime - old_runtime == expected_additions, "Unexpected runtime addition"
-    assert not old_runtime - new_runtime, "Runtime file removal is not application-only"
-    ignored = set(NONDEPLOYED_RUNTIME_HASHES)
-    for relative in old_runtime - ignored:
+    assert new_runtime == old_runtime, "Runtime file-set change is not application-only"
+    for relative in old_runtime:
         assert b.contract_bytes(previous / relative) == b.contract_bytes(candidate / relative), (
             "Active runtime contract changed: " + relative
         )
-    for relative, expected in NONDEPLOYED_RUNTIME_HASHES.items():
-        actual = hashlib.sha256(b.contract_bytes(candidate / relative)).hexdigest()
-        assert actual == expected, "Unexpected non-deployed runtime source: " + relative
     for path in (candidate / "runtime").rglob("*.sh"):
         assert b"\r" not in path.read_bytes(), "Runtime shell files must use LF"
 
@@ -123,14 +97,9 @@ def prepare() -> None:
     m._assert_free_space(b.ROOT)
     old = json.loads(b.o.STATE.read_text())
     assert old["phase"] == "deployed"
-    assert old["source_sha"] == EXPECTED_PREVIOUS_RELEASE
-    changed = set(
-        b.o.run(
-            "git", "-C", str(b.PROD), "diff", "--name-only",
-            EXPECTED_REVIEWED_BASE, b.SHA, timeout=30,
-        ).decode().splitlines()
-    )
-    assert changed == EXPECTED_RELEASE_DELTA, "Unexpected release delta"
+    previous_sha = old["source_sha"]
+    assert isinstance(previous_sha,str) and re.fullmatch(r"[0-9a-f]{40}",previous_sha)
+    b.o.run("git","-C",str(b.PROD),"merge-base","--is-ancestor",previous_sha,b.SHA,timeout=30)
     previous = Path(old["functional_release_root"])
     assert previous.is_absolute() and previous.resolve() == previous and previous.is_dir()
 
@@ -138,6 +107,11 @@ def prepare() -> None:
     (b.ROOT / "source.tar").write_bytes(source)
     b.extract(b.ROOT / "source.tar")
     check_application_contracts(previous, b.ROOT)
+    # The adopted pool does not source the checkout's env files. Require a
+    # complete private SMTP configuration before an application release, then
+    # load it again immediately before candidate startup.
+    runtime_values = r.load(b.PROD / ".deploy/runtime-secrets.env")
+    r.mail_environment(runtime_values,required=True)
 
     deploy_dir = b.PROD / ".deploy"
     assert deploy_dir.resolve(strict=True) == deploy_dir
@@ -182,8 +156,7 @@ def prepare() -> None:
     m.build()
 
 
-def preflight_candidate_configuration(state: dict) -> None:
-    """Validate production secrets and runtime identity without network access."""
+def _candidate_environment(state: dict) -> dict[str,str]:
     backend = b.PROJECT + "-backend-1"
     assert b.o.inspect(backend)["Id"] == state["old_ids"]["backend-1"]
     environment = m._container_environment(backend)
@@ -194,6 +167,15 @@ def preflight_candidate_configuration(state: dict) -> None:
         RUNTIME_INSTANCE_ID=uuid4().hex,
         EMBEDDED_EXECUTION_WORKER="false",
     )
+    environment.update(r.mail_environment(
+        r.load(b.PROD / ".deploy/runtime-secrets.env"),required=True,
+    ))
+    return environment
+
+
+def preflight_candidate_configuration(state: dict) -> None:
+    """Validate production secrets and runtime identity without network access."""
+    environment = _candidate_environment(state)
     env_file = b.ROOT / "candidate-preflight.env"
     m._write_env(env_file, environment)
     try:
@@ -207,6 +189,27 @@ def preflight_candidate_configuration(state: dict) -> None:
             "python", "-c",
             "from app.services.auth import validate_runtime_security; validate_runtime_security()",
             timeout=60,
+        )
+    finally:
+        env_file.unlink(missing_ok=True)
+
+
+def preflight_candidate_smtp(state: dict) -> None:
+    """Prove outbound TLS and authentication before entering maintenance."""
+    environment = _candidate_environment(state)
+    env_file = b.ROOT / "candidate-smtp-preflight.env"
+    m._write_env(env_file,environment)
+    try:
+        b.o.run(
+            "docker","run","--rm","--pull","never","--network","bridge",
+            "--read-only","--cap-drop","ALL","--security-opt","no-new-privileges",
+            "--memory","256m","--memory-swap","256m","--cpus","0.5",
+            "--pids-limit","64","--user","10001:10001",
+            "--tmpfs","/tmp:size=16m,mode=1777,noexec,nosuid",
+            "--env-file",str(env_file),state["images"]["backend"],
+            "python","-c",
+            "from app.services.email import verify_smtp_connection; verify_smtp_connection()",
+            timeout=30,
         )
     finally:
         env_file.unlink(missing_ok=True)
@@ -293,6 +296,7 @@ def rollout() -> None:
     state = json.loads(b.STATE.read_text())
     assert state["phase"] == "built"
     preflight_candidate_configuration(state)
+    preflight_candidate_smtp(state)
     current = json.loads(b.o.STATE.read_text())
     assert current["source_sha"] == state["old"]["source_sha"] and current["phase"] == "deployed"
     for role, container_id in state["old_ids"].items():
@@ -331,6 +335,9 @@ def rollout() -> None:
         m._dump(b.ROOT / "pre-update-production.dump", state["postgres_id"])
 
         environment = dict(state["old"]["env"])
+        environment.update(r.mail_environment(
+            r.load(b.PROD / ".deploy/runtime-secrets.env"),required=True,
+        ))
         environment.update(
             DEPLOY_SHA=b.SHA,
             BASIC_LB_RUNTIME_ID=uuid4().hex,

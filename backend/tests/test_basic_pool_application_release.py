@@ -19,7 +19,7 @@ def load_release():
     return module
 
 
-def _tree(release, root: Path, *, candidate: bool) -> None:
+def _tree(release, root: Path) -> None:
     for relative in release.APPLICATION_CONTRACTS:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -28,12 +28,6 @@ def _tree(release, root: Path, *, candidate: bool) -> None:
     marker.write_text("RUNTIME_SCHEMA_VERSION = 'v26'\n", encoding="utf-8")
     legacy = root / "backend/app/legacy_module.py"
     legacy.write_text("# retained module\n", encoding="utf-8")
-    nginx = root / "frontend/nginx.conf"
-    nginx.parent.mkdir(parents=True, exist_ok=True)
-    if candidate:
-        shutil.copyfile(ROOT / "frontend/nginx.conf", nginx)
-    else:
-        nginx.write_text("historical frontend config\n", encoding="utf-8")
     dockerfile = root / "runtime/docker/Dockerfile"
     dockerfile.parent.mkdir(parents=True, exist_ok=True)
     source = ROOT / "runtime/docker/Dockerfile"
@@ -43,14 +37,14 @@ def _tree(release, root: Path, *, candidate: bool) -> None:
     shutil.copyfile(ROOT / "runtime/sandbox/verify_bpp_runtime.py", verifier)
 
 
-def test_exact_non_deployed_runtime_gate_is_allowed():
+def test_unchanged_application_contracts_are_allowed():
     release = load_release()
     from tempfile import TemporaryDirectory
     with TemporaryDirectory() as folder:
         base = Path(folder)
         previous, candidate = base / "previous", base / "candidate"
-        _tree(release, previous, candidate=False)
-        _tree(release, candidate, candidate=True)
+        _tree(release, previous)
+        _tree(release, candidate)
         release.check_application_contracts(previous, candidate)
 
 
@@ -61,8 +55,8 @@ def test_exact_non_deployed_runtime_gate_is_allowed():
 def test_application_release_rejects_active_or_unreviewed_contract_changes(tmp_path, change):
     release = load_release()
     previous, candidate = tmp_path / "previous", tmp_path / "candidate"
-    _tree(release, previous, candidate=False)
-    _tree(release, candidate, candidate=True)
+    _tree(release, previous)
+    _tree(release, candidate)
     if change == "schema":
         (candidate / "backend/app/initialize.py").write_text(
             "RUNTIME_SCHEMA_VERSION = 'v27'\n", encoding="utf-8"
@@ -102,23 +96,42 @@ def test_candidate_preflight_is_networkless_and_validates_runtime_security():
     assert '"--network", "none"' in source
     assert '"--read-only"' in source
     assert '"--user", "10001:10001"' in source
-    assert 'environment.get("ENVIRONMENT") == "production"' in source
+    helper = inspect.getsource(release._candidate_environment)
+    assert 'environment.get("ENVIRONMENT") == "production"' in helper
     assert "validate_runtime_security()" in source
     assert '"python", "-I", "-c"' not in source
     assert "candidate-preflight.env" in source
 
 
-def test_release_is_pinned_to_the_reviewed_operating_transition():
+def test_smtp_preflight_runs_before_maintenance_and_never_sends_message():
     release = load_release()
+    import inspect
+    probe = inspect.getsource(release.preflight_candidate_smtp)
+    rollout = inspect.getsource(release.rollout)
+    assert '"--network","bridge"' in probe
+    assert "verify_smtp_connection" in probe
+    assert "send_password_reset_email" not in probe
+    assert rollout.index("preflight_candidate_smtp(state)") < rollout.index('state["phase"] = "maintenance"')
+
+
+def test_release_uses_current_recorded_release_as_ancestor():
+    release = load_release()
+    import inspect
     assert release.m.b is release.b
-    assert release.EXPECTED_PREVIOUS_RELEASE == "2e8e08841e7463a654e35460592913bca3c65f03"
-    assert release.EXPECTED_REVIEWED_BASE == "2e8e08841e7463a654e35460592913bca3c65f03"
-    assert release.EXPECTED_RELEASE_DELTA == {
-        "backend/app/services/public_identity.py",
-        "backend/tests/test_leaderboard.py",
-        "backend/tests/test_basic_pool_application_release.py",
-        "scripts/basic_pool_application_release.py",
-    }
+    source = inspect.getsource(release.prepare)
+    assert 'old["source_sha"]' in source
+    assert '"merge-base","--is-ancestor",previous_sha,b.SHA' in source
+    assert "Release revision has no changes" not in source
+    assert "EXPECTED_PREVIOUS_RELEASE" not in source
+    assert "EXPECTED_RELEASE_DELTA" not in source
+
+
+def test_release_requires_private_smtp_before_build_or_rollout():
+    release = load_release()
+    import inspect
+    assert "required=True" in inspect.getsource(release.prepare)
+    assert "required=True" in inspect.getsource(release._candidate_environment)
+    assert "required=True" in inspect.getsource(release.rollout)
 
 
 def _failure_state(release, tmp_path, monkeypatch, value):

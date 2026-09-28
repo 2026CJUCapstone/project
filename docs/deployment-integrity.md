@@ -16,7 +16,7 @@ checkout 전에 job 조건에서도 같은 저장소의 main/push 성공만 허�
 
 `dispatch_deploy.py`가 한 번의 SSH 연결로 전체 작업을 수행한다. 알려진 호스트 키를 `WEBCOMPILER_DEPLOY_KNOWN_HOSTS`에서 받아 임시 600 파일에 넣고, 정확한 host/port 항목이 있는지 확인한다. `StrictHostKeyChecking=yes`이며 실시간 `ssh-keyscan` 결과를 처음부터 신뢰하는 경로는 없다. 토큰·배포 경로 등은 셸 인자가 아니라 인용 처리한 표준입력으로 보낸다.
 
-`sync_remote_repo.sh`는 `.deploy/deploy.lock`을 잡은 상태로 지정된 40자리 SHA만 fetch한다. origin이 다르거나 tracked 파일에 변경이 있으면 중단한다. detached checkout에서 `--no-overwrite-ignore`를 사용하고 `--force`나 `git clean`은 사용하지 않는다. 무시된 운영 파일과 새 tracked 파일이 충돌하는 경우에도 덮지 않고 실패한다.
+`sync_remote_repo.sh`는 `.deploy/deploy.lock`을 잡은 상태로 지정된 40자리 SHA와 그 조상 이력만 fetch한다. 자동 application release가 현재 운영 SHA의 조상 관계를 검증해야 하므로 depth-1 shallow fetch는 사용하지 않는다. origin이 다르거나 tracked 파일에 변경이 있으면 중단한다. detached checkout에서 `--no-overwrite-ignore`를 사용하고 `--force`나 `git clean`은 사용하지 않는다. 무시된 운영 파일과 새 tracked 파일이 충돌하는 경우에도 덮지 않고 실패한다.
 
 동일 잠금은 이미지 빌드와 배포가 끝날 때까지 유지한다. `deploy_guard.sh`는 자식에게 전달된 FD9의 경로와 잠금, 실제 HEAD를 확인한다. 직접 배포 스크립트를 실행하는 경우에도 SHA 지정과 같은 잠금이 필요하다. workflow의 `cancel-in-progress`는 false여서 다음 실행이 현재 전환을 강제로 끊지 않는다.
 

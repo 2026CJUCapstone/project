@@ -36,7 +36,10 @@ else
   git -C "$DEPLOY_PATH" diff --cached --quiet --exit-code
 fi
 
-git -C "$DEPLOY_PATH" fetch --no-tags --depth 1 origin "$DEPLOY_SHA"
+# Keep the verified commit's ancestry available: the adopted application-only
+# release proves the currently deployed SHA is an ancestor of this exact SHA.
+# A depth-1 fetch makes that proof fail even when both objects exist locally.
+git -C "$DEPLOY_PATH" fetch --no-tags origin "$DEPLOY_SHA"
 [[ "$(git -C "$DEPLOY_PATH" rev-parse 'FETCH_HEAD^{commit}')" == "$DEPLOY_SHA" ]] || exit 1
 # No --force and no git clean: abort on collisions, preserve local state/data.
 git -C "$DEPLOY_PATH" checkout --detach --no-overwrite-ignore "$DEPLOY_SHA"

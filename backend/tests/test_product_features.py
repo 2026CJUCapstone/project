@@ -2,12 +2,14 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from starlette.requests import Request
 
 from app.core.config import settings
 from app.core.bootstrap import COMMUNITY_GUIDE_NOTICE_ID
 from app.core.database import SessionLocal
 from app.main import app
 from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, ProblemLearningRecord, Submission, User, UserProblemScore
+from app.models import schemas
 from app.services import auth
 from app.services import compiler as compiler_service
 from app.services.public_identity import public_problem_id
@@ -135,6 +137,34 @@ async def test_password_reset_unknown_identity_does_not_issue_token(monkeypatch:
 
     assert response.status_code == 200
     assert response.json()["debugResetToken"] is None
+
+
+@pytest.mark.asyncio
+async def test_password_reset_delivery_failure_is_generic_and_invalidates_token(monkeypatch: pytest.MonkeyPatch):
+    suffix = uuid.uuid4().hex[:10]
+    username = f"mailfail_{suffix}"
+    email = f"{username}@example.test"
+    user = _create_user(username,email=email)
+    monkeypatch.setattr(settings,"ENVIRONMENT","production")
+    from app.api.routes import auth as auth_routes
+    monkeypatch.setattr(auth_routes,"_check_auth_rate_limit",lambda *_args: None)
+    from app.services import email as email_service
+    monkeypatch.setattr(email_service,"is_email_configured",lambda: True)
+    monkeypatch.setattr(email_service,"send_password_reset_email",
+                        lambda *_args: (_ for _ in ()).throw(RuntimeError("provider fixture")))
+    try:
+        db = SessionLocal()
+        try:
+            request = Request({"type":"http","client":("127.0.0.1",12345),"headers":[]})
+            response = auth_routes.request_password_reset(
+                schemas.PasswordResetRequest(username_or_email=email),request,db)
+            assert response.message
+            tokens = db.query(PasswordResetToken).filter(PasswordResetToken.user_id==user.id).all()
+            assert len(tokens)==1 and tokens[0].used_at is not None
+        finally:
+            db.close()
+    finally:
+        _delete_users(username)
 
 
 @pytest.mark.asyncio

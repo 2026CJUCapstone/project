@@ -150,6 +150,50 @@ def test_environment_credential_must_roundtrip_supported_literal_format(value):
         secrets.validate_deployment({}, {'WEBCOMPILER_POSTGRES_PASSWORD':'p'*24,'SECRET_KEY':value})
 
 
+def valid_mail_values():
+    return {
+        'SMTP_HOST':'smtp.example.test', 'SMTP_PORT':'587',
+        'SMTP_USERNAME':'mailer', 'SMTP_PASSWORD':'fixture-password',
+        'SMTP_FROM':'no-reply@example.test', 'SMTP_STARTTLS':'true',
+        'PASSWORD_RESET_BASE_URL':'https://example.test/webcompiler/reset-password',
+    }
+
+
+def test_complete_smtp_configuration_resolves_to_canonical_container_environment():
+    values = {'WEBCOMPILER_'+key:value for key,value in valid_mail_values().items()
+              if key!='PASSWORD_RESET_BASE_URL'}
+    values['WEBCOMPILER_PASSWORD_RESET_BASE_URL'] = valid_mail_values()['PASSWORD_RESET_BASE_URL']
+    assert secrets.mail_environment(values,required=True) == valid_mail_values()
+
+
+@pytest.mark.parametrize('change',[
+    {'SMTP_PASSWORD':''},
+    {'SMTP_STARTTLS':'false'},
+    {'SMTP_PORT':'70000'},
+    {'SMTP_FROM':'not-a-mailbox'},
+    {'PASSWORD_RESET_BASE_URL':'http://example.test/webcompiler/reset-password'},
+    {'PASSWORD_RESET_BASE_URL':'https://example.test/webcompiler/'},
+])
+def test_incomplete_or_unsafe_smtp_is_rejected(change):
+    values = valid_mail_values()
+    values.update(change)
+    with pytest.raises(secrets.RuntimeSecretsError):
+        secrets.mail_environment(values,required=True)
+
+
+def test_missing_smtp_is_allowed_for_validation_but_rejected_by_required_release_gate():
+    assert secrets.mail_environment({}) == {}
+    with pytest.raises(secrets.RuntimeSecretsError):
+        secrets.mail_environment({},required=True)
+
+
+def test_conflicting_smtp_aliases_are_rejected():
+    values = valid_mail_values()
+    values['WEBCOMPILER_SMTP_HOST'] = 'different.example.test'
+    with pytest.raises(secrets.RuntimeSecretsError):
+        secrets.mail_environment(values,required=True)
+
+
 @pytest.mark.skipif(os.name!='posix',reason='Actual checked descriptor initialization')
 @pytest.mark.parametrize('replacement',['symlink','public-file','private-file'])
 def test_ensure_rejects_path_swap_before_write_without_changing_target(tmp_path,monkeypatch,replacement):

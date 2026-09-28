@@ -79,6 +79,16 @@ fi
         self.assertEqual((self.checkout/'version').read_text(),'first')
         self.assertEqual(self.sync().returncode,0)
 
+    def test_exact_fetch_retains_ancestry_for_release_gate(self):
+        result = self.sync(self.second)
+        self.assertEqual(result.returncode,0,result.stderr)
+        ancestry = subprocess.run(
+            ['git','-C',str(self.checkout),'merge-base','--is-ancestor',self.first,self.second],
+            capture_output=True,text=True,timeout=10,
+        )
+        self.assertEqual(ancestry.returncode,0,ancestry.stderr)
+        self.assertNotIn('--depth',SYNC.read_text(encoding='utf-8'))
+
     def test_concurrent_sync_cannot_change_head_during_deploy(self):
         process = subprocess.Popen(['bash',str(SYNC)],env=self.environment(AUDIT_HOLD='1'),
                                    stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
