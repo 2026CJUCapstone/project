@@ -11,7 +11,11 @@ from tests.test_freshman_js_sources import SOURCE_DIRECTORY, _find_node
 from tools.freshman_contest.banks import generate, solve
 
 
-RUN_TIMEOUT_SECONDS = 2
+# This test checks answer parity, not the judge's JavaScript time limit.  A
+# busy shared CI runner can occasionally take more than two seconds just to
+# start Node, so keep a generous deadlock guard without turning scheduler
+# contention into a product failure.
+RUN_TIMEOUT_SECONDS = 10
 LARGE_ANSWER_MINIMUM = 2**31
 
 
