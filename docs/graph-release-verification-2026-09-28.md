@@ -2,6 +2,10 @@
 
 ## 후속 보안 정비 (진행 중)
 
+정식 Alpine 이미지 `sha256:a0e8519ec16fb3549a5d634c90b643fa7c0df2a2acf8a73307c103534847c6d8`도 검사에 통과했다. 소스 `ad65fce2`, main `de78cc48`, 서버 증거 `graph-runtime-build-89nwqtgk`. 필수 main CI `36434740891` 성공, 로컬 backend 3285 passed / 461 skipped / 17 subtests passed. 정식 이미지의 6개 언어 실행, B++ native 6개 조합, 운영 제한(1CPU/256MiB) 소스 매핑, 나머지 5개 언어의 Unicode·64비트 정수·입력·O0/O1·컴파일 오류 구분과 launcher 8개 제한/격리 검사가 통과했다. 엄격 보안 검사는 232 package identity / 탐지 0개이며, report SHA-256 `fcbe847a193176cb66b8364a79b31e83ee4efeccca366ad472511517e70089c8`와 SBOM `5bee170ef3bfcca19bf35c1dca4dd4950eecba140cf644ff727a1e14ad0ddfec`를 보존했다.
+
+배포 `36436907999`는 승인된 이미지 준비 후 운영 교체 전에 멈췄다. 배포 전 native 실행 검사에서 `/tmp` tmpfs가 Docker 기본값 `noexec`여서 두 회귀 프로그램 모두 `PermissionError`를 내는 것을 같은 명령으로 재현했다. 검사 전용의 128MiB 임시 공간에만 `exec`를 명시하고 `nosuid,nodev`, 비특권 UID, 읽기 전용 루트, 네트워크 차단과 자원 제한은 유지한다. 테스트는 이 정확한 옵션을 검사한다. 실행 이미지 내용은 변경하지 않으므로 기존 이미지·보안 보고서를 재사용할 수 있지만, 수정된 배포 도구의 실제 실행과 새 main CI/배포 확인은 별도로 필요하다.
+
 사용자의 해결·배포 지시에 따라 Ubuntu 빌더와 실제 제출 실행 환경을 분리했다. 최종 실행 환경은 digest로 고정한 공식 Node 24.21.0 / Alpine 3.24 기반이다. B++는 ELF interpreter가 없는 정적 실행 파일인지 확인하고 옮기며, Node·C/C++·Python·Java는 Alpine 자체 실행 환경을 사용한다. 기존 npm 11.19.1 검증 사본과 B++ 필수 실행 검사는 유지한다. 헤더 삭제, 패키지 목록 은폐, 취약점 예외는 적용하지 않았다.
 
 격리된 시험 이미지 `sha256:0306fc322b17c37fcc2143ce715811b3bdb1f4a5ef5ff9b4f015fb716952bf33`에서 다음을 확인했다. 이 이미지는 정식 소스 빌드/배포 이미지가 아니므로 배포 승인 근거를 대체하지 않는다.
