@@ -233,7 +233,7 @@ def build() -> None:
     )
     state["phase"] = "built"
     b.save(state)
-    print(json.dumps({"phase": "built", "sha": b.SHA, "sandbox": "reused"}), flush=True)
+    print(json.dumps({"phase": "built", "sha": b.SHA, "sandbox": "reused" if state.get("sandbox_reused", True) else "approved-runtime-update"}), flush=True)
 
 
 def _columns(container: str) -> dict[str, tuple[str, ...]]:

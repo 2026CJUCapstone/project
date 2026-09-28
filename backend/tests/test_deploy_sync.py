@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -206,13 +207,23 @@ fi
 
     def test_builder_uses_committed_compiler_pin_without_resolving_main(self):
         project = self.base/'builder'
-        for folder in ('scripts','runtime/docker','runtime/sandbox','bin'):
+        for folder in ('scripts','runtime/docker','runtime/sandbox','runtime/compiler-patches','bin'):
             (project/folder).mkdir(parents=True)
         (project/'scripts/build_sandbox_image.sh').write_text((ROOT/'scripts/build_sandbox_image.sh').read_text())
+        (project/'scripts/basic_pool_runtime_release.py').write_text(
+            (ROOT/'scripts/basic_pool_runtime_release.py').read_text()
+        )
         (project/'scripts/verify_build_builder.py').write_text("print('a'*64)\n")
         (project/'runtime/docker/Dockerfile').write_text('FROM scratch\n')
         (project/'runtime/sandbox/run.sh').write_text('# fixture\n')
         (project/'runtime/sandbox/verify_bpp_runtime.py').write_text('# fixture\n')
+        (project/'runtime/sandbox/verify_bpp_exploration.py').write_text(
+            '#!/usr/bin/env python3\n"""Fixture exploration verifier."""\n'
+        )
+        (project/'runtime/compiler-patches/apply_exploration.py').write_text(
+            '#!/usr/bin/env python3\n"""Fixture compiler patch entry point."""\n'
+        )
+        (project/'runtime/compiler-patches/exploration.bpp').write_text('// fixture exploration patch\n')
         (project/'runtime/bpp-ref.txt').write_text(self.first+'\n')
         # Trusted CLI fakes only: a Git lookup would fail, and no real Docker
         # executable or daemon is reachable through this fixture invocation.
@@ -231,10 +242,28 @@ fi
             env=env,capture_output=True,text=True,timeout=5)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertIn('BPP_REF='+self.first,args.read_text())
+        expected_runtime_digest = subprocess.run(
+            [sys.executable, str(project/'scripts/basic_pool_runtime_release.py'), 'digest', str(project)],
+            check=True, capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        self.assertRegex(expected_runtime_digest, r'^[0-9a-f]{64}$')
+        self.assertIn('RUNTIME_SOURCE_DIGEST='+expected_runtime_digest, args.read_text())
         self.assertIn('fixture-sandbox:fixed',args.read_text())
         self.assertEqual(args.read_text().splitlines()[:6],['buildx','build','--builder','fixture-builder','--load','--shm-size=2g'])
+        digest_helper = project/'scripts/basic_pool_runtime_release.py'
+        digest_helper_source = digest_helper.read_text()
+        for broken_source in (None, "print('not-a-digest')\n"):
+            digest_helper.unlink()
+            if broken_source is not None:
+                digest_helper.write_text(broken_source)
+            args.unlink(missing_ok=True)
+            result = subprocess.run(['bash',str(project/'scripts/build_sandbox_image.sh')],
+                env=env,capture_output=True,text=True,timeout=5)
+            self.assertNotEqual(result.returncode,0)
+            self.assertFalse(args.exists())
+            digest_helper.write_text(digest_helper_source)
         (project/'runtime/bpp-ref.txt').write_text('main')
-        args.unlink()
+        args.unlink(missing_ok=True)
         result = subprocess.run(['bash',str(project/'scripts/build_sandbox_image.sh')],
             env=env,capture_output=True,text=True,timeout=5)
         self.assertNotEqual(result.returncode,0)
