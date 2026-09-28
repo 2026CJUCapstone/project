@@ -9,7 +9,7 @@ STDIN_FILE="${4:-}"
 OPTIMIZE="${COMPILER_OPTIMIZE:-0}"
 
 if [[ -z "$MODE" || -z "$LANGUAGE" || -z "$SOURCE_FILE" ]]; then
-  echo "usage: run.sh <compile|run|dump-ir|dump-ir-json|dump-ssa|dump-ssa-json|dump-machine-ir-json|asm|json> <language> <source_file> [stdin_file]" >&2
+  echo "usage: run.sh <compile|compile-json|run|dump-ir|dump-ir-json|dump-ssa|dump-ssa-json|dump-machine-ir-json|asm|json> <language> <source_file> [stdin_file]" >&2
   exit 2
 fi
 
@@ -199,6 +199,19 @@ emit_bpp_json() {
   bpp "${bpp_flags[@]}" --emit-json --views ast,ir,ssa,asm --source-map-user-only --ast-no-std "$SOURCE_FILE"
 }
 
+compile_bpp_json() {
+  local bpp_flags=(-O0)
+  if [[ "$OPTIMIZE" == "1" ]]; then bpp_flags=(-O1); fi
+  # Descriptor 3 receives complete native assembly, not the source-filtered
+  # visualization. Never publish graph success before NASM and ld succeed.
+  bpp "${bpp_flags[@]}" --emit-json --views ast,ir,ssa,asm \
+    --source-map-user-only --ast-no-std --native-asm-fd3 "$SOURCE_FILE" \
+    3>/tmp/program.asm > /tmp/graphs.json
+  nasm -f elf64 -O1 /tmp/program.asm -o /tmp/program.o
+  ld /tmp/program.o -o /tmp/program
+  cat /tmp/graphs.json
+}
+
 run_bpp() {
   report_phase run
   if [[ -n "$STDIN_FILE" ]]; then
@@ -213,6 +226,9 @@ case "$LANGUAGE" in
     case "$MODE" in
       compile)
         compile_bpp
+        ;;
+      compile-json)
+        compile_bpp_json
         ;;
       run)
         compile_bpp

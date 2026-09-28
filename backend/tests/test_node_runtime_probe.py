@@ -24,6 +24,7 @@ class NodeProbeContract(unittest.TestCase):
         self.assertNotIn('COPY --from=bpp-build /usr/local/bin/bpp ', actual)
         self.assertNotIn('/usr/local/share/verify_bpp_runtime.py', actual)
         self.assertNotIn('/usr/local/share/verify_bpp_exploration.py', actual)
+        self.assertNotIn('/usr/local/share/verify_bpp_latency.py', actual)
         self.assertNotIn('git clone', actual)
         self.assertNotIn('compiler-patches', actual)
         self.assertIn('USER sandboxuser', actual)
@@ -38,8 +39,10 @@ class NodeProbeContract(unittest.TestCase):
             'COPY --from=bpp-build /usr/local/bin/bpp',
             'COPY sandbox/verify_bpp_runtime.py',
             'COPY sandbox/verify_bpp_exploration.py',
+            'COPY sandbox/verify_bpp_latency.py',
             'RUN python3 -I /usr/local/share/verify_bpp_runtime.py',
             'RUN python3 -I /usr/local/share/verify_bpp_exploration.py',
+            'RUN python3 -I /usr/local/share/verify_bpp_latency.py',
         ):
             with self.subTest(instruction=old), self.assertRaises(ValueError):
                 probe.dockerfile_prefix(source.replace(old,'# changed '+old,1))

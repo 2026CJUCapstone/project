@@ -82,7 +82,10 @@ def test_gate_rejects_wrong_levels_and_malformed_exploration_metadata(optimized:
 def test_runtime_build_signatures_and_dockerfile_include_the_full_exploration_gate_chain():
     required_signature_inputs = (
         'runtime/sandbox/verify_bpp_exploration.py',
+        'runtime/sandbox/verify_bpp_latency.py',
         'runtime/compiler-patches/apply_exploration.py',
+        'runtime/compiler-patches/apply_performance.py',
+        'runtime/compiler-patches/graph_scope.bpp',
         'runtime/compiler-patches/exploration.bpp',
     )
     for script_name in ('build_sandbox_image.sh', 'update_sandbox_image_if_needed.sh'):
@@ -95,3 +98,5 @@ def test_runtime_build_signatures_and_dockerfile_include_the_full_exploration_ga
     assert dockerfile.index('python3 /opt/compiler-patches/apply_exploration.py') < dockerfile.index('cmake -S . -B build-linux')
     assert 'COPY sandbox/verify_bpp_exploration.py /usr/local/share/verify_bpp_exploration.py' in dockerfile
     assert 'RUN python3 -I /usr/local/share/verify_bpp_exploration.py' in dockerfile
+    assert 'COPY sandbox/verify_bpp_latency.py /usr/local/share/verify_bpp_latency.py' in dockerfile
+    assert 'RUN python3 -I /usr/local/share/verify_bpp_latency.py' in dockerfile

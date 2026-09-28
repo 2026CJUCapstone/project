@@ -25,7 +25,7 @@ def patch_source(source: str, extension: str) -> str:
         ('    var n: u64 = slice_len(funcs);\n    for (var i: u64 = 0; i < n; i++) {\n        if (i != 0) { emit(","); }\n        var fn: *SSAFunction = funcs[i];',
          '    var n: u64 = slice_len(funcs);\n    var first_function: u64 = 1;\n    for (var i: u64 = 0; i < n; i++) {\n        var fn: *SSAFunction = funcs[i];\n        if (exploration_function_matches_source(fn) == 0) { continue; }\n        if (first_function == 0) { emit(","); }\n        first_function = 0;', 1),
         ('func dump_json(ctx: *SSAContext, with_phi: u64, stage: u64) -> u64 {',
-         'func dump_json(ctx: *SSAContext, with_phi: u64, stage: u64) -> u64 {\n    io_set_emit_buffering(1);\n    defer io_set_emit_buffering(0);', 1),
+         'func dump_json(ctx: *SSAContext, with_phi: u64, stage: u64) -> u64 {\n    io_set_emit_buffering(1);\n    defer io_set_emit_buffering(opt_get_output_mode() == OUT_UNIFIED_JSON);', 1),
     ]
     for before, after, count in anchors:
         if source.count(before) != count:
@@ -99,6 +99,7 @@ func validate_program_semantics(prog: *AstProgram) -> u64 {
 
 
 def main():
+    from apply_performance import apply as apply_performance
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("compiler_root", type=Path)
     args = parser.parse_args()
@@ -112,6 +113,7 @@ def main():
     path.write_text(result, encoding="utf-8", newline="\n")
     main_path.write_text(main_result, encoding='utf-8', newline='\n')
     codegen_path.write_text(codegen_result, encoding='utf-8', newline='\n')
+    apply_performance(args.compiler_root)
 
 
 if __name__ == "__main__":

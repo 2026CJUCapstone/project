@@ -54,6 +54,7 @@ import { MappingBadge } from './MappingBadge';
 import { ValueFlowExplorer } from './ValueFlowExplorer';
 import { traceValueFlow } from '../services/valueFlow';
 import { getSelectionNeighborhood } from '../services/selectionFocus';
+import { layoutAstForest } from '../services/astTreeLayout';
 
 type GraphTab = 'AST' | 'SSA';
 type LayoutDirection = 'TB' | 'LR';
@@ -92,9 +93,22 @@ function layoutNodes(
   edges: Edge[],
   w = 160,
   h = 56,
-  opts?: { nodesep?: number; ranksep?: number; direction?: LayoutDirection },
+  opts?: { nodesep?: number; ranksep?: number; direction?: LayoutDirection; ast?: boolean },
 ): Node[] {
   const direction = opts?.direction ?? 'TB';
+  // ASTs are ordered forests, not arbitrary control-flow graphs. Verify that
+  // property before using a linear layout; malformed/shared graphs and all
+  // SSA views retain the general layout. No nodes or source links are removed.
+  const tree = opts?.ast ? layoutAstForest(nodes.map(node => ({
+    id: node.id, width: (node.data?.w as number) || w, height: (node.data?.h as number) || h,
+  })), edges, { direction, nodesep: opts.nodesep ?? 56, ranksep: opts.ranksep ?? 80 }) : null;
+  if (tree) return nodes.map(node => ({
+    ...node,
+    position: { x: tree.get(node.id)!.x + 36, y: tree.get(node.id)!.y + 36 },
+    sourcePosition: direction === 'LR' ? Position.Right : Position.Bottom,
+    targetPosition: direction === 'LR' ? Position.Left : Position.Top,
+    data: { ...node.data, layoutDirection: direction },
+  }));
   const g = new (dagre as any).graphlib.Graph();
   g.setGraph({
     rankdir: direction,
@@ -723,12 +737,26 @@ function InteractiveGraph({
   const [instance, setInstance] = useState<ReactFlowInstance | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const canvasSizeRef = useRef(canvasSize);
+  const showMiniMapRef = useRef(showMiniMap);
+  useEffect(() => {
+    showMiniMapRef.current = showMiniMap;
+    if (!showMiniMap) return;
+    const size = canvasSizeRef.current;
+    if (size.width > 0 && size.height > 0) {
+      setCanvasSize(current => current.width === size.width && current.height === size.height ? current : size);
+    }
+  }, [showMiniMap]);
   useEffect(() => {
     if (!canvasRef.current) return;
     let frame = 0;
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      setCanvasSize({ width, height });
+      const size = { width, height };
+      canvasSizeRef.current = size;
+      if (showMiniMapRef.current) {
+        setCanvasSize(current => current.width === width && current.height === height ? current : size);
+      }
       cancelAnimationFrame(frame);
       if (width > 0 && height > 0) frame = requestAnimationFrame(() => {
         void instance?.fitView({ padding: 0.25, maxZoom: 1.15 });
@@ -770,6 +798,7 @@ function InteractiveGraph({
     const cached = !force ? positionCache.get(scopeKey) : undefined;
     const canReuseCurrent = !force && layoutScopeRef.current === scopeKey;
     const laidOut = layoutNodes(visibleBaseNodes, visibleEdges, kind === 'AST' ? 170 : 230, kind === 'AST' ? 62 : 90, {
+      ast: kind === 'AST',
       direction,
       nodesep: kind === 'AST' ? 64 : 76,
       ranksep: kind === 'AST' ? 88 : 96,
@@ -790,6 +819,7 @@ function InteractiveGraph({
     const canReuseCurrent = layoutScopeRef.current === scopeKey;
     // Selection changes only paint nodes; don't rerun Dagre while dragging code.
     const laidOut = canReuseCurrent ? visibleBaseNodes : layoutNodes(visibleBaseNodes, visibleEdges, kind === 'AST' ? 170 : 230, kind === 'AST' ? 62 : 90, {
+      ast: kind === 'AST',
       direction,
       nodesep: kind === 'AST' ? 64 : 76,
       ranksep: kind === 'AST' ? 88 : 96,
@@ -986,7 +1016,7 @@ function InteractiveGraph({
         onPaneClick={() => setSelectedNodeId(null)}
         fitView
         fitViewOptions={{ padding: 0.28, maxZoom: 1.15 }}
-        minZoom={0.2}
+        minZoom={0.05}
         maxZoom={2.2}
         nodesDraggable
         nodesConnectable={false}
@@ -1182,9 +1212,13 @@ export function CompilerGraphViewer({ code }: { code: string }) {
       : { range: null, hasSelection: false },
     [code, lastCompiledCode, isCurrentCodeCompiled, selectedSourceRange, selectedText],
   );
-  const astData = useMemo(() => (lastCompile?.ast ? convertASTGraph(lastCompile.ast, selection) : null), [lastCompile?.ast, selection]);
-  const ssaData = useMemo(() => (lastCompile?.ssa ? convertSSAGraph(lastCompile.ssa, selection) : null), [lastCompile?.ssa, selection]);
-  const valueTrace = useMemo(() => selectedValue && lastCompile?.ssa ? traceValueFlow(lastCompile.ssa, selectedValue.functionId, selectedValue.value) : null, [selectedValue, lastCompile?.ssa]);
+  const needsASTGraph = activeGraphTab === 'AST' || pair === 'AST-SSA';
+  const needsSSAGraph = activeGraphTab === 'SSA' || pair === 'AST-SSA';
+  const needsIRLines = activeGraphTab === 'IR' || pair === 'IR-ASM';
+  const needsASMLines = activeGraphTab === 'ASM' || pair === 'IR-ASM';
+  const astData = useMemo(() => needsASTGraph && lastCompile?.ast ? convertASTGraph(lastCompile.ast, selection) : null, [needsASTGraph, lastCompile?.ast, selection]);
+  const ssaData = useMemo(() => needsSSAGraph && lastCompile?.ssa ? convertSSAGraph(lastCompile.ssa, selection) : null, [needsSSAGraph, lastCompile?.ssa, selection]);
+  const valueTrace = useMemo(() => needsSSAGraph && selectedValue && lastCompile?.ssa ? traceValueFlow(lastCompile.ssa, selectedValue.functionId, selectedValue.value) : null, [needsSSAGraph, selectedValue, lastCompile?.ssa]);
   const selectValue = useCallback((functionId: string, value: string) => { setSelectedValue({ functionId, value }); setExplorer('values'); setActiveGraphTab('SSA'); }, [setActiveGraphTab]);
   const tracedSSA = useMemo(() => {
     if (!ssaData || !lastCompile?.ssa) return ssaData;
@@ -1204,8 +1238,8 @@ export function CompilerGraphViewer({ code }: { code: string }) {
       onValueClick: (value: string) => selectValue(lastCompile.ssa!.blocks[index].functionId ?? node.id.slice(0, node.id.lastIndexOf(':')), value),
     } })) };
   }, [ssaData, lastCompile?.ssa, lastCompile?.ast, explorer, valueTrace, selectValue]);
-  const irLines = useMemo(() => (lastCompile?.ir?.instructions?.length ? convertIRLines(lastCompile.ir.instructions) : []), [lastCompile?.ir]);
-  const asmLines = useMemo(() => (lastCompile?.asm?.lines?.length ? convertASMLines(lastCompile.asm.lines) : []), [lastCompile?.asm]);
+  const irLines = useMemo(() => needsIRLines && lastCompile?.ir?.instructions?.length ? convertIRLines(lastCompile.ir.instructions) : [], [needsIRLines, lastCompile?.ir]);
+  const asmLines = useMemo(() => needsASMLines && lastCompile?.asm?.lines?.length ? convertASMLines(lastCompile.asm.lines) : [], [needsASMLines, lastCompile?.asm]);
 
   const compileState = !lastCompile
     ? 'idle'

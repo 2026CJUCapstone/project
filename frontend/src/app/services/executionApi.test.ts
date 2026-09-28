@@ -1,11 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { submitExecution, submitPracticeExecution } from './executionApi';
+import { submitExecution, submitPracticeExecution, waitForExecution } from './executionApi';
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 
 describe('durable execution client', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it.each([undefined, 150])('counts GET time inside only the default cadence (%s)', async (pollIntervalMs) => {
+    let now = 0;
+    const delays: number[] = [];
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler, delay) => {
+      delays.push(Number(delay)); now += Number(delay);
+      queueMicrotask(() => { if (typeof handler === 'function') handler(); });
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    });
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => {
+      now += 100;
+      return json(++calls === 1 ? { status: 'running' } : { status: 'completed', result: { ok: true, value: 42 } });
+    }));
+    await expect(waitForExecution('timed', { pollIntervalMs })).resolves.toBe(42);
+    expect(delays).toEqual([pollIntervalMs === undefined ? 50 : 150]);
+  });
 
   it('submits once with a retry identity and polls the private execution', async () => {
     const fetchMock = vi.fn()
@@ -39,6 +60,53 @@ describe('durable execution client', () => {
     const firstHeaders = fetchMock.mock.calls[0][1].headers as Record<string, string>;
     const secondHeaders = fetchMock.mock.calls[1][1].headers as Record<string, string>;
     expect(secondHeaders['X-Request-ID']).toBe(firstHeaders['X-Request-ID']);
+  });
+
+  it('polls every 150ms for the first three seconds, then returns to the 750ms default', async () => {
+    let now = 0;
+    const delays: number[] = [];
+    const receipt = { id: 'exec-fast-poll', status: 'queued', receivedAt: 'now', requestId: 'request' };
+    const queued = { id: receipt.id, status: 'queued', receivedAt: 'now' };
+    const completed = { id: receipt.id, status: 'completed', receivedAt: 'now', result: { ok: true, value: 'done' } };
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(receipt, 202));
+    for (let attempt = 0; attempt < 21; attempt += 1) fetchMock.mockResolvedValueOnce(json(queued));
+    fetchMock.mockResolvedValueOnce(json(completed));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler, delay) => {
+      const milliseconds = Number(delay ?? 0);
+      delays.push(milliseconds);
+      now += milliseconds;
+      queueMicrotask(() => { if (typeof handler === 'function') handler(); });
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    });
+
+    await expect(submitExecution<string>({
+      source_code: 'main', language: 'bpp', optimize: false, kind: 'compile', target: 'ast',
+    })).resolves.toBe('done');
+
+    expect(delays).toEqual([...Array(20).fill(150), 750]);
+    expect(fetchMock).toHaveBeenCalledTimes(23);
+  });
+
+  it('honors a status Retry-After instead of using the fast polling cadence', async () => {
+    const delays: number[] = [];
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ id: 'exec-retry-after', status: 'queued', receivedAt: 'now', requestId: 'request' }, 202))
+      .mockResolvedValueOnce(json({ detail: 'busy' }, 429, { 'Retry-After': '5' }))
+      .mockResolvedValueOnce(json({ id: 'exec-retry-after', status: 'completed', receivedAt: 'now', result: { ok: true, value: 42 } }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler, delay) => {
+      delays.push(Number(delay ?? 0));
+      queueMicrotask(() => { if (typeof handler === 'function') handler(); });
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    });
+
+    await expect(submitExecution<number>({
+      source_code: 'main', language: 'bpp', optimize: false, kind: 'compile', target: 'ast',
+    })).resolves.toBe(42);
+
+    expect(delays).toEqual([5_000]);
   });
 
   it('polls practice submissions through their execution id', async () => {

@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import stat
 
-ALLOWED_CHANGES = frozenset({
+LEGACY_ALLOWED_CHANGES = frozenset({
     "runtime/bpp-ref.txt",
     "runtime/image-lock.json",
     "runtime/docker/Dockerfile",
@@ -21,6 +21,17 @@ ALLOWED_CHANGES = frozenset({
     "runtime/compiler-patches/exploration.bpp",
     "runtime/sandbox/verify_bpp_exploration.py",
 })
+GRAPH_LATENCY_CHANGES = frozenset({
+    "runtime/docker/Dockerfile",
+    "runtime/sandbox/run.sh",
+    "runtime/sandbox/verify_bpp_latency.py",
+    "runtime/compiler-patches/apply_exploration.py",
+    "runtime/compiler-patches/apply_performance.py",
+    "runtime/compiler-patches/graph_scope.bpp",
+})
+# Used only after validate_approval has accepted one of the exact profiles
+# below.  It is not itself sufficient to authorize an arbitrary subset.
+ALLOWED_CHANGES = LEGACY_ALLOWED_CHANGES | GRAPH_LATENCY_CHANGES
 REVIEWED_COMPILER_TRANSITION = (
     "2d596233f45973394a5d951c40b11f78171c8870",
     "9859a2dc783c9346be2ab9447e1569218bcc5093",
@@ -73,7 +84,9 @@ def validate_approval(value, *, previous, candidate, old_sha, new_sha, old_image
     if not all(isinstance(v, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", v) for v in (old_image, value["candidate_image"])):
         raise ValueError("Immutable runtime image IDs required")
     changes = changed_runtime(previous, candidate)
-    if not changes or not changes <= ALLOWED_CHANGES:
+    legacy_profile = bool(changes) and changes <= LEGACY_ALLOWED_CHANGES
+    latency_profile = changes == GRAPH_LATENCY_CHANGES
+    if not legacy_profile and not latency_profile:
         raise ValueError("Unreviewed runtime change")
     if "runtime/bpp-ref.txt" in changes:
         refs = tuple((root / "runtime/bpp-ref.txt").read_text().strip() for root in (previous, candidate))
@@ -121,7 +134,7 @@ def load_approval(prod, previous, candidate, old_sha, new_sha, old_image, inspec
 
 def verify_candidate(state, run):
     image = state["images"]["sandbox"]
-    for verifier in ("verify_bpp_runtime.py", "verify_bpp_exploration.py"):
+    for verifier in ("verify_bpp_runtime.py", "verify_bpp_exploration.py", "verify_bpp_latency.py"):
         run("docker", "run", "--rm", "--pull", "never", "--network", "none",
             "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--pids-limit", "64",

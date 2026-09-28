@@ -172,6 +172,7 @@ WORKDIR /sandbox
 COPY sandbox/run.sh /usr/local/bin/run.sh
 COPY sandbox/verify_bpp_runtime.py /usr/local/share/verify_bpp_runtime.py
 COPY sandbox/verify_bpp_exploration.py /usr/local/share/verify_bpp_exploration.py
+COPY sandbox/verify_bpp_latency.py /usr/local/share/verify_bpp_latency.py
 RUN chmod +x /usr/local/bin/run.sh
 
 RUN deluser node \
@@ -183,6 +184,7 @@ USER sandboxuser
 # filter is customized. They reproduce the G/J failures found in Linux testing.
 RUN python3 -I /usr/local/share/verify_bpp_runtime.py
 RUN python3 -I /usr/local/share/verify_bpp_exploration.py
+RUN python3 -I /usr/local/share/verify_bpp_latency.py
 
 # Check executable/read permissions as the actual submission user as well.
 RUN test "$(nodejs --version)" = v24.21.0 \

@@ -21,6 +21,7 @@ from app.services.judging import judge_code
 from app.services.terminal_broker import TerminalClosed, TerminalLimit
 from app.services.durable_queue import ClaimPreparation, WorkerIdentity
 from app.services.sandbox_identity import sandbox_labels
+from app.services.execution_wakeup import wait_for_execution_work
 
 logger = logging.getLogger(__name__)
 
@@ -472,7 +473,7 @@ class ExecutionWorker:
             while not self._stop.is_set() and (stop is None or not stop.is_set()):
                 try:
                     if not await self.run_once(stop=stop):
-                        await asyncio.sleep(0.25)
+                        await wait_for_execution_work()
                 except asyncio.CancelledError:
                     raise
                 except Exception:

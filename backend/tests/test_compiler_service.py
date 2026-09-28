@@ -18,7 +18,7 @@ async def test_sandbox_writes_exact_source_bytes(monkeypatch, tmp_path, newline)
         raise RuntimeError("stop before Docker")
     monkeypatch.setattr(runner, "_get_client", inspect_written_source)
     with pytest.raises(RuntimeError, match="stop before Docker"):
-        await runner._execute(mode="json", source_code=source, language="bpp")
+        await runner._execute(mode="compile-json", source_code=source, language="bpp")
     assert list(tmp_path.iterdir()) == []
 
 
@@ -52,12 +52,12 @@ async def test_missing_unified_ir_uses_dedicated_ir_json_with_source_mapping(mon
         calls.append(mode)
         assert kwargs["source_code"] == source
         assert kwargs["optimize"] is True
-        assert mode in {"compile", "json", "dump-ir-json"}
+        assert mode in {"compile-json", "dump-ir-json"}
         payload = ir_payload if mode == "dump-ir-json" else {"views": {}}
         return {"exit_code": 0, "stdout": json.dumps(payload), "stderr": "", "execution_time": 1}
     monkeypatch.setattr(runner, "_execute", execute)
     result = await runner.compile(source, "bpp", optimize=True, target="ir")
-    assert calls == ["compile", "json", "dump-ir-json"]
+    assert calls == ["compile-json", "dump-ir-json"]
     mapped = result["ir"]["instructions"][-1]["sourceRanges"][0]
     assert source.encode("utf-8")[mapped["startOffset"]:mapped["endOffset"]] == b"return 0;"
     assert mapped["astNodeId"] == "ast-7"
@@ -467,10 +467,8 @@ async def test_compile_bpp_all_targets_collects_graph_outputs(monkeypatch: pytes
     async def fake_execute(*, mode: str, source_code: str, language: str, stdin: str = "", optimize: bool = False):
         assert source_code == sample_source
         assert language == "bpp"
-        if mode == "compile":
-            return {"stdout": "", "stderr": "", "exit_code": 0, "execution_time": 3.5}
-        if mode == "json":
-            return {"stdout": "", "stderr": "unsupported option", "exit_code": 1, "execution_time": 0.5}
+        if mode == "compile-json":
+            return {"stdout": json.dumps({"views": {}}), "stderr": "", "exit_code": 0, "execution_time": 3.5}
         if mode == "dump-ssa":
             return {
                 "stdout": (
@@ -556,10 +554,8 @@ async def test_compile_bpp_asm_target_uses_json_source_map(monkeypatch: pytest.M
     async def fake_execute(*, mode: str, source_code: str, language: str, stdin: str = "", optimize: bool = False):
         assert source_code == sample_source
         assert language == "bpp"
-        if mode == "compile":
-            return {"stdout": "", "stderr": "", "exit_code": 0, "execution_time": 3.5}
-        if mode == "json":
-            return {"stdout": "", "stderr": "unsupported option", "exit_code": 1, "execution_time": 0.5}
+        if mode == "compile-json":
+            return {"stdout": json.dumps({"views": {}}), "stderr": "", "exit_code": 0, "execution_time": 3.5}
         if mode == "asm":
             return {
                 "stdout": json.dumps(
@@ -627,9 +623,7 @@ async def test_compile_bpp_uses_unified_json_source_map(monkeypatch: pytest.Monk
         calls.append(mode)
         assert source_code == sample_source
         assert language == "bpp"
-        if mode == "compile":
-            return {"stdout": "", "stderr": "", "exit_code": 0, "execution_time": 3.5}
-        if mode == "json":
+        if mode == "compile-json":
             return {
                 "stdout": json.dumps(
                     {
@@ -749,7 +743,7 @@ async def test_compile_bpp_uses_unified_json_source_map(monkeypatch: pytest.Monk
 
     result = await runner.compile(sample_source, "bpp", optimize=False, target="all")
 
-    assert calls == ["compile", "json"]
+    assert calls == ["compile-json"]
     assert result["success"] is True
     assert result["ast"]["nodes"][1]["sourceRanges"][0]["rangeId"] == "range-return"
     assert result["ssa"]["blocks"][0]["instructionSourceRanges"][0][0]["startOffset"] == 26

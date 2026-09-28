@@ -598,3 +598,25 @@ async def test_unexpected_failure_logs_only_bounded_exception_types(queue,caplog
     assert queue.read(job_id,owner_key='test')['result']['verdict']=='system_error'
     assert 'RuntimeError <- PermissionError' in caplog.text
     assert secret not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_idle_hint_returns_to_durable_claim_loop_and_still_drains(queue, monkeypatch):
+    from unittest.mock import AsyncMock
+    from app.services import execution_worker
+    worker = ExecutionWorker(queue, pool=SimpleNamespace(labels=lambda *args: {}, reap=lambda *args: None))
+    stop = asyncio.Event()
+    events = []
+    async def run_once(**kwargs):
+        events.append('claim')
+        if events.count('claim') == 2:
+            stop.set()
+            return True
+        return False
+    async def hint():
+        events.append('hint')
+    worker.run_once = AsyncMock(side_effect=run_once)
+    worker.begin_drain = Mock(side_effect=lambda: events.append('drain'))
+    monkeypatch.setattr(execution_worker, 'wait_for_execution_work', hint)
+    await worker.run(stop)
+    assert events == ['claim', 'hint', 'claim', 'drain']
