@@ -1,22 +1,81 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import String, cast, desc, or_
+from sqlalchemy import String, cast, desc, literal, or_
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
 from app.core.config import settings
 from app.models import database as db_models
 from app.models import schemas
+from app.models.contest_schemas import AuthoringValidationWrite
 from app.api.routes.auth import get_current_user, get_optional_current_user, require_admin
 from app.core.bootstrap import SYSTEM_BOARD_IDS
 from app.services.rating import RatingStats, calculate_rating_stats, invalidate_rating_cache, rating_stats_for_users
 from app.services.redis_client import cache_get_json, cache_set_json, redis_key
-from app.services.contest_access import private_problem_ids, require_public_problem, now_utc
+from app.services.contest_access import private_problem_ids, require_public_problem, resolve_problem_identifier, now_utc
+from app.services.public_identity import public_display_name, public_problem_id, public_receipt_id
+from app.services.judge_policy import UNREVIEWED, stored_policy, public_policy_fields_for_problem, validate_stored_publication
+from app.models.judge_test_manifest import is_reference_case,canonical_case
+from app.services.judge_test_manifest import validate_stored_cases
 
 router = APIRouter()
 
+
+from app.models.problem_authoring import MetadataUpdate, ReviewWrite
+from app.services import problem_authoring as authoring_service
+
+
+@router.get('/{id}/authoring')
+def read_authoring(id:str,response:Response,db:Session=Depends(get_db),user=Depends(require_admin)):
+    response.headers['Cache-Control']='no-store'
+    return authoring_service.review_read(db,id)
+
+
+@router.put('/{id}/authoring')
+def edit_authoring(id:str,data:MetadataUpdate,response:Response,db:Session=Depends(get_db),user=Depends(require_admin)):
+    response.headers['Cache-Control']='no-store'
+    return authoring_service.update_metadata(db,id,data,user)
+
+
+@router.post('/{id}/authoring/reviews')
+def review_authoring(id:str,data:ReviewWrite,response:Response,db:Session=Depends(get_db),user=Depends(require_admin)):
+    response.headers['Cache-Control']='no-store'
+    return authoring_service.append_review(db,id,data,user)
+
+
+@router.post('/{id}/authoring-validations', status_code=202)
+def create_problem_authoring_validation(
+    id: str,
+    data: AuthoringValidationWrite,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    user=Depends(require_admin),
+):
+    from app.services import authoring_validation
+    from app.services.execution_admission import admit_execution
+    from app.services.execution_runtime import execution_queue
+    response.headers['Cache-Control'] = 'no-store'
+    admit_execution(request, user_id=user.id)
+    return authoring_validation.create_problem(
+        db, problem_id=id, data=data, user=user, queue=execution_queue()
+    )
+
+
+@router.get('/{id}/authoring-validations/{job_id}')
+def read_problem_authoring_validation(
+    id: str,
+    job_id: str,
+    response: Response,
+    db: Session = Depends(get_db),
+    user=Depends(require_admin),
+):
+    from app.services import authoring_validation
+    response.headers['Cache-Control'] = 'no-store'
+    return authoring_validation.read_problem(db, problem_id=id, job_id=job_id, user=user)
+
 PROBLEM_DIFFICULTIES = [
     f"{tier}{level}"
-    for tier in ("iron", "bronze", "silver", "gold", "platinum", "diamond")
+    for tier in ("iron", "bronze", "silver", "gold", "platinum", "diamond", "ruby")
     for level in range(5, 0, -1)
 ]
 
@@ -58,6 +117,8 @@ def _normalize_problem_test_cases(raw_test_cases: object) -> tuple[list[dict], l
     def normalize_case(raw_case: object) -> dict:
         if not isinstance(raw_case, dict):
             return {"input": "", "expected_output": ""}
+        if is_reference_case(raw_case):
+            return canonical_case(raw_case,allow_reference=True)
         return {
             "input": raw_case.get("input", ""),
             "expected_output": raw_case.get("expected_output", raw_case.get("expectedOutput", "")),
@@ -92,6 +153,9 @@ def _submission_message(verdict: schemas.CompileQueueVerdict) -> str:
         "runtime_error": "런타임 오류입니다.",
         "time_limit_exceeded": "시간 초과입니다.",
         "memory_limit_exceeded": "메모리 초과입니다.",
+        "output_limit_exceeded": "출력 제한을 초과했습니다.",
+        "process_limit_exceeded": "프로세스 수 제한을 초과했습니다.",
+        "compile_resource_error": "컴파일 중 자원 제한을 초과했습니다. 대회 오답 패널티에는 포함되지 않습니다.",
         "system_error": "시스템 오류입니다.",
         "canceled": "취소되었습니다.",
         "pending": "대기 중입니다.",
@@ -146,12 +210,27 @@ def _problem_progress_map(db: Session, user_id: str | None, problem_ids: list[st
     return progress
 
 
-def _serialize_problem(problem: db_models.Problem, include_hidden: bool = False, progress: dict | None = None) -> dict:
+def _serialize_problem(problem: db_models.Problem, include_hidden: bool = False, progress: dict | None = None,
+                       include_policy: bool = False) -> dict:
     sample_cases, hidden_cases = _normalize_problem_test_cases(problem.test_cases)
     progress = progress or {}
+    limits = public_policy_fields_for_problem(
+        problem.judge_policy, len(sample_cases) + len(hidden_cases), settings=settings
+    )
     return {
-        "id": problem.id,
-        "creator_id": problem.creator_id,
+        "judge_limits": limits['judgeLimits'],
+        "judge_policy_legacy": limits['judgePolicyLegacy'],
+        "judge_policy_compatibility": limits.get('judgePolicyCompatibility', False),
+        "judge_policy": problem.judge_policy if include_policy and problem.judge_policy != UNREVIEWED else None,
+        "publication_status": (
+            "draft"
+            if problem.publication_review_required is True and problem.publication_approved_at is None
+            else "published"
+            if problem.publication_review_required is True
+            else "legacy"
+        ),
+        "id": problem.id if include_hidden or include_policy else public_problem_id(problem),
+        "creator_id": problem.creator_id if include_hidden or include_policy else None,
         "title": problem.title,
         "difficulty": problem.difficulty,
         "tags": problem.tags,
@@ -173,7 +252,7 @@ def _leaderboard_entry(user: db_models.User, rank: int, rating_stats: RatingStat
     stats = rating_stats or calculate_rating_stats([])
     return {
         "rank": rank,
-        "username": user.username,
+        "username": public_display_name(user),
         "total_score": user.total_score,
         "rating": stats.rating,
         "tier": stats.tier,
@@ -185,7 +264,7 @@ def _leaderboard_entry(user: db_models.User, rank: int, rating_stats: RatingStat
 def _leaderboard_rows(db: Session) -> list[tuple[db_models.User, RatingStats]]:
     users = (
         db.query(db_models.User)
-        .filter(db_models.User.role != "admin")
+        .filter(db_models.User.role != "admin", db_models.User.public_profile_enabled.is_(True))
         .order_by(db_models.User.username.asc())
         .all()
     )
@@ -215,11 +294,24 @@ def _leaderboard_rank(db: Session, user_id: str) -> int:
 @router.post("/", response_model=schemas.ProblemRead)
 def create_problem(
     problem: schemas.ProblemCreate,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(require_admin)
 ):
+    response.headers['Cache-Control'] = 'no-store'
     _validate_problem_tests(problem)
+    policy = stored_policy(problem.judge_policy, creating=True)
+    try:
+        validate_stored_cases(db,[c.model_dump() for c in problem.test_cases],
+                              [c.model_dump() for c in problem.hidden_test_cases],integrity=True)
+        validate_stored_publication(policy, [c.model_dump() for c in problem.test_cases],
+                                   [c.model_dump() for c in problem.hidden_test_cases], settings=settings)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
     db_problem = db_models.Problem(
+        judge_policy=policy,
+        publication_review_required=True,
+        publication_approved_at=None,
         creator_id=current_user.id,
         title=problem.title,
         difficulty=problem.difficulty,
@@ -235,7 +327,7 @@ def create_problem(
     db.commit()
     db.refresh(db_problem)
     invalidate_rating_cache()
-    return _serialize_problem(db_problem, include_hidden=True)
+    return _serialize_problem(db_problem, include_hidden=True, include_policy=True)
 
 @router.get("/", response_model=List[schemas.ProblemRead])
 def list_problems(
@@ -273,6 +365,11 @@ def list_problems(
 
     response.headers["X-Total-Count"] = str(query.count())
     problems = query.order_by(db_models.Problem.created_at.asc()).offset(offset).limit(limit).all()
+    include_sensitive = current_user is not None and (
+        current_user.role == "admin" or any(problem.creator_id == current_user.id for problem in problems)
+    )
+    if include_sensitive:
+        response.headers['Cache-Control'] = 'no-store'
     progress_by_problem = _problem_progress_map(
         db,
         current_user.id if current_user else None,
@@ -285,12 +382,17 @@ def list_problems(
                 current_user.role == "admin" or problem.creator_id == current_user.id
             ),
             progress=progress_by_problem.get(problem.id),
+            include_policy=current_user is not None and current_user.role == "admin",
         )
         for problem in problems
     ]
 
 @router.put("/{id}", response_model=schemas.ProblemRead)
-def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
+def update_problem(id: str, problem: schemas.ProblemCreate, response: Response,
+                   db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
+    response.headers['Cache-Control'] = 'no-store'
+    from app.services.runtime_registry import execution_lock
+    execution_lock(db)
     require_public_problem(db, id, current_user)
     _validate_problem_tests(problem)
     if db.query(db_models.ContestProblem.id).join(db_models.Contest).filter(
@@ -298,10 +400,19 @@ def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depend
         or_(db_models.Contest.published.is_(False), db_models.Contest.ends_at > now_utc()),
     ).first():
         raise HTTPException(409, "비공개 대회 문제는 시작 전 대회 관리 화면에서 수정하세요.")
-    db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
+    db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).with_for_update().first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="Problem not found")    
     
+    try:
+        policy = stored_policy(problem.judge_policy, previous=db_problem.judge_policy)
+        validate_stored_cases(db,[c.model_dump() for c in problem.test_cases],
+                              [c.model_dump() for c in problem.hidden_test_cases],integrity=True)
+        validate_stored_publication(policy, [c.model_dump() for c in problem.test_cases],
+                                   [c.model_dump() for c in problem.hidden_test_cases], settings=settings)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+    db_problem.judge_policy = policy
     db_problem.title = problem.title
     db_problem.difficulty = problem.difficulty
     db_problem.tags = problem.tags
@@ -311,21 +422,82 @@ def update_problem(id: str, problem: schemas.ProblemCreate, db: Session = Depend
         "sample": [tc.model_dump() for tc in problem.test_cases],
         "hidden": [tc.model_dump() for tc in problem.hidden_test_cases],
     }
+    # The exact content fingerprint changed. Keep it visible to administrators,
+    # but remove it from every public surface until new evidence is approved.
+    db_problem.publication_review_required = True
+    db_problem.publication_approved_at = None
     
     db.commit()
     db.refresh(db_problem)
     invalidate_rating_cache()
-    return _serialize_problem(db_problem, include_hidden=True)
+    return _serialize_problem(db_problem, include_hidden=True, include_policy=True)
+
+
+@router.post('/{id}/publish', response_model=schemas.ProblemRead)
+def publish_problem(
+    id: str,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: db_models.User = Depends(require_admin),
+):
+    from app.services.runtime_registry import execution_lock
+    execution_lock(db)
+    response.headers['Cache-Control'] = 'no-store'
+    problem = (
+        db.query(db_models.Problem)
+        .filter(db_models.Problem.id == id, db_models.Problem.deleted_at.is_(None))
+        .with_for_update()
+        .first()
+    )
+    if problem is None or problem.id in SYSTEM_BOARD_IDS:
+        raise HTTPException(404, 'Problem not found')
+    if problem.publication_review_required is not True:
+        raise HTTPException(409, '기존 공개 문제는 별도의 공개 승인이 필요하지 않습니다.')
+    sample, hidden = _normalize_problem_test_cases(problem.test_cases)
+    try:
+        validate_stored_cases(db, sample, hidden, integrity=True)
+        validate_stored_publication(problem.judge_policy, sample, hidden, settings=settings)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+    authoring_service.assert_reviewed(
+        db,
+        problem.id,
+        authoring_service.current_snapshot(db, problem),
+        contest_id='__problem__',
+        contest_problem_id=problem.id,
+        require_tracked=True,
+    )
+    problem.publication_approved_at = now_utc()
+    db.commit()
+    db.refresh(problem)
+    invalidate_rating_cache()
+    return _serialize_problem(problem, include_hidden=True, include_policy=True)
 
 @router.delete("/{id}")
 def delete_problem(id: str, db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
+    # Contest composition changes use the execution lock before inspecting or
+    # attaching problems. Take it first here as well, then recheck relations
+    # inside the same transaction so an archive and a new contest link have
+    # one serial order.
+    from app.services.runtime_registry import execution_lock
+    execution_lock(db)
     if db.query(db_models.ContestProblem.id).filter_by(problem_id=id).first():
         raise HTTPException(409, "대회에서 사용하는 문제는 삭제할 수 없습니다.")
-    db_problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
+    # Practice acceptance freezes the same row under FOR UPDATE. Deletion must
+    # participate in that serialization so an acknowledged receipt is either
+    # committed before archival or rejected after archival, never interleaved.
+    db_problem = (
+        db.query(db_models.Problem)
+        .filter(db_models.Problem.id == id)
+        .with_for_update()
+        .first()
+    )
     if not db_problem:
         raise HTTPException(status_code=404, detail="Problem not found")
     if id in SYSTEM_BOARD_IDS:
         raise HTTPException(status_code=400, detail="System board cannot be deleted")
+    if db.query(db_models.ContestProblem.id).filter_by(problem_id=id).first():
+        raise HTTPException(409, "대회에서 사용하는 문제는 삭제할 수 없습니다.")
     
     # Preserve solved history, its difficulty and score ledger. Deletion must
     # not leave total_score without the ledger rows that explain it.
@@ -340,7 +512,7 @@ def get_leaderboard(
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    cache_key = redis_key("leaderboard", str(limit))
+    cache_key = redis_key("leaderboard-public-v2", str(limit))
     cached = cache_get_json(cache_key)
     if isinstance(cached, list):
         return cached
@@ -379,6 +551,9 @@ def submit_leaderboard_score(
         if score.avatar_url:
             user.avatar_url = score.avatar_url
 
+    db.query(db_models.User).filter_by(id=user.id).update({'id':user.id}, synchronize_session=False)
+    from app.services.solve_evidence import preserve_legacy, record as record_solve
+    preserve_legacy(db, user.id, score.challenge_id)
     existing_score = (
         db.query(db_models.UserProblemScore)
         .filter(
@@ -392,7 +567,8 @@ def submit_leaderboard_score(
     already_solved = existing_score is not None
     if existing_score is None:
         awarded_points = score.points
-        user.total_score += awarded_points
+        db.query(db_models.User).filter_by(id=user.id).update(
+            {db_models.User.total_score:db_models.User.total_score + awarded_points}, synchronize_session=False)
         db.add(
             db_models.UserProblemScore(
                 user_id=user.id,
@@ -401,6 +577,10 @@ def submit_leaderboard_score(
             )
         )
 
+    db.flush()
+    credited = db.query(db_models.UserProblemScore).filter_by(user_id=user.id, challenge_id=score.challenge_id).one()
+    record_solve(db, user_id=user.id, problem_id=score.challenge_id, source_kind='manual',
+        source_id=credited.id, points=credited.points_awarded, solved_at=credited.solved_at)
     db.commit()
     db.refresh(user)
     invalidate_rating_cache(user.id)
@@ -420,12 +600,13 @@ def _serialize_submission(
     problem: db_models.Problem | None,
     user: db_models.User | None,
 ) -> schemas.SubmissionRead:
+    from app.services.judge_metrics import public_usage
     return schemas.SubmissionRead(
-        id=submission.id,
-        problem_id=submission.problem_id,
+        id=public_receipt_id(submission.id),
+        problem_id=public_problem_id(problem) if problem else "unavailable",
         problem_title=problem.title if problem else None,
-        user_id=submission.user_id,
-        username=user.username if user else None,
+        user_id=None,
+        username=public_display_name(user) if user else None,
         language=submission.language,
         status=submission.status,
         verdict=submission.verdict or _submission_verdict_from_status(submission.status),
@@ -434,6 +615,7 @@ def _serialize_submission(
         grading_completed=submission.grading_completed,
         grading_passed=submission.grading_passed,
         awarded_points=submission.awarded_points,
+        resource_usage=public_usage(submission.resource_report),
         created_at=submission.created_at,
     )
 
@@ -452,8 +634,15 @@ def list_submissions(
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
     query = db.query(db_models.Submission).filter(~db_models.Submission.problem_id.in_(private_problem_ids()))
+    if (current_user is None or current_user.role != "admin") and not mine:
+        query = query.join(db_models.User, db_models.User.id == db_models.Submission.user_id).filter(
+            db_models.User.public_profile_enabled.is_(True)
+        )
     if problem_id:
-        query = query.filter(db_models.Submission.problem_id == problem_id)
+        resolved_problem = resolve_problem_identifier(db, problem_id)
+        query = query.filter(
+            db_models.Submission.problem_id == resolved_problem.id if resolved_problem is not None else literal(False)
+        )
     if status:
         query = query.filter(db_models.Submission.status == status)
     if verdict:
@@ -462,9 +651,9 @@ def list_submissions(
         if current_user is None:
             raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
         query = query.filter(db_models.Submission.user_id == current_user.id)
-    elif user_id:
+    elif user_id and current_user is not None and current_user.role == "admin":
         query = query.filter(db_models.Submission.user_id == user_id)
-    elif username:
+    elif username and current_user is not None and current_user.role == "admin":
         matched_user = (
             db.query(db_models.User)
             .filter(db_models.User.username == username.strip())
@@ -475,7 +664,12 @@ def list_submissions(
                 ~db_models.Submission.problem_id.in_(private_problem_ids())).count(), "filtered_total": 0}
         query = query.filter(db_models.Submission.user_id == matched_user.id)
 
-    total = db.query(db_models.Submission).filter(~db_models.Submission.problem_id.in_(private_problem_ids())).count()
+    total_query = db.query(db_models.Submission).filter(~db_models.Submission.problem_id.in_(private_problem_ids()))
+    if current_user is None or current_user.role != "admin":
+        total_query = total_query.join(db_models.User, db_models.User.id == db_models.Submission.user_id).filter(
+            db_models.User.public_profile_enabled.is_(True)
+        )
+    total = total_query.count()
     filtered_total = query.count()
     submissions = (
         query.order_by(desc(db_models.Submission.created_at))
@@ -507,14 +701,22 @@ def list_submissions(
     }
 
 
+@router.get('/submissions/{submission_id}/resources')
+def submission_resources(submission_id:str,response:Response,db:Session=Depends(get_db),user=Depends(require_admin)):
+    response.headers['Cache-Control']='no-store'
+    row=db.get(db_models.Submission,submission_id)
+    if row is None: raise HTTPException(404,'제출을 찾을 수 없습니다.')
+    return {'submissionId':row.id,'report':row.resource_report}
+
+
 @router.get("/{id}", response_model=schemas.ProblemRead)
 def get_problem(
     id: str,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: db_models.User | None = Depends(get_optional_current_user),
 ):
-    require_public_problem(db, id, current_user)
-    problem = db.query(db_models.Problem).filter(db_models.Problem.id == id).first()
+    problem = require_public_problem(db, id, current_user)
     if not problem or problem.id in SYSTEM_BOARD_IDS:
         raise HTTPException(status_code=404, detail="Problem not found")
 
@@ -523,11 +725,16 @@ def get_problem(
         current_user.id if current_user else None,
         [problem.id],
     )
+    include_sensitive = current_user is not None and (
+        current_user.role == "admin" or problem.creator_id == current_user.id
+    )
+    if include_sensitive:
+        response.headers['Cache-Control'] = 'no-store'
     return _serialize_problem(
         problem,
-        include_hidden=current_user is not None
-        and (current_user.role == "admin" or problem.creator_id == current_user.id),
+        include_hidden=include_sensitive,
         progress=progress_by_problem.get(problem.id),
+        include_policy=current_user is not None and current_user.role == "admin",
     )
 
 @router.post("/{id}/submit", status_code=202, tags=["Grading"])
@@ -540,4 +747,5 @@ def submit_problem(
     current_user: db_models.User | None = Depends(get_optional_current_user)
 ):
     from app.services.submission_acceptance import accept_practice
-    return accept_practice(id, request, http_request, response, db, current_user)
+    problem = require_public_problem(db, id, current_user)
+    return accept_practice(problem.id, request, http_request, response, db, current_user)

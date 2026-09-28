@@ -1,0 +1,61 @@
+import std.io;
+
+var reader_buffer: [4096]u8;
+var reader_pos: u64 = 0;
+var reader_len: u64 = 0;
+
+func next_byte() -> i64 {
+    if (reader_pos >= reader_len) {
+        var count: i64 = input_read(&reader_buffer[0], 4096);
+        if (count <= 0) { return -1; }
+        reader_len = (u64)count;
+        reader_pos = 0;
+    }
+    var value: i64 = (i64)reader_buffer[reader_pos];
+    reader_pos += 1;
+    return value;
+}
+
+func main() -> u64 {
+    var counts: [26]u64;
+    var index: u64 = 0;
+    while (index < 26) {
+        counts[index] = 0;
+        index += 1;
+    }
+
+    var current: i64 = next_byte();
+    while (current >= 0) {
+        if (current >= 65 && current <= 90) {
+            counts[(u64)(current - 65)] += 1;
+        } else if (current >= 97 && current <= 122) {
+            counts[(u64)(current - 97)] += 1;
+        }
+        current = next_byte();
+    }
+
+    var best_count: u64 = 0;
+    var winner: u64 = 0;
+    var tied: u64 = 0;
+    index = 0;
+    while (index < 26) {
+        if (counts[index] > best_count) {
+            best_count = counts[index];
+            winner = index;
+            tied = 0;
+        } else if (counts[index] == best_count) {
+            tied = 1;
+        }
+        index += 1;
+    }
+
+    if (tied != 0) {
+        print("?", 1);
+    } else {
+        var output: [1]u8;
+        output[0] = (u8)(winner + 65);
+        print((u64)&output[0], 1);
+    }
+    print_nl();
+    return 0;
+}

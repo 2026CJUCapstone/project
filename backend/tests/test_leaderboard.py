@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.main import app
 from app.models.database import Problem, User, UserProblemScore
 from app.services import auth
-from app.services.rating import calculate_rating_stats, difficulty_value, solved_count_bonus
+from app.services.rating import calculate_rating_stats, difficulty_value, invalidate_rating_cache, solved_count_bonus
 
 
 def _admin_headers() -> dict[str, str]:
@@ -161,6 +161,52 @@ async def test_leaderboard_excludes_admin_users():
         try:
             db.query(User).filter(User.username.in_([admin_user, normal_user])).delete(synchronize_session=False)
             db.commit()
+        finally:
+            db.close()
+
+
+@pytest.mark.asyncio
+async def test_public_leaderboard_never_exposes_email_or_hidden_test_accounts():
+    suffix = uuid.uuid4().hex[:10]
+    email_username = f"person_{suffix}@example.test"
+    email_nickname = f"profile_{suffix}@example.test"
+    safe_username = f"nickname_owner_{suffix}"
+    hidden_username = f"validation_bot_{suffix}"
+    db = SessionLocal()
+    try:
+        db.add_all([
+            User(username=email_username, hashed_password="unused", total_score=15),
+            User(username=safe_username, nickname=email_nickname,
+                 hashed_password="unused", total_score=16),
+            User(username=hidden_username, hashed_password="unused", total_score=999,
+                 public_profile_enabled=False),
+        ])
+        db.commit()
+        invalidate_rating_cache()
+    finally:
+        db.close()
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/api/v1/problems/leaderboard?limit=100")
+
+        assert response.status_code == 200
+        assert email_username not in response.text
+        assert email_nickname not in response.text
+        assert hidden_username not in response.text
+        assert not any(row["username"] == hidden_username for row in response.json())
+        assert any(row["username"].startswith("사용자 ") and row["totalScore"] == 15
+                   for row in response.json())
+        assert any(row["username"] == safe_username and row["totalScore"] == 16
+                   for row in response.json())
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(User).filter(User.username.in_([email_username, safe_username, hidden_username])).delete(
+                synchronize_session=False
+            )
+            db.commit()
+            invalidate_rating_cache()
         finally:
             db.close()
 

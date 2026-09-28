@@ -38,6 +38,19 @@ def test_production_requires_explicit_runtime_incarnation(monkeypatch):
     validate_runtime_security()
 
 
+def test_production_rejects_published_example_secret(monkeypatch):
+    monkeypatch.setattr(settings, 'ENVIRONMENT', 'production')
+    monkeypatch.setattr(
+        settings,
+        'SECRET_KEY',
+        '995e22c2cfdc927c5e45f96bead03e22b26430b5cc272a19e0e53e7732fc4fb3',
+    )
+    monkeypatch.setattr(settings, 'ADMIN_PASSWORD', 'p' * 32)
+    monkeypatch.setattr(settings, 'RUNTIME_INSTANCE_ID', 'b' * 32)
+    with pytest.raises(RuntimeError, match='published example'):
+        validate_runtime_security()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('actual',[None,'','c'*32,'b'*32])
 async def test_membership_rejects_stale_ready_peer_even_when_release_and_pool_match(monkeypatch,actual):

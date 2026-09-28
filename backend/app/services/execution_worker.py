@@ -12,17 +12,22 @@ from threading import Event
 from uuid import uuid4
 from pathlib import Path
 
-from docker.errors import NotFound
+from docker.errors import ImageNotFound, NotFound
 
 from app.core.config import settings
 from app.services.compiler import DockerCompilerRunner
 from app.services.compile_queue import classify_compile_result, classify_run_result
 from app.services.judging import judge_code
 from app.services.terminal_broker import TerminalClosed, TerminalLimit
-from app.services.durable_queue import WorkerIdentity
+from app.services.durable_queue import ClaimPreparation, WorkerIdentity
 from app.services.sandbox_identity import sandbox_labels
 
 logger = logging.getLogger(__name__)
+
+
+def _load_legacy_bindings(sessions, loader):
+    with sessions() as db:
+        return loader(db)
 
 
 class SandboxPool:
@@ -152,6 +157,37 @@ class SandboxPool:
     def daemon_identity(self):
         return self._daemon_identity(self.client_factory())
 
+    def available_images(self, digests, *, daemon_id):
+        """Observe exact local image IDs before claiming; never pull or build.
+
+        A second check at execution is still required because an image may be
+        removed after this read-only observation.
+        """
+        if not digests:
+            return set()
+        if any(not isinstance(digest,str) or not re.fullmatch(r'sha256:[a-f0-9]{64}',digest)
+                for digest in digests):
+            raise ValueError('Exact image digests required')
+        client=self.client_factory()
+        try:
+            if self._daemon_identity(client)!=daemon_id:
+                raise RuntimeError('Sandbox daemon changed before image inspection')
+            available=set()
+            for digest in digests:
+                try:
+                    image=client.images.get(digest)
+                except NotFound:
+                    continue
+                if image.id==digest:
+                    available.add(digest)
+            if self._daemon_identity(client)!=daemon_id:
+                raise RuntimeError('Sandbox daemon changed during image inspection')
+            return available
+        finally:
+            close=getattr(client,'close',None)
+            if callable(close):
+                close()
+
     def remove_operation(self, operation, labels):
         target, expected = self._operation_target(operation, labels)
         identity = operation.get('resolved_container_id')
@@ -181,6 +217,10 @@ class SandboxPool:
 class ExecutionWorker:
     def __init__(self, queue, *, pool=None, runner_factory=DockerCompilerRunner, identity=None):
         self.queue = queue
+        self.worker_class = settings.JUDGE_WORKER_CLASS
+        if (queue.resource_budget is not None
+                and queue.resource_budget.worker_class != self.worker_class):
+            raise ValueError('Worker class does not match its resource budget')
         self.identity = identity or WorkerIdentity(uuid4().hex,settings.RUNTIME_POOL_ID,
             settings.DEPLOYMENT_SHA,settings.SANDBOX_POOL_ID,settings.RUNTIME_INSTANCE_ID)
         self._stop = Event()
@@ -204,7 +244,19 @@ class ExecutionWorker:
             def bounded_action(operation):
                 if self.pool.daemon_identity() != daemon_id:
                     raise RuntimeError('Sandbox daemon changed before execution')
-                value = action(operation)
+                try:
+                    value = action(operation)
+                except ImageNotFound:
+                    # Docker's typed 404 is an authoritative negative create
+                    # response, unlike a transport exception. Bind it to the
+                    # same daemon before clearing the intent so workdir cleanup
+                    # and retry accounting cannot remain fenced forever.
+                    if kind!='create' or self.pool.daemon_identity()!=daemon_id:
+                        raise
+                    if not self.queue.settle_sandbox_operation_no_effect(
+                            claim.id,claim.token,operation,daemon_id=daemon_id):
+                        raise RuntimeError('Sandbox no-effect receipt is stale')
+                    raise
                 if self.pool.daemon_identity() != daemon_id:
                     raise RuntimeError('Sandbox daemon changed during execution')
                 return value
@@ -217,7 +269,15 @@ class ExecutionWorker:
             cleanup_guard=cleanup_guard,
             client_factory=self.pool.client_factory if isinstance(self.pool, SandboxPool) else None,
         )
+        replay=claim.runtime_snapshot
+        if replay is not None:
+            if not isinstance(runner,DockerCompilerRunner):
+                raise RuntimeError('Measured replay requires the trusted Docker runner')
+            runner.measured_snapshot=getattr(replay,'runtime_snapshot',replay)
+            runner.measured_worker_class=self.worker_class
         payload = claim.payload
+        if hasattr(replay,'judge_contract'):
+            payload={**payload,'judge_contract':replay.judge_contract}
         if claim.kind == 'compile':
             value = await runner.compile(source_code=payload['code'], language=payload['language'],
                                          optimize=payload.get('optimize', False), target=payload.get('target', 'all'))
@@ -226,8 +286,26 @@ class ExecutionWorker:
             value = await runner.run(source_code=payload['code'], language=payload['language'],
                                      stdin=payload.get('stdin', ''), optimize=payload.get('optimize', False))
             verdict = classify_run_result(value)
-        elif claim.kind in ('practice', 'contest'):
-            value = await judge_code(runner, payload, contest=claim.kind == 'contest')
+        elif claim.kind in ('practice', 'contest', 'authoring-validation-v1'):
+            from app.models.judge_test_manifest import has_stored_cases
+            options={}
+            if has_stored_cases(payload.get('sample',[]),payload.get('hidden',[])):
+                from app.services.judge_test_manifest import materialize_case
+                from app.services.measured_judge import finish_io
+                async def load_case(case):
+                    def read():
+                        with self.queue.sessions() as db:
+                            return materialize_case(db,case)
+                    # Never hold a DB session across sandbox execution, or
+                    # release it while a canceled IO thread still uses it.
+                    return await finish_io(read)
+                options['load_case']=load_case
+            value = await judge_code(
+                runner,
+                payload,
+                contest=claim.kind in ('contest', 'authoring-validation-v1'),
+                **options,
+            )
             verdict = value['verdict']
         elif claim.kind == 'terminal':
             from app.services.terminal_broker import TerminalBroker
@@ -242,6 +320,52 @@ class ExecutionWorker:
         self._stop.set()
         self.queue.begin_worker_drain(self.identity)
 
+    @staticmethod
+    def _replay_eligibility(worker_class, *, image_probe=None, legacy_bindings=None):
+        """Prepare replay bytes/images before the DB claim lock.
+
+        Unavailable historical registry/archive entries remain queued. The
+        static catalog is snapshotted for the exact claim and never replaced by
+        the currently deployed launcher after admission.
+        """
+        from app.services.judge_runtime_registry import RuntimeRegistry
+        try:
+            registry=RuntimeRegistry.load(settings.JUDGE_RUNTIME_REGISTRY)
+            snapshots=registry.replay_snapshots(worker_class)
+        except (OSError,ValueError,RuntimeError):
+            snapshots={}
+        if image_probe is not None and snapshots:
+            available=image_probe({snapshot.registration.image_digest for snapshot in snapshots.values()})
+            snapshots={key:snapshot for key,snapshot in snapshots.items()
+                if snapshot.registration.image_digest in available}
+        legacy_bindings=legacy_bindings or {}
+        def eligible(kind,payload,job_id=None):
+            if kind not in ('practice','contest','authoring-validation-v1') or not isinstance(payload,dict):
+                return True
+            contract=payload.get('judge_contract')
+            if contract is None or (isinstance(contract,dict) and contract.get('kind')=='legacy-v1'):
+                if kind not in ('practice','contest') or job_id is None:
+                    return False
+                from app.services.legacy_execution_resolution import prepare_binding
+                replay=prepare_binding(legacy_bindings.get(job_id),job_id=job_id,kind=kind,
+                    payload=payload,snapshots=snapshots,worker_class=worker_class)
+                if replay is None:
+                    return False
+                return ClaimPreparation(replay,{**payload,'judge_contract':replay.judge_contract})
+            if not isinstance(contract,dict) or contract.get('kind')!='measured-v1':
+                return False
+            profile=contract.get('profile')
+            if not isinstance(profile,dict):
+                return False
+            try:
+                key=(payload.get('language'),profile.get('runtimeId'),profile.get('runtimeVersion'),
+                    profile.get('imageDigest'),worker_class,
+                    profile.get('toolchainProfile'),profile.get('launcherDigest'))
+                return snapshots.get(key,False)
+            except TypeError:
+                return False
+        return eligible
+
     async def run_once(self, *, stop=None):
         daemon_id = None
         if isinstance(self.pool, SandboxPool):
@@ -250,9 +374,19 @@ class ExecutionWorker:
                 return False
             await asyncio.to_thread(self.queue.recover_expired, self.pool)
             daemon_id = await asyncio.to_thread(self.pool.daemon_identity)
+        from app.services.legacy_execution_resolution import load_bindings
+        legacy_bindings=await asyncio.to_thread(
+            lambda: _load_legacy_bindings(self.queue.sessions,load_bindings))
+        if isinstance(self.pool,SandboxPool):
+            eligibility=await asyncio.to_thread(self._replay_eligibility,self.worker_class,
+                image_probe=lambda digests:self.pool.available_images(digests,daemon_id=daemon_id),
+                legacy_bindings=legacy_bindings)
+        else:
+            eligibility=self._replay_eligibility(self.worker_class,legacy_bindings=legacy_bindings)
         claim = await asyncio.to_thread(self.queue.claim,worker=self.identity,
             daemon_id=daemon_id,
-            stop_requested=lambda:self._stop.is_set() or (stop is not None and stop.is_set()))
+            stop_requested=lambda:self._stop.is_set() or (stop is not None and stop.is_set()),
+            eligible=eligibility)
         if claim is None:
             return False
 
@@ -262,7 +396,19 @@ class ExecutionWorker:
                 if not await asyncio.to_thread(self.queue.renew, claim.id, claim.token):
                     return
 
-        execution = asyncio.create_task(asyncio.wait_for(self._execute(claim), timeout=settings.EXECUTION_JOB_TIMEOUT_SECONDS))
+        replay=claim.runtime_snapshot
+        effective_payload=claim.payload if not hasattr(replay,'judge_contract') else {
+            **claim.payload,'judge_contract':replay.judge_contract}
+        contract=effective_payload.get('judge_contract')
+        measured=isinstance(contract,dict) and contract.get('kind')=='measured-v1'
+        async def bounded_execute():
+            timeout=settings.EXECUTION_JOB_TIMEOUT_SECONDS
+            if measured:
+                from app.services.measured_judge import validate_receipt
+                validate_receipt(effective_payload)
+                timeout=contract['jobDeadlineMs']/1000
+            return await asyncio.wait_for(self._execute(claim),timeout=timeout)
+        execution = asyncio.create_task(bounded_execute())
         pulse = asyncio.create_task(heartbeat())
         try:
             done, _ = await asyncio.wait({execution, pulse}, return_when=asyncio.FIRST_COMPLETED)
@@ -278,14 +424,27 @@ class ExecutionWorker:
             try:
                 result = execution.result()
             except TimeoutError:
-                result = {'verdict':'time_limit_exceeded', 'message':'전체 실행 시간이 초과되었습니다.'}
+                # For measured jobs only trusted per-phase CPU/wall evidence
+                # can penalize a participant. RPC/whole-job watchdog expiry
+                # means collection/setup/cleanup failed, not a proven TLE.
+                result = ({'verdict':'system_error', 'message':'채점 실행 결과를 확인할 수 없습니다.'}
+                    if measured else {'verdict':'time_limit_exceeded', 'message':'전체 실행 시간이 초과되었습니다.'})
             except TerminalClosed:
                 result = {'verdict':'canceled', 'message':'터미널 연결이 중단되었습니다. 자동으로 다시 실행하지 않습니다.'}
             except TerminalLimit as exc:
                 result = {'verdict':'runtime_error', 'message':str(exc)}
-            except Exception:
+            except Exception as exc:
                 # Raw exceptions may contain source paths, code, or hidden input.
-                logger.warning('Execution failed for job %s', claim.id)
+                # Log only bounded exception class names. This is enough to
+                # distinguish Docker/permission/configuration failures during
+                # an isolated acceptance run without leaking exception text.
+                exception_types=[]
+                current=exc
+                while current is not None and len(exception_types)<4:
+                    exception_types.append(type(current).__name__)
+                    current=current.__cause__
+                logger.warning('Execution failed for job %s (%s)', claim.id,
+                    ' <- '.join(exception_types))
                 result = {'verdict': 'system_error', 'message': '실행 서비스를 사용할 수 없습니다.'}
             # Even an apparently completed runner must confirm no old sandbox
             # remains before the global capacity can be released by finish().

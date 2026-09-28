@@ -2,15 +2,19 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from starlette.requests import Request
 
 from app.core.config import settings
 from app.core.bootstrap import COMMUNITY_GUIDE_NOTICE_ID
 from app.core.database import SessionLocal
 from app.main import app
-from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, Submission, User, UserProblemScore
+from app.models.database import CodeProject, Comment, PasswordResetToken, Problem, ProblemLearningRecord, Submission, User, UserProblemScore
+from app.models import schemas
 from app.services import auth
 from app.services import compiler as compiler_service
-from tests.execution_helpers import finish_receipt
+from app.services.public_identity import public_problem_id
+from tests.execution_helpers import finish_receipt, install_measured_fake_judge
+from tests.test_judge_policy import policy_fixture
 
 
 def _token_for(username: str) -> str:
@@ -44,6 +48,7 @@ def _delete_users(*usernames: str) -> None:
         users = db.query(User).filter(User.username.in_(usernames)).all()
         user_ids = [user.id for user in users]
         if user_ids:
+            db.query(ProblemLearningRecord).filter(ProblemLearningRecord.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(PasswordResetToken).filter(PasswordResetToken.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(CodeProject).filter(CodeProject.user_id.in_(user_ids)).delete(synchronize_session=False)
             db.query(Comment).filter(Comment.user_id.in_(user_ids)).delete(synchronize_session=False)
@@ -135,6 +140,34 @@ async def test_password_reset_unknown_identity_does_not_issue_token(monkeypatch:
 
 
 @pytest.mark.asyncio
+async def test_password_reset_delivery_failure_is_generic_and_invalidates_token(monkeypatch: pytest.MonkeyPatch):
+    suffix = uuid.uuid4().hex[:10]
+    username = f"mailfail_{suffix}"
+    email = f"{username}@example.test"
+    user = _create_user(username,email=email)
+    monkeypatch.setattr(settings,"ENVIRONMENT","production")
+    from app.api.routes import auth as auth_routes
+    monkeypatch.setattr(auth_routes,"_check_auth_rate_limit",lambda *_args: None)
+    from app.services import email as email_service
+    monkeypatch.setattr(email_service,"is_email_configured",lambda: True)
+    monkeypatch.setattr(email_service,"send_password_reset_email",
+                        lambda *_args: (_ for _ in ()).throw(RuntimeError("provider fixture")))
+    try:
+        db = SessionLocal()
+        try:
+            request = Request({"type":"http","client":("127.0.0.1",12345),"headers":[]})
+            response = auth_routes.request_password_reset(
+                schemas.PasswordResetRequest(username_or_email=email),request,db)
+            assert response.message
+            tokens = db.query(PasswordResetToken).filter(PasswordResetToken.user_id==user.id).all()
+            assert len(tokens)==1 and tokens[0].used_at is not None
+        finally:
+            db.close()
+    finally:
+        _delete_users(username)
+
+
+@pytest.mark.asyncio
 async def test_project_storage_is_per_user_and_scope():
     suffix = uuid.uuid4().hex[:10]
     username = f"project_user_{suffix}"
@@ -221,13 +254,14 @@ async def test_community_guide_notice_is_published():
 
     assert response.status_code == 200
     notices = response.json()
-    guide = next(item for item in notices if item["id"] == COMMUNITY_GUIDE_NOTICE_ID)
+    guide = next(item for item in notices if "B++ 커뮤니티 이용 안내" in item["content"])
     assert "B++ 커뮤니티 이용 안내" in guide["content"]
     assert "문제 토론" in guide["content"]
 
 
 @pytest.mark.asyncio
-async def test_submission_awards_problem_points_and_records_submission(monkeypatch: pytest.MonkeyPatch):
+async def test_submission_awards_problem_points_and_records_submission(
+        monkeypatch: pytest.MonkeyPatch, tmp_path):
     suffix = uuid.uuid4().hex[:10]
     owner = _create_user(f"owner_{suffix}", role="admin")
     solver = _create_user(f"solver_{suffix}")
@@ -241,9 +275,12 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
 
     monkeypatch.setattr(compiler_service.compiler_instance, "run", fake_run)
     monkeypatch.setattr(compiler_service.compiler_instance, "_execute", fake_execute)
+    install_measured_fake_judge(tmp_path, monkeypatch)
 
     db = SessionLocal()
     try:
+        sample = [{"input": "", "expected_output": "ok"}]
+        hidden = []
         problem = Problem(
             creator_id=owner.id,
             title=f"points {suffix}",
@@ -251,7 +288,8 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
             tags=["io"],
             description="points",
             points=250,
-            test_cases={"sample": [{"input": "", "expected_output": "ok"}], "hidden": []},
+            test_cases={"sample": sample, "hidden": hidden},
+            judge_policy=policy_fixture(sample, hidden, ('bpp',)),
         )
         db.add(problem)
         db.commit()
@@ -290,6 +328,7 @@ async def test_submission_awards_problem_points_and_records_submission(monkeypat
             if problem_id:
                 db.query(Submission).filter(Submission.problem_id == problem_id).delete()
                 db.query(UserProblemScore).filter(UserProblemScore.challenge_id == problem_id).delete()
+                db.query(ProblemLearningRecord).filter(ProblemLearningRecord.problem_id == problem_id).delete()
                 db.query(Problem).filter(Problem.id == problem_id).delete()
             db.commit()
         finally:
@@ -318,6 +357,7 @@ async def test_problem_detail_does_not_require_submission_payload():
         db.commit()
         db.refresh(problem)
         problem_id = problem.id
+        expected_public_id = public_problem_id(problem)
     finally:
         db.close()
 
@@ -326,7 +366,7 @@ async def test_problem_detail_does_not_require_submission_payload():
             response = await client.get(f"/api/v1/problems/{problem_id}")
 
         assert response.status_code == 200
-        assert response.json()["id"] == problem_id
+        assert response.json()["id"] == expected_public_id
     finally:
         db = SessionLocal()
         try:
@@ -382,7 +422,8 @@ async def test_submission_rejects_oversized_code_before_running():
 
 
 @pytest.mark.asyncio
-async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.MonkeyPatch):
+async def test_submission_history_exposes_public_metadata(
+        monkeypatch: pytest.MonkeyPatch, tmp_path):
     suffix = uuid.uuid4().hex[:10]
     owner = _create_user(f"history_owner_{suffix}", role="admin")
     solver = _create_user(f"history_solver_{suffix}")
@@ -396,9 +437,12 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(compiler_service.compiler_instance, "run", fake_run)
     monkeypatch.setattr(compiler_service.compiler_instance, "_execute", fake_execute)
+    install_measured_fake_judge(tmp_path, monkeypatch)
 
     db = SessionLocal()
     try:
+        sample = [{"input": "", "expected_output": "ok"}]
+        hidden = []
         problem = Problem(
             creator_id=owner.id,
             title=f"history {suffix}",
@@ -406,12 +450,14 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
             tags=["io"],
             description="history",
             points=100,
-            test_cases={"sample": [{"input": "", "expected_output": "ok"}], "hidden": []},
+            test_cases={"sample": sample, "hidden": hidden},
+            judge_policy=policy_fixture(sample, hidden, ('bpp',)),
         )
         db.add(problem)
         db.commit()
         db.refresh(problem)
         problem_id = problem.id
+        expected_public_id = public_problem_id(problem)
     finally:
         db.close()
 
@@ -432,7 +478,7 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
         assert history.status_code == 200
         body = history.json()
         assert body["filteredTotal"] >= 1
-        assert body["submissions"][0]["problemId"] == problem_id
+        assert body["submissions"][0]["problemId"] == expected_public_id
         assert body["submissions"][0]["problemTitle"] == f"history {suffix}"
         assert body["submissions"][0]["username"] == solver.username
         assert body["submissions"][0]["verdict"] == "accepted"
@@ -443,6 +489,7 @@ async def test_submission_history_exposes_public_metadata(monkeypatch: pytest.Mo
             if problem_id:
                 db.query(Submission).filter(Submission.problem_id == problem_id).delete()
                 db.query(UserProblemScore).filter(UserProblemScore.challenge_id == problem_id).delete()
+                db.query(ProblemLearningRecord).filter(ProblemLearningRecord.problem_id == problem_id).delete()
                 db.query(Problem).filter(Problem.id == problem_id).delete()
             db.commit()
         finally:

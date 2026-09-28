@@ -1,0 +1,12 @@
+{
+  "name": "B++ 온라인 저지",
+  "short_name": "B++",
+  "description": "코드 실행과 알고리즘 문제 풀이를 위한 온라인 저지",
+  "lang": "ko-KR",
+  "start_url": "/webcompiler/",
+  "scope": "/webcompiler/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

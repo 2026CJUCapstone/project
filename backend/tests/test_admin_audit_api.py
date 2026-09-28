@@ -89,6 +89,7 @@ async def test_admin_get_does_not_create_an_audit_event(audit_env):
         response = await client.get('/api/v1/admin/users?search=read-only', headers=auth_headers(audit_env.admin))
 
     assert response.status_code == 200
+    assert response.headers['cache-control'] == 'no-store'
     db = audit_env.factory()
     try:
         assert db.query(AdminAuditEvent).count() == 0

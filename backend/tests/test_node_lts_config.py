@@ -7,6 +7,9 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 NODE_VERSION = "24.21.0"
+NPM_VERSION = "11.19.1"
+NPM_TARBALL_URL = "https://registry.npmjs.org/npm/-/npm-11.19.1.tgz"
+NPM_TARBALL_SHA256 = "9f58bff01604cb1b14008fef14dceb14d836a49225e45c6c2e37de3be3e707f0"
 
 
 def read(path):
@@ -53,17 +56,32 @@ def test_runtime_image_uses_pinned_glibc_node_stage_and_no_nodesource_setup():
     assert "apt-get install" in dockerfile
 
 
-def test_runtime_copies_pinned_node_tree_and_exposes_checked_tools():
+def test_runtime_copies_only_pinned_node_binary_and_exposes_checked_tools():
     dockerfile = read("runtime/docker/Dockerfile")
 
     assert "COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node" in dockerfile
-    assert "COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules" in dockerfile
+    assert "COPY --from=node-runtime /usr/local/lib/node_modules" not in dockerfile
     assert "ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm" in dockerfile
     assert "ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx" in dockerfile
     assert "ln -s node /usr/local/bin/nodejs" in dockerfile
     assert f'test "$(node --version)" = v{NODE_VERSION};' in dockerfile
-    assert "npm --version;" in dockerfile
+    assert f'test "$(npm --version)" = {NPM_VERSION};' in dockerfile
     assert "printf '40 2\\n' | node -e" in dockerfile
+
+
+def test_runtime_downloads_and_verifies_the_fixed_npm_tree_before_extracting_it():
+    dockerfile = read("runtime/docker/Dockerfile")
+
+    download_at = dockerfile.index(NPM_TARBALL_URL)
+    verify_at = dockerfile.index(
+        f"{NPM_TARBALL_SHA256} /tmp/npm.tgz | sha256sum --check --strict"
+    )
+    extract_at = dockerfile.index("tar -xzf /tmp/npm.tgz --strip-components=1 -C /usr/local/lib/node_modules/npm")
+    version_at = dockerfile.index(f'test "$(npm --version)" = {NPM_VERSION};')
+
+    assert download_at < verify_at < extract_at < version_at
+    assert "mkdir -p /usr/local/lib/node_modules/npm" in dockerfile
+    assert "rm /tmp/npm.tgz" in dockerfile
 
 
 def test_runtime_checks_dynamic_libraries_and_actual_submission_user_tools():

@@ -23,6 +23,9 @@ const verdictLabels: Record<CompileQueueVerdict, string> = {
   runtime_error: '런타임 오류',
   time_limit_exceeded: '시간 초과',
   memory_limit_exceeded: '메모리 초과',
+  output_limit_exceeded: '출력 초과',
+  process_limit_exceeded: '프로세스 제한 초과',
+  compile_resource_error: '컴파일 자원 초과',
   system_error: '시스템 오류',
   canceled: '취소',
 };

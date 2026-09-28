@@ -59,7 +59,9 @@ async def test_hidden_only_tests_allowed(problem_data):
     body = {"title": "Hidden only", "description": "test", "difficulty": "bronze5",
             "hiddenTestCases": [{"input": "", "expectedOutput": "1"}]}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://isolated") as client:
-        assert (await client.put(f'/api/v1/problems/{problem_id}', json=body, headers=headers)).status_code == 200
+        updated = await client.put(f'/api/v1/problems/{problem_id}', json=body, headers=headers)
+        assert updated.status_code == 200
+        assert updated.headers['cache-control'] == 'no-store'
 
 
 @pytest.mark.asyncio

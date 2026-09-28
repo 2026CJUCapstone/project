@@ -1,5 +1,7 @@
 # Functional completion audit — 2026-09-10
 
+> Candidate-bundle evidence note (2026-09-28): links below to `../.deploy/...` and `../frontend/playwright-report/...` refer to local artifacts from the dated runs; those files are not included in this self-contained candidate bundle and have not been reconstructed. The currently preserved overview is [final readiness](final-readiness-acceptance-2026-09-27.md), with the scoped [latest isolated PostgreSQL/LB execution evidence summary](evidence/final-serialization-global-admission-2026-09-28.json). The newer summary is not a raw or scenario-equivalent replacement for the historical outputs described below.
+
 ## Root follow-up: current-image gates completed
 
 The matrix below is the initial audit snapshot; its “active/pending current-image” entries are superseded by [the final runtime report](functional-runtime-closure-2026-09-10.md). Current frontend `0c2bf9cf…` passed **12/12 browser tests**: contest UI/real grading/finalization1, F09/F12 identity3, practice-to-queue/history/ranking1, six-language terminal and stdin/reconnect7. These close the snapshot's minimum current-image gates2–4 below. F13 practice language hardcoding and F14 editor initialization overwrite were additionally found/fixed; full frontend25files122PASS/typecheck/buildPASS. Owned namespace49 was cleaned (9containers/2volumes, unsettled0), production remained unchanged.

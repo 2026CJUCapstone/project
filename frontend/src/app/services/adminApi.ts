@@ -26,7 +26,7 @@ export async function getAdminUsers(options: { limit?: number; offset?: number; 
 
 export async function updateAdminUser(
   userId: string,
-  payload: { role?: 'user' | 'admin'; nickname?: string | null; avatarUrl?: string | null },
+  payload: { role?: 'user' | 'admin'; nickname?: string | null; avatarUrl?: string | null; publicProfileEnabled?: boolean },
 ): Promise<AdminUser> {
   const response = await fetch(`${API_BASE_URL}/api/v1/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',

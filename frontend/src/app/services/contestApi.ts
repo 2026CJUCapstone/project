@@ -1,34 +1,65 @@
 import { API_BASE_URL, getAuthHeaders } from './apiBase';
 import type { CompilerLanguage } from './compilerApi';
+import type { JudgePolicy, PublicJudgeLimits } from './judgePolicyTypes';
+import type { JudgeResourceUsage } from './judgeMetricsTypes';
+import type { ProblemAuthoringRecord } from './problemAuthoringApi';
+import type { HiddenTestCase, TestCase } from './problemApi';
 
 export type ContestState = 'draft' | 'upcoming' | 'running' | 'finalizing' | 'finished';
 export interface ContestProblem { id: string; problemId: string; label: string; title: string; points: number; difficulty: string }
+export interface ContestCorrection { revision: number; appliedAt: string; note: string }
+export interface ContestCorrections { total: number; items: ContestCorrection[] }
 export interface Contest {
   id: string; title: string; description: string; startsAt: string; endsAt: string; serverTime: string;
   state: ContestState; published: boolean; joined: boolean; canManage: boolean; participantCount: number; problems: ContestProblem[];
+  /** Public, audited ranking corrections. Private operator reasons are never included. */
+  corrections?: ContestCorrections;
 }
 export interface ContestProblemDetail extends ContestProblem {
   description: string; tags: string[]; testCases: { input: string; expectedOutput: string }[]; contest: Contest;
+  /** Public contest-problem snapshot; a client must not invent missing limits. */
+  judgeLimits?: PublicJudgeLimits | null;
+  judgePolicyLegacy?: boolean;
+  judgePolicyCompatibility?: boolean;
+  /** Full measured policy is admin-only and deliberately opaque to presentation code. */
+  judgePolicy?: JudgePolicy | null;
 }
 export interface ContestSubmission {
   id: string; contestProblemId: string; language: CompilerLanguage; receivedAt: string;
   status: 'queued' | 'running' | 'completed'; verdict: string; finishedAt: string | null; code?: string;
+  /** Null for legacy, queued, or otherwise unrecorded submissions. */
+  resourceUsage?: JudgeResourceUsage | null;
 }
 export interface Scoreboard {
   state: ContestState; serverTime: string; pendingCount: number;
   problems: { id: string; label: string; points: number }[];
   rows: { rank: number; userId: string; username: string; totalPoints: number; penaltySeconds: number;
     problems: { contestProblemId: string; label: string; points: number; wrongAttempts: number; elapsedSeconds: number | null; pending: boolean; verdict: string | null }[] }[];
+  /** Mirrors the contest-detail correction notice so polling scoreboards stay transparent. */
+  corrections?: ContestCorrections;
 }
 export interface NewContestProblem {
   title: string; description: string; difficulty: string; tags: string[]; points: number;
-  testCases: { input: string; expectedOutput: string }[];
-  hiddenTestCases: { input: string; expectedOutput: string }[];
+  /** Public samples are always inline; stored references are private-only. */
+  testCases: TestCase[];
+  hiddenTestCases: HiddenTestCase[];
+  /** Optional replacement imported from offline measurements; omission keeps no/new policy unchanged. */
+  judgePolicy?: JudgePolicy | null;
 }
 export interface ContestWrite {
   title: string; description: string; startsAt: string; endsAt: string; published: boolean;
-  problems: { problemId?: string; points: number; newProblem?: NewContestProblem | null }[];
+  problems: {
+    /** Present only for a problem row already saved in this contest. Never sent in a write request. */
+    contestProblemId?: string;
+    problemId?: string;
+    points: number;
+    newProblem?: NewContestProblem | null;
+  }[];
 }
+/** Admin-only shape returned by /contests/:id/manage. */
+export type ContestManage = Omit<Contest, 'problems'> & ContestWrite & {
+  authoring?: Record<string, ProblemAuthoringRecord>;
+};
 export async function contestRequest<T>(path = '', method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE_URL}/api/v1/contests${path}`, {
     method, signal, headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -61,7 +92,7 @@ export const CONTEST_STATES: Record<ContestState, string> = {
 };
 export const VERDICTS: Record<string, string> = {
   pending: '대기', running: '채점 중', accepted: '정답', wrong_answer: '오답', compile_error: '컴파일 오류',
-  runtime_error: '런타임 오류', time_limit_exceeded: '시간 초과', memory_limit_exceeded: '메모리 초과', system_error: '시스템 오류',
+  runtime_error: '런타임 오류', time_limit_exceeded: '시간 초과', memory_limit_exceeded: '메모리 초과', output_limit_exceeded: '출력 초과', process_limit_exceeded: '프로세스 제한 초과', compile_resource_error: '컴파일 자원 초과', system_error: '시스템 오류',
 };
 export function contestDate(date: string) {
   return new Date(date).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });

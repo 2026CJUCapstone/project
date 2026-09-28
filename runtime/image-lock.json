@@ -30,11 +30,18 @@
       "digest": "sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6",
       "linuxAmd64": "sha256:d6d5b2985faade9971eb1bec34c3f778b800f872f236969b3fd1ba65f4692b54"
     },
-    "ubuntu": {
+    "ubuntuBackend": {
       "repository": "library/ubuntu",
       "tag": "24.04",
       "digest": "sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254",
       "linuxAmd64": "sha256:a61567bd31828687156d735ea8eb01ba4e37636e225dd6a48ba94136a70d9d61"
+    },
+    "ubuntu": {
+      "repository": "library/ubuntu",
+      "tag": "26.04",
+      "digest": "sha256:513c074113a871b51a8d16ab445c88779d6452d937a164fb5cc479f32668a41d",
+      "linuxAmd64": "sha256:e5a4d6262ab5dbc25a85e60550dd7c87fd41a74fe43881534ed8288b2a7a3f8d",
+      "observedOn": "2026-09-13"
     },
     "postgres": {
       "repository": "library/postgres",

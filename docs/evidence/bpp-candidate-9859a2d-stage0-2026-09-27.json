@@ -1,0 +1,32 @@
+{
+  "scope": "isolated native candidate build, not a deployed or approved runtime",
+  "mode": "stage0",
+  "image": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "before": {
+    "availableMemoryBytes": 6305460224,
+    "freeDiskBytes": 5100236800
+  },
+  "budget": {
+    "memory": "1g",
+    "timeout": 760,
+    "minimumAvailable": 4294967296
+  },
+  "owner": "75363571fa3143be8e0a5364e9bfa211",
+  "containerId": "7d97e1c1094e0e41b7eb5ce35b1100f7ae6264f0f617999e73e38846d37eea44",
+  "scriptSha256": "f083bf7f00e0186e10e33494734212eb117987b235f8bc1a7e37a6c3d44251de",
+  "exitCode": 0,
+  "stdout": "{\"phase\": \"stage0-compile\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-asm\", \"/work/candidate/src/main.bpp\"], \"timeoutSeconds\": 660, \"cpuBudgetSeconds\": 600, \"exitCode\": 0, \"wallSeconds\": 322.887, \"stdoutBytes\": 19125014, \"stdoutSha256\": \"f3d9ef5efaf85c5f9db3c8003e6d3c36fa3501cfafdc2a41cda6021198525672\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 320.843}\n{\"phase\": \"stage0-assemble\", \"argv\": [\"/usr/bin/nasm\", \"-felf64\", \"-O1\", \"/output/stage0.asm\", \"-o\", \"/work/candidate/stage0.o\"], \"timeoutSeconds\": 60, \"cpuBudgetSeconds\": 100, \"exitCode\": 0, \"wallSeconds\": 7.692, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 7.635}\n{\"phase\": \"stage0-link\", \"argv\": [\"/usr/bin/ld\", \"/work/candidate/stage0.o\", \"-o\", \"/output/stage0\"], \"timeoutSeconds\": 10, \"cpuBudgetSeconds\": 100, \"exitCode\": 0, \"wallSeconds\": 0.117, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 0.08}\n{\"scope\": \"bounded native compiler candidate, NOT approved image or contest acceptance\", \"mode\": \"stage0\", \"commit\": \"9859a2dc783c9346be2ab9447e1569218bcc5093\", \"sourceArchiveSha256\": \"010e9abd3e2469b6bd1b4ee006ed142e695ecf8ee8af0b81b62fac764d2355bf\", \"phases\": [{\"phase\": \"stage0-compile\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-asm\", \"/work/candidate/src/main.bpp\"], \"timeoutSeconds\": 660, \"cpuBudgetSeconds\": 600, \"exitCode\": 0, \"wallSeconds\": 322.887, \"stdoutBytes\": 19125014, \"stdoutSha256\": \"f3d9ef5efaf85c5f9db3c8003e6d3c36fa3501cfafdc2a41cda6021198525672\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 320.843}, {\"phase\": \"stage0-assemble\", \"argv\": [\"/usr/bin/nasm\", \"-felf64\", \"-O1\", \"/output/stage0.asm\", \"-o\", \"/work/candidate/stage0.o\"], \"timeoutSeconds\": 60, \"cpuBudgetSeconds\": 100, \"exitCode\": 0, \"wallSeconds\": 7.692, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 7.635}, {\"phase\": \"stage0-link\", \"argv\": [\"/usr/bin/ld\", \"/work/candidate/stage0.o\", \"-o\", \"/output/stage0\"], \"timeoutSeconds\": 10, \"cpuBudgetSeconds\": 100, \"exitCode\": 0, \"wallSeconds\": 0.117, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 0.08, \"binarySha256\": \"2e29c5077bd1a7b299ea1d06e80dcb871429a594c92bc79fac57121be19dff6a\"}], \"passed\": true, \"bootstrapBinarySha256\": \"8cd02a03dd9f817bc50a644160dd06b70f4dfe8982abac9f61d6faebcfa9e960\", \"compiledExecutable\": true, \"fixedPointVerified\": false, \"cgroupCounters\": {\"cpu.stat\": \"usage_usec 329094562\\nuser_usec 325521160\\nsystem_usec 3573402\\ncore_sched.force_idle_usec 0\\nnr_periods 3309\\nnr_throttled 194\\nthrottled_usec 70592\\nnr_bursts 0\\nburst_usec 0\\n\", \"memory.peak\": \"844951552\\n\", \"memory.events\": \"low 0\\nhigh 0\\nmax 0\\noom 0\\noom_kill 0\\noom_group_kill 0\\n\"}}\n",
+  "stderr": "",
+  "timedOut": false,
+  "containerState": {
+    "Status": "exited",
+    "Running": false,
+    "OOMKilled": false,
+    "ExitCode": 0,
+    "Error": ""
+  },
+  "after": {
+    "availableMemoryBytes": 6219137024,
+    "freeDiskBytes": 5072809984
+  }
+}

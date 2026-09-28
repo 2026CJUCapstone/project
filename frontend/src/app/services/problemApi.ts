@@ -4,6 +4,8 @@ import { API_BASE_URL, getAuthHeaders, parseApiError } from './apiBase';
 import type { CompileQueueVerdict } from './compilerApi';
 import { submitPracticeExecution } from './executionApi';
 import type { ProblemTag } from '../constants/problemTags';
+import type { JudgePolicy, PublicJudgeLimits } from './judgePolicyTypes';
+import type { JudgeResourceUsage } from './judgeMetricsTypes';
 
 export type { ProblemTag } from '../constants/problemTags';
 
@@ -16,6 +18,31 @@ export interface TestCase {
   expectedOutput: string;
 }
 
+/** Server validates the exact 64-character SHA-256 value; the client never dereferences it. */
+export type Sha256Digest = `sha256:${string}`;
+
+export interface StoredTestContentReference {
+  digest: Sha256Digest;
+  byteCount: number;
+  encoding: 'utf-8';
+}
+
+/**
+ * A private test whose contents remain in server-side object storage. It is a
+ * read-only persistence reference, not an editable test case.
+ */
+export interface StoredHiddenTestCase {
+  kind: 'stored-v1';
+  inputRef: StoredTestContentReference;
+  expectedOutputRef: StoredTestContentReference;
+}
+
+export type HiddenTestCase = TestCase | StoredHiddenTestCase;
+
+export function isStoredHiddenTestCase(testCase: HiddenTestCase): testCase is StoredHiddenTestCase {
+  return 'kind' in testCase && testCase.kind === 'stored-v1';
+}
+
 export const DIFFICULTY_LEVELS = [
   'iron5', 'iron4', 'iron3', 'iron2', 'iron1',
   'bronze5', 'bronze4', 'bronze3', 'bronze2', 'bronze1',
@@ -23,9 +50,11 @@ export const DIFFICULTY_LEVELS = [
   'gold5', 'gold4', 'gold3', 'gold2', 'gold1',
   'platinum5', 'platinum4', 'platinum3', 'platinum2', 'platinum1',
   'diamond5', 'diamond4', 'diamond3', 'diamond2', 'diamond1',
+  'ruby5', 'ruby4', 'ruby3', 'ruby2', 'ruby1',
 ] as const;
 
 export type ProblemDifficulty = (typeof DIFFICULTY_LEVELS)[number];
+export type ProblemPublicationStatus = 'legacy' | 'draft' | 'published';
 
 export interface Problem {
   id: string;
@@ -35,7 +64,7 @@ export interface Problem {
   description: string;
   points: number;
   testCases: TestCase[];
-  hiddenTestCases: TestCase[];
+  hiddenTestCases: HiddenTestCase[];
   createdAt: string;
   solved: boolean;
   attempted: boolean;
@@ -43,6 +72,15 @@ export interface Problem {
   lastSubmissionVerdict?: CompileQueueVerdict | null;
   lastSubmittedAt?: string | null;
   bestAwardedPoints: number;
+  /** Public, immutable limits for this problem. Never derive a fallback on the client. */
+  judgeLimits?: PublicJudgeLimits | null;
+  /** Existing problems can deliberately retain their former execution policy. */
+  judgePolicyLegacy?: boolean;
+  judgePolicyCompatibility?: boolean;
+  /** Admin-only raw measurement record. It is intentionally not editable from this UI. */
+  judgePolicy?: JudgePolicy | null;
+  /** Publication gate state; optional while older API fixtures/servers are rolling forward. */
+  publicationStatus?: ProblemPublicationStatus;
 }
 
 export type ProblemCreateRequest = Omit<
@@ -55,6 +93,10 @@ export type ProblemCreateRequest = Omit<
   | 'lastSubmissionVerdict'
   | 'lastSubmittedAt'
   | 'bestAwardedPoints'
+  | 'judgeLimits'
+  | 'judgePolicyLegacy'
+  | 'judgePolicyCompatibility'
+  | 'publicationStatus'
 >;
 
 export interface SubmissionDetail {
@@ -80,6 +122,8 @@ export interface ProblemSubmissionResult {
   totalScore: number;
   details: SubmissionDetail[];
   message: string;
+  /** Null for legacy, queued, or otherwise unrecorded submissions. */
+  resourceUsage?: JudgeResourceUsage | null;
 }
 
 export interface SubmissionRecord {
@@ -97,6 +141,8 @@ export interface SubmissionRecord {
   gradingPassed: boolean;
   awardedPoints: number;
   createdAt: string;
+  /** Null for legacy, queued, or otherwise unrecorded submissions. */
+  resourceUsage?: JudgeResourceUsage | null;
 }
 
 export interface SubmissionListResponse {
@@ -196,6 +242,16 @@ export async function updateProblem(id: string, data: ProblemCreateRequest): Pro
     body: JSON.stringify(data),
   });
   if (!res.ok) throw await parseApiError(res, '문제 수정에 실패했습니다.');
+  return res.json();
+}
+
+/** Publish a reviewed problem draft through the server-side publication gate. */
+export async function publishProblem(id: string): Promise<Problem> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/problems/${encodeURIComponent(id)}/publish`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw await parseApiError(res, '문제 공개에 실패했습니다.');
   return res.json();
 }
 

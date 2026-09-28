@@ -71,19 +71,20 @@ async function loginUi(page: Page, user: Identity, expectedAvatar: string = user
   await page.getByRole('button', { name: '로그인', exact: true }).last().click();
   const response = await submitted;
   expect(response.status()).toBe(200);
-  await expect(page.locator(`img[alt="${expectedAvatar}"]`)).toBeVisible();
+  await expect(page.locator('header').locator(`img[alt="${expectedAvatar}"]`)).toBeVisible();
 }
 
 async function logoutUi(page: Page, avatar: string) {
-  await page.locator(`img[alt="${avatar}"]`).click();
+  await page.locator('header').locator(`img[alt="${avatar}"]`).click();
   await page.getByRole('menuitem', { name: '로그아웃' }).click();
   await expect(page.getByRole('button', { name: '로그인', exact: true })).toBeVisible();
 }
 
 async function openProfile(page: Page, expectedEmail: string) {
+  await page.goto(appPath('/'));
   const refreshed = page.waitForResponse(isCurrentUserRead);
   await page.getByTitle('설정', { exact: true }).click();
-  await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible();
   expect((await refreshed).ok()).toBeTruthy();
   await expect(page.getByLabel('이메일', { exact: true })).toHaveValue(expectedEmail);
 }
@@ -101,7 +102,7 @@ async function saveProfile(
   expect(response.ok()).toBeTruthy();
   expect(response.request().postDataJSON()).toEqual(expected);
   expect(await response.json()).toMatchObject(expected);
-  await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toHaveCount(0);
+  await expect(page.getByText('프로필을 저장했습니다.', { exact: true })).toBeVisible();
 }
 
 async function readProfile(request: APIRequestContext, token: string) {
@@ -136,7 +137,7 @@ test('actual image accepts a two-character nickname and an email longer than 64 
     const response = await submitted;
     expect(response.status()).toBe(200);
     expect(response.request().postDataJSON().username).toBe(loginIdentity);
-    await expect(page.locator(`img[alt="${user.nickname}"]`)).toBeVisible();
+    await expect(page.locator('header').locator(`img[alt="${user.nickname}"]`)).toBeVisible();
     await logoutUi(page, user.nickname);
   }
   expect(pageErrors).toEqual([]);
@@ -161,16 +162,16 @@ test('actual image invalidates an A-tab profile draft after a real cross-tab swi
     await expect(second.locator(`img[alt="${accountA.nickname}"]`)).toBeVisible();
 
     await page.getByTitle('설정', { exact: true }).click();
-    await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible();
     await page.getByLabel('이메일', { exact: true }).fill(`stale-${suffix()}@example.test`);
     await page.getByLabel('닉네임', { exact: true }).fill(`Stale ${suffix()}`);
 
     await logoutUi(second, accountA.nickname);
-    await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('이메일', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '로그인', exact: true })).toBeVisible();
 
     await loginUi(second, accountB);
-    await expect(page.locator(`img[alt="${accountB.nickname}"]`)).toBeVisible();
+    await expect(page.locator('header').locator(`img[alt="${accountB.nickname}"]`)).toBeVisible();
     await openProfile(page, accountB.email);
     await expect(page.getByLabel('닉네임', { exact: true })).toHaveValue(accountB.nickname);
 
@@ -203,7 +204,7 @@ test('actual image persists omitted profile fields and clears explicit fields to
 
   await page.addInitScript(accessToken => localStorage.setItem('authToken', accessToken), token);
   await page.goto(appPath('/'));
-  await expect(page.locator(`img[alt="${user.nickname}"]`)).toBeVisible();
+  await expect(page.locator('header').locator(`img[alt="${user.nickname}"]`)).toBeVisible();
 
   const avatarUrl = `https://example.test/${suffix()}.svg`;
   const filledEmail = `filled-${suffix()}@example.test`;
@@ -236,7 +237,7 @@ test('actual image persists omitted profile fields and clears explicit fields to
 
   await page.evaluate(() => localStorage.removeItem('b-compiler-user'));
   await page.reload();
-  await expect(page.locator(`img[alt="${user.username}"]`)).toBeVisible();
+  await expect(page.locator('header').locator(`img[alt="${user.username}"]`)).toBeVisible();
   await openProfile(page, '');
   await expect(page.getByLabel('이메일', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('닉네임', { exact: true })).toHaveValue('');

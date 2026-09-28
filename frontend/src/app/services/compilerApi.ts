@@ -176,6 +176,7 @@ export interface ExecuteRequest {
 
 export type CompileQueueStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
 export type CompileQueueKind = 'compile' | 'run' | 'grading';
+export type CompileQueueSource = 'ide' | 'practice' | 'contest';
 export type CompileQueueVerdict =
   | 'pending'
   | 'running'
@@ -187,6 +188,9 @@ export type CompileQueueVerdict =
   | 'runtime_error'
   | 'time_limit_exceeded'
   | 'memory_limit_exceeded'
+  | 'output_limit_exceeded'
+  | 'process_limit_exceeded'
+  | 'compile_resource_error'
   | 'system_error'
   | 'canceled';
 
@@ -198,10 +202,14 @@ export interface CompileQueueJob {
   language: CompilerLanguage;
   username?: string | null;
   userId?: string | null;
+  source?: CompileQueueSource | null;
+  contestId?: string | null;
+  contestTitle?: string | null;
+  contestProblemId?: string | null;
   problemId?: string | null;
   problemTitle?: string | null;
   target?: string | null;
-  sourceSizeBytes: number;
+  sourceSizeBytes?: number | null;
   queuedAt: string;
   startedAt?: string | null;
   finishedAt?: string | null;
@@ -217,6 +225,9 @@ export interface CompileQueueGroup {
   label: string;
   problemId?: string | null;
   problemTitle?: string | null;
+  contestId?: string | null;
+  contestTitle?: string | null;
+  contestProblemId?: string | null;
   username?: string | null;
   userId?: string | null;
   total: number;
@@ -229,6 +240,17 @@ export interface CompileQueueGroup {
   lastQueuedAt?: string | null;
 }
 
+export interface CompileQueueContestOption {
+  id: string;
+  title: string;
+}
+
+export interface CompileQueueProblemOption {
+  id: string;
+  title: string;
+  contestId?: string | null;
+}
+
 export interface CompileQueueResponse {
   jobs: CompileQueueJob[];
   total: number;
@@ -237,6 +259,11 @@ export interface CompileQueueResponse {
   running: number;
   problemGroups: CompileQueueGroup[];
   userGroups: CompileQueueGroup[];
+  contestOptions?: CompileQueueContestOption[];
+  problemOptions?: CompileQueueProblemOption[];
+  optionLimit?: number;
+  optionsTruncated?: boolean;
+  detailScope?: 'aggregate' | 'mine' | 'admin';
 }
 
 export interface CompileQueueFilters {
@@ -248,6 +275,11 @@ export interface CompileQueueFilters {
   username?: string;
   userId?: string;
   problemId?: string;
+  problemSearch?: string;
+  source?: CompileQueueSource | 'all';
+  contestId?: string;
+  language?: CompilerLanguage | 'all';
+  mine?: boolean;
 }
 
 export interface ExecuteResponse {
@@ -397,12 +429,18 @@ export async function getCompileQueue(filters: CompileQueueFilters = {}): Promis
   if (filters.username?.trim()) params.set('username', filters.username.trim());
   if (filters.userId?.trim()) params.set('userId', filters.userId.trim());
   if (filters.problemId?.trim()) params.set('problemId', filters.problemId.trim());
+  if (filters.problemSearch?.trim()) params.set('problemSearch', filters.problemSearch.trim());
+  params.set('source', filters.source ?? 'all');
+  if (filters.contestId?.trim()) params.set('contestId', filters.contestId.trim());
+  if (filters.language && filters.language !== 'all') params.set('language', filters.language);
+  if (filters.mine) params.set('mine', 'true');
 
   return await requestJson<CompileQueueResponse>(
     `/api/v1/compiler/queue?${params.toString()}`,
     {
       method: 'GET',
-      headers: {},
+      // Contest rows are private to their owner; always send the current token when present.
+      headers: { ...getAuthHeaders() },
     },
     { timeout: 5000 },
   );

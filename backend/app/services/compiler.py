@@ -107,6 +107,16 @@ class DockerCompilerRunner:
         self.cleanup_guard = cleanup_guard
         self.client_factory = client_factory
 
+    def measured_submission(self, payload):
+        from app.services.measured_judge import MeasuredSubmission
+        from app.services.judge_runtime_registry import RuntimeRegistry
+        snapshot=getattr(self,'measured_snapshot',None)
+        worker_class=getattr(self,'measured_worker_class',settings.JUDGE_WORKER_CLASS)
+        if snapshot is not None:
+            return MeasuredSubmission(self,payload,None,worker_class,snapshot=snapshot)
+        return MeasuredSubmission(self,payload,
+            RuntimeRegistry.load(settings.JUDGE_RUNTIME_REGISTRY),worker_class)
+
     async def compile(
         self,
         source_code: str,
@@ -128,7 +138,8 @@ class DockerCompilerRunner:
         errors = [item.to_dict() for item in diagnostics if item.severity == "error"]
         warnings = [item.to_dict() for item in diagnostics if item.severity == "warning"]
         response = {
-            "success": result["exit_code"] == 0,
+            "success": result["exit_code"] == 0 and not result.get("failure_reason"),
+            "failure_reason": result.get("failure_reason"),
             "errors": errors,
             "warnings": warnings,
             "execution_time": result["execution_time"],
@@ -138,7 +149,7 @@ class DockerCompilerRunner:
             },
         }
 
-        if result["exit_code"] != 0 or language != "bpp":
+        if not response["success"] or language != "bpp":
             return response
 
         source_filename = self._resolve_filename(language, source_code)
@@ -323,7 +334,8 @@ class DockerCompilerRunner:
             if output_exceeded:
                 exit_code = 1
                 stderr += b"\nOutput limit exceeded."
-                failure_reason = 'output_limit_exceeded'
+                # Preserve proven OOM if both collectors observed a failure.
+                failure_reason = failure_reason or 'output_limit_exceeded'
         except TimeoutError:
             if container is not None:
                 await self._kill_container(container)
@@ -477,7 +489,16 @@ class DockerCompilerRunner:
         return await asyncio.to_thread(self.cleanup_guard,action)
 
     async def _remove_workdir(self, directory):
-        return await self._cleanup(lambda:shutil.rmtree(directory,ignore_errors=True))
+        def remove():
+            try:
+                shutil.rmtree(directory)
+            except FileNotFoundError:
+                return
+            # A cleanup guard may execute on a delayed/remote filesystem. Do
+            # not publish a terminal receipt unless absence is observable.
+            if directory.exists():
+                raise RuntimeError('Sandbox work directory cleanup was not confirmed')
+        return await self._cleanup(remove)
 
     def _resolve_filename(self, language: str, source_code: str) -> str:
         if language == "java":

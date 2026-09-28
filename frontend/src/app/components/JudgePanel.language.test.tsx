@@ -31,3 +31,19 @@ it('uses the new language and code after changing language while the judge panel
   await waitFor(() => expect(submit).toHaveBeenCalledWith('problem-1', 'print(42)', 'python'));
   await screen.findByText('controlled receipt failure');
 });
+
+it.each([
+  ['output_limit_exceeded', '출력 초과'],
+  ['process_limit_exceeded', '프로세스 제한 초과'],
+  ['compile_resource_error', '컴파일 자원 초과'],
+] as const)('renders the public %s verdict label from a practice result', async (verdict, label) => {
+  submit.mockResolvedValueOnce({
+    status: 'Rejected', verdict, totalCases: 1, passedCases: 0, sampleTotalCases: 1, samplePassedCases: 0,
+    gradingCompleted: true, gradingPassed: false, totalScore: 0, details: [], message: '',
+  });
+  render(<JudgePanel code="source" challengeId="problem-1" challengeTitle="Example" testCases={[]} onClose={() => {}} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '제출' }));
+
+  expect(await screen.findByText(label)).toBeInTheDocument();
+});

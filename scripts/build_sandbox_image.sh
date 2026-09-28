@@ -12,6 +12,7 @@ runtime_build_signature() {
   sha256sum \
     "$PROJECT_ROOT/runtime/docker/Dockerfile" \
     "$PROJECT_ROOT/runtime/sandbox/run.sh" \
+    "$PROJECT_ROOT/runtime/sandbox/verify_bpp_runtime.py" \
     "$PROJECT_ROOT/scripts/build_sandbox_image.sh" \
     | sha256sum | awk 'NR==1 { print $1 }'
 }

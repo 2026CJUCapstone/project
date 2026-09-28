@@ -7,6 +7,8 @@ from app.services.contest_access import now_utc
 from app.services.durable_queue import DurableQueue
 from app.services.execution_results import publish_result
 from tests.test_durable_queue import replicas
+from tests.test_judge_metrics import full_report
+from tests.test_measured_judge import payload_fixture
 
 
 def receipt(factory, queue, request='one'):
@@ -17,8 +19,10 @@ def receipt(factory, queue, request='one'):
             db.add(m.Problem(id='problem', creator_id='solver', title='test', difficulty='iron5', tags=[], description='',
                              test_cases={'sample':[{'input':'','expected_output':'42'}]}, points=100))
             db.flush()
+        payload = payload_fixture()
+        payload.update(practice_points=100, problem_id='problem')
         job = queue.enqueue_in_session(db, owner_key='solver', request_id=request, kind='practice',
-            payload={'code':'print(42)','language':'python', 'practice_points':100})
+            payload=payload)
         db.add(m.Submission(execution_job_id=job.id, user_id='solver', problem_id='problem', language='python',
             code='print(42)', status='queued', verdict='pending', sample_total_cases=1))
         job_id = job.id
@@ -27,8 +31,10 @@ def receipt(factory, queue, request='one'):
 
 
 def accepted():
+    payload = payload_fixture()
     return {'verdict':'accepted', 'value':{'status':'Accepted', 'sample_passed_cases':1,
-            'grading_completed':True, 'grading_passed':True, 'details':[]}}
+            'grading_completed':True, 'grading_passed':True, 'details':[],
+            '_resource_report':full_report(payload)}}
 
 
 def test_two_durable_correct_submissions_award_only_once_and_preserve_receipt(replicas):

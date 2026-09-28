@@ -54,7 +54,17 @@ def dockerfile_prefix(source):
     tail = tail_marker + source.split(tail_marker, 1)[1]
     if source.index(tail_marker) <= source.index(marker):
         raise ValueError('Runtime packaging must follow the compiler stage')
-    # Preserve both real stages; only the B++ checkout/build in between is omitted.
+    # This narrowly scoped Node probe has no B++ installation. Omit only the
+    # exact B++ build-gate copy/run instructions as well; product builds keep
+    # them mandatory. Reject drift instead of broadly deleting Python commands.
+    for instruction in (
+        'COPY sandbox/verify_bpp_runtime.py /usr/local/share/verify_bpp_runtime.py\n',
+        'RUN python3 -I /usr/local/share/verify_bpp_runtime.py\n',
+    ):
+        if tail.splitlines(keepends=True).count(instruction)!=1:
+            raise ValueError('Exact B++-only gate instruction required')
+        tail=tail.replace(instruction,'',1)
+    # Preserve the remaining actual Node/runtime packaging instructions.
     return prefix + tail + '''
 COPY fixtures /audit
 RUN --network=none /bin/bash /audit/smoke.sh

@@ -37,3 +37,17 @@ def test_execute_removes_job_directory_when_source_file_initialization_fails(tmp
         asyncio.run(runner._execute(mode="compile", source_code="print(1)", language="python"))
 
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_workdir_cleanup_failure_is_not_silently_accepted(tmp_path, monkeypatch):
+    directory = tmp_path / "still-mounted"
+    directory.mkdir()
+    (directory / "main.py").write_text("print(42)", encoding="utf-8")
+    runner = DockerCompilerRunner(cleanup_guard=lambda action: action())
+
+    monkeypatch.setattr("app.services.compiler.shutil.rmtree", lambda _directory: None)
+
+    with pytest.raises(RuntimeError, match="cleanup was not confirmed"):
+        await runner._remove_workdir(directory)
+    assert directory.exists()

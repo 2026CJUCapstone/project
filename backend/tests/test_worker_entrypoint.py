@@ -35,8 +35,36 @@ def patch_worker_runtime(monkeypatch, fake_worker, contest_maintenance, retentio
     monkeypatch.setattr(worker, "build_worker", lambda: fake_worker)
     monkeypatch.setattr(worker, "contest_maintenance", contest_maintenance)
     monkeypatch.setattr(worker, "retention_maintenance", retention_maintenance)
+    # These tests exercise task orchestration, not the host's PID namespace,
+    # process lock, Redis or Docker. A non-root Linux CI process may not inspect
+    # root-owned /proc/1/ns/pid; registration can fail before FakeWorker starts.
+    monkeypatch.setattr(worker, 'register_configured_runtime', lambda: None)
+    monkeypatch.setattr(worker, 'start_worker_process', lambda: None)
+    monkeypatch.setattr(worker, 'stop_worker_process', lambda **kwargs: None)
+    monkeypatch.setattr(worker, 'withdraw_worker', lambda: None)
+    monkeypatch.setattr(worker, 'revoke_worker_readiness', lambda: None)
+    monkeypatch.setattr(worker, 'health_loop', lambda stop: stop.wait())
+    monkeypatch.setattr(settings, 'RUNTIME_INSTANCE_ID', '')
+    monkeypatch.setattr(settings, 'ENVIRONMENT', 'test')
     monkeypatch.setattr(settings, "COMPILER_QUEUE_CONCURRENCY", 1)
     return security_calls
+
+
+async def wait_started(task, started):
+    waiter = asyncio.create_task(started.wait())
+    try:
+        done, _ = await asyncio.wait({task, waiter}, timeout=2, return_when=asyncio.FIRST_COMPLETED)
+        if task in done:
+            await task  # Surface the real startup exception rather than hang.
+            raise AssertionError('Worker exited before startup')
+        assert waiter in done, 'Worker did not start within the test deadline'
+    except BaseException:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise
+    finally:
+        waiter.cancel()
+        await asyncio.gather(waiter, return_exceptions=True)
 
 
 async def wait_until_cancelled(cleaned):
@@ -107,7 +135,7 @@ async def test_serve_drains_running_worker_before_exiting_after_stop(monkeypatch
     stop = asyncio.Event()
     monkeypatch.setattr(worker,'revoke_worker_readiness',revoked.set)
     task = asyncio.create_task(worker.serve(stop))
-    await started.wait()
+    await wait_started(task, started)
 
     stop.set()
     assert await asyncio.to_thread(fenced.wait,1)
@@ -143,7 +171,7 @@ async def test_serve_cancels_and_awaits_all_tasks_when_outer_task_is_cancelled(m
         lambda: wait_until_cancelled(retention_cleaned),
     )
     task = asyncio.create_task(worker.serve(asyncio.Event()))
-    await started.wait()
+    await wait_started(task, started)
 
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -152,3 +180,12 @@ async def test_serve_cancels_and_awaits_all_tasks_when_outer_task_is_cancelled(m
     assert worker_cleaned.is_set()
     assert contest_cleaned.is_set()
     assert retention_cleaned.is_set()
+
+
+@pytest.mark.asyncio
+async def test_startup_wait_propagates_registration_failure_without_hanging():
+    async def failed_start():
+        raise PermissionError('fixture namespace unavailable')
+    task = asyncio.create_task(failed_start())
+    with pytest.raises(PermissionError, match='fixture namespace'):
+        await asyncio.wait_for(wait_started(task, asyncio.Event()), timeout=1)

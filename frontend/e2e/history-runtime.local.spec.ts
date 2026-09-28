@@ -129,7 +129,7 @@ test('actual public problem history stays consistent from challenge through IDE,
   await page.setViewportSize({ width: 1440, height: 900 });
   await registerThroughUi(page, user, `History ${suffix}`);
 
-  await page.goto(appPath('/challenges'));
+  await page.goto(appPath('/problems'));
   await expect(page.getByRole('heading', { name: '문제 목록', exact: true })).toBeVisible();
   await page.getByPlaceholder('문제 제목/설명 검색', { exact: true }).fill(problem.title);
   const detailLink = page.getByRole('button', { name: `${problem.title} 문제 상세 보기`, exact: true });
@@ -138,7 +138,7 @@ test('actual public problem history stays consistent from challenge through IDE,
   await page.screenshot({ path: testInfo.outputPath('history-runtime-desktop.png'), fullPage: true });
 
   await detailLink.click();
-  await expect(page).toHaveURL(new RegExp(`/webcompiler/challenges/${problem.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/webcompiler/problems/${problem.id}$`));
   await expect(page.getByRole('heading', { name: problem.title, exact: true })).toBeVisible();
   await assertNoBodyOverflow(page);
 
@@ -229,7 +229,7 @@ test('actual public problem history stays consistent from challenge through IDE,
   expect((await mine).ok()).toBeTruthy();
   await expect(submissionRow()).toHaveCount(1);
   await submissionRow().getByRole('button', { name: problem.title, exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/webcompiler/challenges/${problem.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/webcompiler/problems/${problem.id}$`));
   await expect(page.getByRole('heading', { name: problem.title, exact: true })).toBeVisible();
   await assertNoBodyOverflow(page);
 

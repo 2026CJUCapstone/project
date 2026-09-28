@@ -1,0 +1,128 @@
+import std.io;
+
+var reader_buffer: [4096]u8;
+var reader_pos: u64 = 0;
+var reader_len: u64 = 0;
+var states: [1000000]u8;
+var queue: [1000000]u64;
+
+func next_byte() -> i64 {
+    if (reader_pos >= reader_len) {
+        var count: i64 = input_read(&reader_buffer[0], 4096);
+        if (count <= 0) { return -1; }
+        reader_len = (u64)count;
+        reader_pos = 0;
+    }
+    var value: i64 = (i64)reader_buffer[reader_pos];
+    reader_pos += 1;
+    return value;
+}
+
+func next_i64() -> i64 {
+    var current: i64 = next_byte();
+    while (current >= 0 && current <= 32) { current = next_byte(); }
+    var sign: i64 = 1;
+    if (current == 45) {
+        sign = -1;
+        current = next_byte();
+    } else if (current == 43) {
+        current = next_byte();
+    }
+    var value: i64 = 0;
+    while (current >= 48 && current <= 57) {
+        value = value * 10 + (current - 48);
+        current = next_byte();
+    }
+    return value * sign;
+}
+
+func main() -> u64 {
+    var columns: u64 = (u64)next_i64();
+    var rows: u64 = (u64)next_i64();
+    var total: u64 = rows * columns;
+    var remaining: u64 = 0;
+    var head: u64 = 0;
+    var tail: u64 = 0;
+    var index: u64 = 0;
+    while (index < total) {
+        var input_state: i64 = next_i64();
+        if (input_state < 0) {
+            states[index] = 2;
+        } else if (input_state == 0) {
+            states[index] = 0;
+            remaining += 1;
+        } else {
+            states[index] = 1;
+            queue[tail] = index;
+            tail += 1;
+        }
+        index += 1;
+    }
+
+    if (remaining == 0) {
+        print_u64(0);
+        print_nl();
+        return 0;
+    }
+    if (tail == 0) {
+        print_i64(-1);
+        print_nl();
+        return 0;
+    }
+
+    var days: u64 = 0;
+    while (head < tail && remaining > 0) {
+        var level_end: u64 = tail;
+        while (head < level_end) {
+            var position: u64 = queue[head];
+            head += 1;
+            var row: u64 = position / columns;
+            var column: u64 = position % columns;
+            if (row > 0) {
+                var above: u64 = position - columns;
+                if (states[above] == 0) {
+                    states[above] = 1;
+                    remaining -= 1;
+                    queue[tail] = above;
+                    tail += 1;
+                }
+            }
+            if (row + 1 < rows) {
+                var below: u64 = position + columns;
+                if (states[below] == 0) {
+                    states[below] = 1;
+                    remaining -= 1;
+                    queue[tail] = below;
+                    tail += 1;
+                }
+            }
+            if (column > 0) {
+                var left: u64 = position - 1;
+                if (states[left] == 0) {
+                    states[left] = 1;
+                    remaining -= 1;
+                    queue[tail] = left;
+                    tail += 1;
+                }
+            }
+            if (column + 1 < columns) {
+                var right: u64 = position + 1;
+                if (states[right] == 0) {
+                    states[right] = 1;
+                    remaining -= 1;
+                    queue[tail] = right;
+                    tail += 1;
+                }
+            }
+        }
+        days += 1;
+    }
+
+    if (remaining != 0) {
+        print_i64(-1);
+    } else {
+        print_u64(days);
+    }
+    print_nl();
+    return 0;
+}

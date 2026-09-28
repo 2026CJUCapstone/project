@@ -16,6 +16,10 @@ from app.services.execution_results import publish_result, publish_transition
 from app.services.execution_worker import ExecutionWorker
 
 
+def _job_by_public_id(db, public_id: str) -> ExecutionJob:
+    return db.query(ExecutionJob).filter(ExecutionJob.public_id == public_id).one()
+
+
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{(tmp_path/'api.db').as_posix()}", connect_args={'check_same_thread':False})
@@ -37,10 +41,10 @@ async def test_receipt_commits_code_before_judging_and_is_readable_after_worker_
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as client:
         response = await client.post('/api/v1/executions', json={'kind':'run', 'language':'python', 'code':'print(42)'})
         assert response.status_code == 202
-        job_id = response.json()['id']
+        public_job_id = response.json()['id']
         assert response.json()['status'] == 'queued'
         with factory() as db:
-            job = db.get(ExecutionJob, job_id)
+            job = _job_by_public_id(db, public_job_id)
             assert job.payload['code'] == 'print(42)'
             assert job.result is None
         class Runner:
@@ -49,7 +53,7 @@ async def test_receipt_commits_code_before_judging_and_is_readable_after_worker_
         restarted = ExecutionWorker(DurableQueue(factory, on_terminal=publish_result, on_transition=publish_transition),
             pool=SimpleNamespace(labels=lambda *args:{}, reap=lambda *args:None), runner_factory=Runner)
         assert await restarted.run_once()
-        result = await client.get(f'/api/v1/executions/{job_id}')
+        result = await client.get(f'/api/v1/executions/{public_job_id}')
         assert result.json()['result']['value']['stdout'] == '42'
         assert 'payload' not in result.json() and 'code' not in result.json()
         assert result.headers['cache-control'] == 'no-store'
@@ -89,23 +93,25 @@ async def test_expired_content_is_private_gone_and_retry_cannot_recreate_queue_r
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as client:
         first = await client.post('/api/v1/executions', json=data, headers=headers)
         assert first.status_code == 202
-        job_id = first.json()['id']
+        public_job_id = first.json()['id']
         claim = queue.claim()
-        assert queue.finish(job_id, claim.token, {'verdict': 'finished', 'value': {'stdout': 'private output'}})
+        assert claim is not None
+        internal_job_id = claim.id
+        assert queue.finish(internal_job_id, claim.token, {'verdict': 'finished', 'value': {'stdout': 'private output'}})
         with factory() as db:
-            db.get(ExecutionJob, job_id).finished_at = now_utc()-timedelta(days=8)
+            db.get(ExecutionJob, internal_job_id).finished_at = now_utc()-timedelta(days=8)
             db.flush()
             assert expire_execution_content(db, retention_days=7) == 1
-            db.query(CompileQueueRecord).filter_by(id=job_id).delete()
+            db.query(CompileQueueRecord).filter_by(id=internal_job_id).delete()
             db.commit()
-        expired = await client.get('/api/v1/executions/'+job_id)
+        expired = await client.get('/api/v1/executions/'+public_job_id)
         assert expired.status_code == 410 and expired.headers['cache-control'] == 'no-store'
         assert 'private source' not in expired.text and 'private output' not in expired.text
         for retry in (data, {**data, 'code': 'different source'}):
             response = await client.post('/api/v1/executions', json=retry, headers=headers)
             assert response.status_code == 410 and response.headers['cache-control'] == 'no-store'
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as other:
-            assert (await other.get('/api/v1/executions/'+job_id)).status_code == 404
+            assert (await other.get('/api/v1/executions/'+public_job_id)).status_code == 404
         with factory() as db:
             assert db.query(ExecutionJob).count() == 1 and db.query(CompileQueueRecord).count() == 0
         assert queue.claim() is None
@@ -121,19 +127,21 @@ async def test_retry_of_pruned_unexpired_receipt_does_not_recreate_permanently_q
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://isolated') as client:
         first = await client.post('/api/v1/executions', json=data, headers=headers)
         assert first.status_code == 202
-        job_id = first.json()['id']
+        public_job_id = first.json()['id']
         claim = queue.claim()
-        assert queue.finish(job_id, claim.token, {'verdict': 'finished', 'value': {
+        assert claim is not None
+        internal_job_id = claim.id
+        assert queue.finish(internal_job_id, claim.token, {'verdict': 'finished', 'value': {
             'stdout': '1', 'stderr': '', 'exit_code': 0, 'execution_time': 0,
         }})
         with factory() as db:
             assert purge_queue_history(db, history_limit=0) == 1
-            assert db.get(ExecutionJob, job_id).content_expired_at is None
+            assert db.get(ExecutionJob, internal_job_id).content_expired_at is None
             db.commit()
         retry = await client.post('/api/v1/executions', json=data, headers=headers)
-        assert retry.status_code == 202 and retry.json()['id'] == job_id
+        assert retry.status_code == 202 and retry.json()['id'] == public_job_id
         assert retry.json()['status'] == 'completed'
-        result = await client.get('/api/v1/executions/'+job_id)
+        result = await client.get('/api/v1/executions/'+public_job_id)
         assert result.status_code == 200 and result.json()['result']['value']['stdout'] == '1'
         with factory() as db:
             assert db.query(CompileQueueRecord).count() == 0

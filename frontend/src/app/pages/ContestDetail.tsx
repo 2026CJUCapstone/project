@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, useParams } from 'react-router';
 import ReactMarkdown from 'react-markdown';
 import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, CheckCircle2, ChevronDown, Clock3, FileCode2, Info, LockKeyhole, Trophy, Users } from 'lucide-react';
 import { ContestEmpty, ContestStatus, contestLength, contestSchedule } from '../components/ContestUI';
+import { SubmissionResourceUsage } from '../components/SubmissionResourceUsage';
+import { ContestRejudgeHistory } from '../components/ContestRejudgeHistory';
 import { useContestTime } from '../services/useContestTime';
+import { getAuthScope, subscribeAuthIdentity } from '../services/authIdentity';
 import { contestRequest, contestDate, duration, CONTEST_STATES, VERDICTS, type Contest, type ContestSubmission, type Scoreboard } from '../services/contestApi';
 
 export function ContestClock({ contest }: { contest: Contest }) {
@@ -13,6 +16,14 @@ export function ContestClock({ contest }: { contest: Contest }) {
 }
 
 export function ContestDetail() {
+  const { contestId } = useParams();
+  const scope = useSyncExternalStore(subscribeAuthIdentity, getAuthScope, () => 'guest');
+  // Do not retain another account's permission, submissions or opened source
+  // while the five-second refresh is waiting for the next response.
+  return <ContestDetailForScope key={`${contestId}:${scope}`} />;
+}
+
+function ContestDetailForScope() {
   const { contestId } = useParams();
   const [contest, setContest] = useState<Contest | null>(null);
   const [board, setBoard] = useState<Scoreboard | null>(null);
@@ -89,6 +100,11 @@ export function ContestDetail() {
           <p className="contest-rules">문제별 고정 배점 · 동점: 마지막 득점 시간 + 맞힌 문제의 정답 전 오답당 5분. 컴파일 오류·시스템 오류·미해결 문제의 오답은 패널티에서 제외됩니다.</p>
         </div>
       </details>
+      {contest.state === 'finished' && contest.corrections?.items.length ? <section aria-label="순위 정정 안내" className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-slate-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-slate-100">
+        <h2 className="text-base font-bold">순위 정정 안내</h2><p className="mt-1 text-sm text-amber-950 dark:text-amber-100">재채점 결과에 따른 순위 정정 {contest.corrections.total}건이 최종 순위에 반영되었습니다.</p>
+        <ul className="mt-3 grid gap-2">{contest.corrections.items.map(correction => <li key={`${correction.revision}:${correction.appliedAt}`} className="rounded-lg border border-amber-200 bg-white p-3 text-sm dark:border-amber-900 dark:bg-slate-950"><div className="flex flex-wrap items-baseline justify-between gap-2"><strong>개정 {correction.revision}</strong><time className="text-xs text-slate-600 dark:text-slate-300" dateTime={correction.appliedAt}>{contestDate(correction.appliedAt)}</time></div><p className="mt-1 break-words">{correction.note}</p></li>)}</ul>
+      </section> : null}
+      {contest.canManage && <ContestRejudgeHistory contestId={contest.id} canManage={contest.canManage} finished={contest.state === 'finished'} problems={contest.problems} />}
       <div className="contest-content">
         <nav className="contest-tabs" aria-label="대회 메뉴">{([
           {id:'problems',label:'문제',icon:BookOpen}, {id:'scoreboard',label:'스코어보드',icon:Trophy}, {id:'submissions',label:'내 제출',icon:FileCode2},
@@ -114,7 +130,7 @@ export function ContestDetail() {
           </section>}
           {tab === 'submissions' && <section>
             <div className="contest-content-heading"><h2>내 제출 기록</h2><p>본인의 제출 코드만 확인할 수 있습니다.</p></div>
-            {submissions.map(s => <div key={s.id} className="contest-submission"><span>{contest.problems.find(p => p.id === s.contestProblemId)?.label} · {s.language}</span><span>{VERDICTS[s.verdict] || s.verdict}</span><time dateTime={s.receivedAt}>{contestDate(s.receivedAt)}</time><button className="contest-code-link" onClick={() => void viewCode(s.id)}>코드 보기</button></div>)}
+            {submissions.map(s => <div key={s.id} className="contest-submission"><span>{contest.problems.find(p => p.id === s.contestProblemId)?.label} · {s.language}</span><span>{VERDICTS[s.verdict] || s.verdict}</span><time dateTime={s.receivedAt}>{contestDate(s.receivedAt)}</time><button className="contest-code-link" onClick={() => void viewCode(s.id)}>코드 보기</button><SubmissionResourceUsage className="basis-full" resourceUsage={s.resourceUsage} /></div>)}
             {!submissions.length && <ContestEmpty icon={<FileCode2 size={24} />} title="아직 제출한 코드가 없습니다">로그인 후 대회 문제를 풀고 제출하면 채점 결과가 표시됩니다.</ContestEmpty>}
             {submissionTotal > 50 && <div className="contest-pagination"><button disabled={submissionPage === 0} onClick={() => setSubmissionPage(p => p - 1)}>이전</button><span>{submissionPage + 1} / {Math.ceil(submissionTotal / 50)}</span><button disabled={(submissionPage + 1) * 50 >= submissionTotal} onClick={() => setSubmissionPage(p => p + 1)}>다음</button></div>}
             {selectedSubmission && <div className="contest-source"><div><span>내 제출 코드 · {selectedSubmission.language}</span><button onClick={() => setSelectedSubmission(null)}>닫기</button></div><pre>{selectedSubmission.code}</pre></div>}

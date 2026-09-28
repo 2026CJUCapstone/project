@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { getSubmissions, type SubmissionFilters, type SubmissionRecord } from '../services/problemApi';
 import type { CompileQueueVerdict } from '../services/compilerApi';
 import { normalizedPageParam } from '../services/pageQuery';
+import { SubmissionResourceUsage } from '../components/SubmissionResourceUsage';
 
 const PAGE_SIZE = 50;
 
@@ -18,6 +19,9 @@ const verdictLabels: Record<CompileQueueVerdict, string> = {
   runtime_error: '런타임 오류',
   time_limit_exceeded: '시간 초과',
   memory_limit_exceeded: '메모리 초과',
+  output_limit_exceeded: '출력 초과',
+  process_limit_exceeded: '프로세스 제한 초과',
+  compile_resource_error: '컴파일 자원 초과',
   system_error: '시스템 오류',
   canceled: '취소',
 };
@@ -39,6 +43,9 @@ const verdictClass: Record<CompileQueueVerdict, string> = {
   runtime_error: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
   time_limit_exceeded: 'border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300',
   memory_limit_exceeded: 'border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300',
+  output_limit_exceeded: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300',
+  process_limit_exceeded: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
+  compile_resource_error: 'border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300',
   system_error: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
   canceled: 'border-gray-500/30 bg-gray-500/10 text-gray-700 dark:text-gray-300',
 };
@@ -58,6 +65,9 @@ function verdictOptions() {
     { value: 'runtime_error', label: '런타임 오류' },
     { value: 'time_limit_exceeded', label: '시간 초과' },
     { value: 'memory_limit_exceeded', label: '메모리 초과' },
+    { value: 'output_limit_exceeded', label: '출력 초과' },
+    { value: 'process_limit_exceeded', label: '프로세스 제한 초과' },
+    { value: 'compile_resource_error', label: '컴파일 자원 초과' },
     { value: 'system_error', label: '시스템 오류' },
   ];
 }
@@ -320,7 +330,7 @@ export function Submissions() {
                   제출 이력이 없습니다.
                 </div>
               ) : (
-                <table className="w-full min-w-[980px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[1180px] table-fixed text-left text-sm">
                   <thead className="bg-gray-50 text-xs font-semibold text-gray-500 dark:bg-[#151515] dark:text-gray-400">
                     <tr>
                       <th className="w-[150px] px-4 py-3">판정</th>
@@ -329,6 +339,7 @@ export function Submissions() {
                       <th className="w-[16%] px-3 py-3">사용자</th>
                       <th className="w-[110px] px-3 py-3">예제 채점</th>
                       <th className="w-[90px] px-3 py-3 text-right">점수</th>
+                      <th className="w-[230px] px-3 py-3">자원 사용량</th>
                       <th className="w-[160px] px-3 py-3">제출 시간</th>
                     </tr>
                   </thead>
@@ -349,7 +360,7 @@ export function Submissions() {
                           <td className="min-w-0 px-3 py-3">
                             <button
                               type="button"
-                              onClick={() => navigate(`/challenges/${submission.problemId}`)}
+                              onClick={() => navigate(`/problems/${submission.problemId}`)}
                               className="block max-w-full truncate text-left font-medium text-gray-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-300"
                             >
                               {submission.problemTitle ?? submission.problemId}
@@ -362,6 +373,9 @@ export function Submissions() {
                           </td>
                           <td className="px-3 py-3 text-right font-mono text-xs text-gray-600 dark:text-gray-400">
                             {submission.awardedPoints}
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <SubmissionResourceUsage resourceUsage={submission.resourceUsage} />
                           </td>
                           <td className="px-3 py-3 text-xs text-gray-600 dark:text-gray-400">
                             {formatDate(submission.createdAt)}

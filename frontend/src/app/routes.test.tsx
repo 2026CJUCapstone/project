@@ -4,6 +4,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { routeDefinitions } from "./routes";
 import { getLeaderboard, getProblem, getProblems, getProblemsPage } from "./services/problemApi";
 
+vi.mock("./components/ProfileStatsPanel", () => ({ ProfileStatsPanel: () => null }));
+
+const learningApiMocks = vi.hoisted(() => ({
+  getLearningTracks: vi.fn(),
+  getLearningTrack: vi.fn(),
+  getLearningReview: vi.fn(),
+  getLearningRecommendations: vi.fn(),
+  getLearningProblemReview: vi.fn(),
+  updateLearningProblemReview: vi.fn(),
+}));
+
+vi.mock("./services/learningApi", () => learningApiMocks);
+
 vi.mock("./services/problemApi", () => ({
   DIFFICULTY_LEVELS: [
     'iron5', 'iron4', 'iron3', 'iron2', 'iron1',
@@ -25,6 +38,22 @@ vi.mock("./services/problemApi", () => ({
 }));
 
 describe("app routes", () => {
+  it("opens settings directly with separate editor and display sections", async () => {
+    localStorage.clear();
+    const router = createMemoryRouter(routeDefinitions, { initialEntries: ["/settings"] });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByRole("heading", { level: 1, name: "설정" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "에디터 설정" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "화면 설정" })).toBeInTheDocument();
+  });
+  it("opens a dedicated profile route directly without a profile popup", async () => {
+    localStorage.clear();
+    const router = createMemoryRouter(routeDefinitions, { initialEntries: ["/profile"] });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByRole("heading", { level: 1, name: "내 프로필" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "로그인하기" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     vi.mocked(getProblems).mockResolvedValue([]);
     vi.mocked(getProblemsPage).mockResolvedValue({ items: [], total: 0 });
@@ -40,6 +69,35 @@ describe("app routes", () => {
         avatarUrl: null,
       },
     ]);
+    learningApiMocks.getLearningTracks.mockResolvedValue({
+      tracks: [{
+        id: "starter",
+        title: "입문 문제집",
+        description: "기초 문제를 순서대로 풀어보세요.",
+        order: 1,
+        total: 1,
+        solved: 0,
+        nextProblemId: null,
+      }],
+      signedIn: false,
+    });
+    learningApiMocks.getLearningTrack.mockResolvedValue({
+      track: {
+        id: "starter",
+        title: "입문 문제집",
+        description: "기초 문제를 순서대로 풀어보세요.",
+        order: 1,
+        total: 1,
+        solved: 0,
+        nextProblemId: null,
+      },
+      items: [],
+      total: 0,
+      offset: 0,
+      limit: 24,
+    });
+    learningApiMocks.getLearningReview.mockResolvedValue({ items: [], total: 0, offset: 0, limit: 24 });
+    learningApiMocks.getLearningRecommendations.mockResolvedValue({ items: [], targetDifficulty: "iron5", signedIn: false });
   });
 
   it("renders the platform landing page", async () => {
@@ -52,7 +110,7 @@ describe("app routes", () => {
     expect(await screen.findByTestId("landing-page")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /브라우저에서 코드를 실행하고/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "코드 실행하기" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /챌린지 둘러보기/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /문제 둘러보기/ })).toBeInTheDocument();
   });
 
   it("explains the B++ language with the approved introduction", async () => {
@@ -76,7 +134,7 @@ describe("app routes", () => {
       "B++ 온라인 컴파일러",
       "별도 설치 없이 코드를 작성하고 실행할 수 있습니다. B++ 코드의 컴파일 과정을 살펴보거나, 알고리즘 문제를 풀고 커뮤니티에서 질문을 주고받을 수 있습니다.",
       "회원가입 없이 코드 실행", "6개 언어 지원", "B++ 컴파일 과정 분석", "주요 기능",
-      "코드 실행은 IDE에서, 알고리즘 연습은 챌린지에서 시작하세요. 질문이나 풀이 이야기는 커뮤니티에 남길 수 있습니다.",
+      "코드 실행은 IDE에서, 알고리즘 연습은 문제 목록에서 시작하세요. 질문이나 풀이 이야기는 커뮤니티에 남길 수 있습니다.",
       "B++, C, C++, Python, Java, JavaScript를 지원합니다. 언어를 선택하고 코드를 실행하면 결과를 확인할 수 있습니다.",
       "B++ 코드의 AST와 SSA는 그래프로, IR과 어셈블리 코드는 텍스트로 확인할 수 있습니다.",
       "난이도와 주제별로 문제를 찾아 풀어보세요. 제출한 코드의 채점 결과와 이전 제출 기록을 확인할 수 있습니다.",
@@ -84,7 +142,7 @@ describe("app routes", () => {
       "B++ 문법이 낯설다면 기본 예제부터 실행해 보세요. 코드를 조금씩 바꾸고 결과가 어떻게 달라지는지 확인하면 됩니다.",
       "IDE에서 언어를 선택하면 기본 예제 코드가 나타납니다. 예제를 그대로 실행하거나 직접 코드를 작성해 보세요.",
       "B++ 코드를 실행한 뒤 AST·SSA 그래프와 IR·어셈블리 코드를 살펴보세요. 코드가 분석되고 변환되는 과정을 확인할 수 있습니다.",
-      "챌린지에서 문제를 골라 코드를 제출해 보세요. 채점 결과와 레이팅을 확인하고, 궁금한 점은 커뮤니티에 질문할 수 있습니다.",
+      "문제 목록에서 풀고 싶은 문제를 골라 코드를 제출해 보세요. 채점 결과와 레이팅을 확인하고, 궁금한 점은 커뮤니티에 질문할 수 있습니다.",
       "IDE에서 언어를 선택하고 시작하면 됩니다.",
     ]) expect(content.getByText(text)).toBeInTheDocument();
 
@@ -94,7 +152,7 @@ describe("app routes", () => {
     expect(content.getAllByRole("heading", { name: "알고리즘 문제 풀기" })).toHaveLength(2);
     expect(content.getAllByRole("article")).toHaveLength(4);
     expect(content.getAllByRole("listitem")).toHaveLength(3);
-    for (const name of ["코드 실행하기", "챌린지 둘러보기", "커뮤니티 가기", "IDE 열기", "리더보드 보기"]) {
+    for (const name of ["코드 실행하기", "문제 둘러보기", "커뮤니티 가기", "IDE 열기", "리더보드 보기"]) {
       expect(content.getByRole("button", { name })).toBeInTheDocument();
     }
     expect(landing).not.toHaveTextContent(/READY TO BUILD|LEARNING PLAYGROUND|ONE PLACE, FULL CYCLE|실력을 증명|성장을 확인|동료 학습자|코드 실행에서 끝나지/);
@@ -114,14 +172,28 @@ describe("app routes", () => {
     expect(screen.getAllByText("Iron V")).not.toHaveLength(0);
   });
 
-  it("renders the challenges page", async () => {
+  it("renders the canonical problems page", async () => {
     const router = createMemoryRouter(routeDefinitions, {
-      initialEntries: ["/challenges"],
+      initialEntries: ["/problems"],
     });
 
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByRole("heading", { name: "문제 목록" })).toBeInTheDocument();
+  });
+
+  it("renders the learning page directly", async () => {
+    localStorage.clear();
+    const router = createMemoryRouter(routeDefinitions, {
+      initialEntries: ["/learning"],
+    });
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "학습" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "문제집" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("heading", { level: 3, name: "입문 문제집" })).toBeInTheDocument();
+    expect(learningApiMocks.getLearningTracks).toHaveBeenCalledTimes(1);
   });
 
   it("renders the challenge detail page", async () => {
@@ -144,7 +216,7 @@ describe("app routes", () => {
 	    });
 
     const router = createMemoryRouter(routeDefinitions, {
-      initialEntries: ["/challenges/p-1"],
+      initialEntries: ["/problems/p-1"],
     });
 
     render(<RouterProvider router={router} />);
@@ -152,5 +224,17 @@ describe("app routes", () => {
     expect(await screen.findByRole("heading", { name: "두 수의 합" }, { timeout: 10_000 })).toBeInTheDocument();
     expect(await screen.findByText("입력")).toBeInTheDocument();
     expect(await screen.findByText("출력")).toBeInTheDocument();
+  });
+
+  it("redirects legacy challenge links and renders a Korean 404", async () => {
+    const legacy = createMemoryRouter(routeDefinitions, { initialEntries: ["/challenges"] });
+    const view = render(<RouterProvider router={legacy} />);
+    expect(await screen.findByRole("heading", { name: "문제 목록" })).toBeInTheDocument();
+    expect(legacy.state.location.pathname).toBe("/problems");
+    view.unmount();
+
+    const missing = createMemoryRouter(routeDefinitions, { initialEntries: ["/does-not-exist"] });
+    render(<RouterProvider router={missing} />);
+    expect(await screen.findByRole("heading", { name: "페이지를 찾을 수 없습니다" })).toBeInTheDocument();
   });
 });

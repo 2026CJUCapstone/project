@@ -12,23 +12,37 @@ from app.models import database as m
 from app.services import execution_runtime
 from app.services.auth import create_access_token
 from tests.test_durable_queue import replicas
+from tests.test_judge_metrics import full_report
+from tests.test_judge_policy import install_synthetic_registry, policy_fixture
+from app.core.config import settings
 
 
 @pytest.fixture
-def environment(replicas, monkeypatch):
+def environment(replicas, monkeypatch, tmp_path):
     def database():
         with replicas[0]() as db: yield db
     app.dependency_overrides[get_db] = database
     monkeypatch.setattr(execution_runtime, 'SessionLocal', replicas[1])
+    install_synthetic_registry(tmp_path, monkeypatch)
+    monkeypatch.setattr(settings, 'JUDGE_WORKER_CLASS', 'test-cpu')
     with replicas[0]() as db:
         db.add(m.User(id='solver', username='solver', hashed_password='', role='user'))
         db.flush()
+        sample=[{'input':'sample', 'expected_output':'42'}]
+        hidden=[{'input':'secret', 'expected_output':'42'}]
         db.add(m.Problem(id='problem', creator_id='solver', title='original', description='', difficulty='iron5',
-            points=100, tags=[], test_cases={'sample':[{'input':'sample', 'expected_output':'42'}],
-                                           'hidden':[{'input':'secret', 'expected_output':'42'}]}))
+            points=100, tags=[], test_cases={'sample':sample, 'hidden':hidden},
+            judge_policy=policy_fixture(sample,hidden,('python',))))
         db.commit()
     yield replicas, {'Authorization':f"Bearer {create_access_token({'sub':'solver'})}"}
     app.dependency_overrides.pop(get_db, None)
+
+
+def accepted(claim):
+    return {'verdict':'accepted', 'value':{
+        'sample_passed_cases':1, 'grading_completed':True,
+        'grading_passed':True, 'details':[],
+        '_resource_report':full_report(claim.payload)}}
 
 
 @pytest.mark.asyncio
@@ -44,14 +58,14 @@ async def test_expired_practice_receipt_never_reexecutes_or_changes_awarded_poin
         assert first.status_code == 202
         job_id = first.json()['executionId']
         claim = queue.claim()
-        assert queue.finish(job_id, claim.token, {'verdict': 'accepted', 'value': {
-            'sample_passed_cases': 1, 'grading_completed': True, 'grading_passed': True, 'details': []}})
+        internal_job_id = claim.id
+        assert queue.finish(internal_job_id, claim.token, accepted(claim))
         with factories[0]() as db:
-            db.get(m.ExecutionJob, job_id).finished_at = now_utc()-timedelta(days=8)
+            db.get(m.ExecutionJob, internal_job_id).finished_at = now_utc()-timedelta(days=8)
             db.flush()
             assert expire_execution_content(db, retention_days=7) == 1
-            db.query(m.Submission).filter_by(execution_job_id=job_id).delete()
-            db.query(m.CompileQueueRecord).filter_by(id=job_id).delete()
+            db.query(m.Submission).filter_by(execution_job_id=internal_job_id).delete()
+            db.query(m.CompileQueueRecord).filter_by(id=internal_job_id).delete()
             db.commit()
         for retry in (data, {**data, 'code': 'changed'}):
             response = await client.post('/api/v1/problems/problem/submit', headers=headers, json=retry)
@@ -94,8 +108,7 @@ async def test_receipt_snapshot_survives_edit_and_retry_and_dual_workers_award_o
         def finish(item):
             queue, claim = item
             barrier.wait()
-            return queue.finish(claim.id, claim.token, {'verdict':'accepted', 'value':{
-                'sample_passed_cases':1, 'grading_completed':True, 'grading_passed':True, 'details':[]}})
+            return queue.finish(claim.id, claim.token, accepted(claim))
         with ThreadPoolExecutor(2) as pool:
             assert all(pool.map(finish, zip(queues,claims)))
         result = await client.get('/api/v1/executions/'+first.json()['executionId'], headers=headers)
@@ -144,11 +157,11 @@ async def test_retry_after_ordinary_history_prune_returns_original_job(environme
         queue = execution_runtime.execution_queue()
         for _ in range(2):
             claim = queue.claim()
-            queue.finish(claim.id, claim.token, {'verdict':'accepted', 'value':{
-                'sample_passed_cases':1, 'grading_completed':True, 'grading_passed':True, 'details':[]}})
+            queue.finish(claim.id, claim.token, accepted(claim))
         with factories[1]() as db:
             assert db.query(m.Submission).count() == 1
-            assert db.get(m.Submission, first.json()['id']) is None
+            assert db.query(m.Submission).join(m.ExecutionJob).filter(
+                m.ExecutionJob.public_id == first.json()['executionId']).first() is None
         repeated = await client.post('/api/v1/problems/problem/submit', headers=identity, json=data)
         assert repeated.status_code == 202, repeated.text
         assert repeated.json()['id'] == first.json()['id']

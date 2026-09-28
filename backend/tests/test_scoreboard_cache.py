@@ -16,6 +16,7 @@ from app.core.database import Base
 from app.models import database as m
 from app.services import contests, scoreboard_cache
 from app.services.execution_results import publish_result, publish_transition
+from app.services.public_identity import public_user_key
 
 
 class _MemoryCache:
@@ -115,7 +116,7 @@ def memory_cache(monkeypatch):
 
 
 def _row(board, user_id="alice"):
-    return next(row for row in board["rows"] if row["userId"] == user_id)
+    return next(row for row in board["rows"] if row["userId"] == public_user_key(user_id))
 
 
 def _revision(db, contest_id="contest"):
@@ -198,6 +199,9 @@ def test_missing_or_corrupt_public_cache_falls_back_to_receipt_order_recalculati
 
 
 def test_revision_bumps_share_write_transactions_and_result_publication(scoreboard_env):
+    from app.services.durable_queue import execution_payload_hash
+    from tests.test_judge_metrics import full_report
+    from tests.test_measured_judge import payload_fixture
     env = scoreboard_env
     assert _revision(env.db) == 0
     scoreboard_cache.bump_scoreboard_revision(env.db, env.contest.id)
@@ -205,9 +209,11 @@ def test_revision_bumps_share_write_transactions_and_result_publication(scoreboa
     env.db.expire_all()
     assert _revision(env.db) == 0
 
+    payload = payload_fixture()
     job = m.ExecutionJob(
         id="job", owner_key="account:alice", quota_key="account:alice", request_id="contest-job",
-        payload_hash="a" * 64, kind="contest", payload={}, status="queued", received_at=env.now,
+        payload_hash=execution_payload_hash('contest',payload)[0], kind="contest",
+        payload=payload, status="queued", received_at=env.now,
     )
     env.db.add(job)
     env.db.flush()
@@ -220,12 +226,16 @@ def test_revision_bumps_share_write_transactions_and_result_publication(scoreboa
     assert _revision(env.db) == 1
     assert env.db.get(m.ContestSubmission, receipt.id).status == "running"
 
-    publish_result(env.db, job.id, {"verdict": "wrong_answer", "value": {}})
+    def wrong_result():
+        report = full_report(payload)
+        report['cases'] = [{**report['cases'][0], 'verdict':'wrong_answer'}]
+        return {"verdict":"wrong_answer", "value":{"_resource_report":report}}
+    publish_result(env.db, job.id, wrong_result())
     env.db.commit()
     assert _revision(env.db) == 2
     assert env.db.get(m.ContestSubmission, receipt.id).status == "completed"
     # Replaying an already-published terminal result changes no scoreboard fact.
-    publish_result(env.db, job.id, {"verdict": "wrong_answer", "value": {}})
+    publish_result(env.db, job.id, wrong_result())
     env.db.commit()
     assert _revision(env.db) == 2
 

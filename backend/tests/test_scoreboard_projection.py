@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
+from app.services.public_identity import public_user_key
 
 
 @pytest.fixture
@@ -109,13 +110,16 @@ def test_scoreboard_projects_submission_fields_without_code(scoreboard_env):
         event.remove(engine, "before_cursor_execute", capture_sql)
 
     rows = {row["userId"]: row for row in board["rows"]}
-    assert rows["alice"]["totalPoints"] == 500
-    assert rows["alice"]["penaltySeconds"] == 20 * 60 + 5 * 60
-    assert rows["alice"]["problems"][0]["wrongAttempts"] == 1
-    assert rows["alice"]["problems"][0]["acceptedAt"].startswith("2030-01-01T00:20:00")
-    assert rows["bob"]["totalPoints"] == 500
-    assert rows["bob"]["penaltySeconds"] == 25 * 60
-    assert rows["alice"]["rank"] == rows["bob"]["rank"] == 1
+    alice = rows[public_user_key("alice")]
+    bob = rows[public_user_key("bob")]
+    assert alice["totalPoints"] == 500
+    assert alice["penaltySeconds"] == 20 * 60 + 5 * 60
+    assert alice["problems"][0]["wrongAttempts"] == 1
+    assert alice["problems"][0]["contestProblemId"] == "A"
+    assert alice["problems"][0]["acceptedAt"].startswith("2030-01-01T00:20:00")
+    assert bob["totalPoints"] == 500
+    assert bob["penaltySeconds"] == 25 * 60
+    assert alice["rank"] == bob["rank"] == 1
     assert board["pendingCount"] == 1
 
     submission_selects = [

@@ -15,7 +15,7 @@ test_dir = Path(tempfile.mkdtemp(prefix='bpp-contest-e2e-'))
 os.environ.update(DATABASE_URL=f"sqlite:///{(test_dir / 'test.db').as_posix()}",
                   ENVIRONMENT='development', SECRET_KEY='local-contest-test-key-not-for-production',
                   ADMIN_USERNAME='contest_admin', ADMIN_PASSWORD='LocalContestTest!123', REDIS_URL='',
-                  CORS_ORIGINS='http://127.0.0.1:4175', COMPILER_QUEUE_CONCURRENCY='2',
+                  CORS_ORIGINS=os.environ.get('BPP_TEST_ORIGIN', 'http://127.0.0.1:4175'), COMPILER_QUEUE_CONCURRENCY='2',
                   AUTO_INITIALIZE_DB='true', EMBEDDED_EXECUTION_WORKER='true',
                   RUNTIME_INSTANCE_ID='', RUNTIME_POOL_ID='local-contest-fixture',
                   SANDBOX_POOL_ID='local-contest-fixture')

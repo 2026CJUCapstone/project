@@ -15,7 +15,7 @@ const routeChecks: RouteCheck[] = [
     },
   },
   {
-    path: '/challenges',
+    path: '/problems',
     ready: async page => {
       await expect(page.getByRole('heading', { name: '문제 목록', exact: true })).toBeVisible();
     },
@@ -171,8 +171,8 @@ test('desktop deep-links, refreshes, and protected routes work in the isolated D
   }
 
   await page.goto(appPath('/'));
-  await page.getByRole('button', { name: '챌린지', exact: true }).click();
-  await expect(page).toHaveURL(/\/webcompiler\/challenges$/);
+  await page.getByRole('button', { name: '문제', exact: true }).click();
+  await expect(page).toHaveURL(/\/webcompiler\/problems$/);
   await expect(page.getByRole('heading', { name: '문제 목록', exact: true })).toBeVisible();
   await assertNoHorizontalOverflow(page);
   expect(pageErrors).toEqual([]);
@@ -212,11 +212,12 @@ test('a disposable user can register, save, clear, and reload profile fields thr
   const avatarUrl = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%2F%3E';
 
   const openProfile = async (expectedEmail: string) => {
+    await page.goto(appPath('/'));
     const refreshed = page.waitForResponse(response =>
       response.request().method() === 'GET' && response.url().includes('/api/v1/auth/me'),
     );
     await page.getByTitle('설정').click();
-    await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible();
     expect((await refreshed).ok()).toBeTruthy();
     await expect(page.getByLabel('이메일', { exact: true })).toHaveValue(expectedEmail);
   };
@@ -229,7 +230,7 @@ test('a disposable user can register, save, clear, and reload profile fields thr
     expect(response.ok()).toBeTruthy();
     expect(response.request().postDataJSON()).toEqual(expected);
     expect(await response.json()).toMatchObject(expected);
-    await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toHaveCount(0);
+    await expect(page.getByText('프로필을 저장했습니다.', { exact: true })).toBeVisible();
   };
   const readPersistedProfile = async () => await page.evaluate(async () => {
     const token = localStorage.getItem('authToken');
@@ -275,7 +276,7 @@ test('a disposable user can register, save, clear, and reload profile fields thr
 
   await page.evaluate(() => localStorage.removeItem('b-compiler-user'));
   await page.reload();
-  await expect(page.getByText(profileNickname, { exact: true })).toBeVisible();
+  await expect(page.locator('header').getByText(profileNickname, { exact: true })).toBeVisible();
   expect(await readPersistedProfile()).toEqual({
     status: 200,
     email: profileEmail,
@@ -294,7 +295,7 @@ test('a disposable user can register, save, clear, and reload profile fields thr
 
   await page.evaluate(() => localStorage.removeItem('b-compiler-user'));
   await page.reload();
-  await expect(page.getByText(username, { exact: true })).toBeVisible();
+  await expect(page.locator('header').getByText(username, { exact: true })).toBeVisible();
   expect(await readPersistedProfile()).toEqual({ status: 200, email: null, nickname: null, avatarUrl: null });
   await openProfile('');
   await expect(page.getByLabel('닉네임', { exact: true })).toHaveValue('');
@@ -323,7 +324,7 @@ test('a delayed real current-user read cannot replace typed or newly saved profi
     expect(response.ok()).toBeTruthy();
     expect(response.request().postDataJSON()).toMatchObject(expected);
     expect(await response.json()).toMatchObject(expected);
-    await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toHaveCount(0);
+    await expect(page.getByText('프로필을 저장했습니다.', { exact: true })).toBeVisible();
   };
   const readPersistedProfile = async () => await page.evaluate(async () => {
     const token = localStorage.getItem('authToken');
@@ -351,19 +352,22 @@ test('a delayed real current-user read cannot replace typed or newly saved profi
 
   const openingRead = await holdOneRealCurrentUserRead(page);
   await page.getByTitle('설정').click();
-  await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible();
   await openingRead.fetched;
+  // Initial profile GET must finish before editing is allowed.
+  await expect(page.getByLabel('이메일', { exact: true })).toHaveCount(0);
+  await releaseReadAndWaitForRender(page, openingRead);
   await page.getByLabel('이메일', { exact: true }).fill(firstEmail);
   await page.getByLabel('닉네임', { exact: true }).fill(firstNickname);
-  await releaseReadAndWaitForRender(page, openingRead);
   await expect(page.getByLabel('이메일', { exact: true })).toHaveValue(firstEmail);
   await expect(page.getByLabel('닉네임', { exact: true })).toHaveValue(firstNickname);
   await saveProfile({ email: firstEmail, nickname: firstNickname });
   await openingRead.cleanup();
 
   const preSaveRead = await holdOneRealCurrentUserRead(page);
-  await page.getByTitle('설정').click();
-  await expect(page.getByRole('heading', { name: '내 프로필', exact: true })).toBeVisible();
+  // Hold the Header's read on reload; the page's independent read can finish.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible();
   await preSaveRead.fetched;
   await page.getByLabel('이메일', { exact: true }).fill(savedEmail);
   await page.getByLabel('닉네임', { exact: true }).fill(savedNickname);
@@ -375,6 +379,6 @@ test('a delayed real current-user read cannot replace typed or newly saved profi
   expect(await readPersistedProfile()).toEqual({ status: 200, email: savedEmail, nickname: savedNickname });
   await page.evaluate(() => localStorage.removeItem('b-compiler-user'));
   await page.reload();
-  await expect(page.getByText(savedNickname, { exact: true })).toBeVisible();
+  await expect(page.locator('header').getByText(savedNickname, { exact: true })).toBeVisible();
   expect(await readPersistedProfile()).toEqual({ status: 200, email: savedEmail, nickname: savedNickname });
 });

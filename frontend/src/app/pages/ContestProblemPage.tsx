@@ -1,10 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, useParams } from 'react-router';
+import { getAuthScope, subscribeAuthIdentity } from '../services/authIdentity';
 import { contestRequest, type ContestProblemDetail } from '../services/contestApi';
 import { ContestClock } from './ContestDetail';
 import { IDE } from './IDE';
 
 export function ContestProblemPage() {
+  const scope = useSyncExternalStore(subscribeAuthIdentity, getAuthScope, () => 'guest');
+  // A contest problem may be private to one participant. Remount before the
+  // replacement account's request starts so no statement, sample or IDE state
+  // from the previous authorization scope remains visible.
+  return <ContestProblemPageForScope key={scope} />;
+}
+
+function ContestProblemPageForScope() {
   const { contestId, contestProblemId } = useParams();
   const [problem, setProblem] = useState<ContestProblemDetail | null>(null);
   const [error, setError] = useState('');

@@ -1,10 +1,10 @@
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.main import app
@@ -16,11 +16,19 @@ from app.services.auth import create_access_token
 from app.services import execution_runtime, durable_queue, compiler as compiler_service
 from app.services.execution_worker import ExecutionWorker
 from tests.execution_helpers import finish_receipt
+from tests.test_judge_policy import policy_fixture
+from app.models.judge_policy import SUPPORTED_LANGUAGES
+from app.models.judge_test_manifest import MAX_TEST_DATA_BYTES
+from app.core.config import settings
+from app.services.judge_policy import content_hash, freeze_stored_submission
+from app.services import problem_authoring
 
 
 @pytest.fixture
-def env(tmp_path, monkeypatch):
-    engine = create_engine(f"sqlite:///{(tmp_path / 'contest.db').as_posix()}", connect_args={"check_same_thread": False})
+def env(tmp_path, monkeypatch, contest_engine):
+    engine = contest_engine
+    from tests.test_judge_policy import install_synthetic_registry
+    install_synthetic_registry(tmp_path,monkeypatch)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     db = factory()
@@ -33,6 +41,7 @@ def env(tmp_path, monkeypatch):
         monkeypatch.setattr(module, "now_utc", lambda: clock[0])
     monkeypatch.setattr(service, "SessionLocal", factory)
     monkeypatch.setattr(execution_runtime, 'SessionLocal', factory)
+    monkeypatch.setattr(execution_runtime.settings, 'JUDGE_WORKER_CLASS', 'test-cpu')
     monkeypatch.setattr(service, "invalidate_rating_cache", lambda *args: None)
 
     async def compile_ok(**kwargs):
@@ -41,6 +50,33 @@ def env(tmp_path, monkeypatch):
         return {"exit_code": 0, "stdout": "42", "stderr": "", "execution_time": 1}
     monkeypatch.setattr(compiler_service.compiler_instance, "_execute", compile_ok)
     monkeypatch.setattr(compiler_service.compiler_instance, "run", run_ok)
+    # These tests verify contest transactions/ranking, not cgroup enforcement.
+    # Keep their existing fake compiler explicit. The real dispatcher must
+    # refuse measured jobs until a capable supervisor is installed (separate test).
+    from app.services.judging import _judge_cases
+    from app.services.judge_metrics import JudgeMetrics
+    from tests.test_judge_metrics import phase_result
+    async def mock_resource_judge(runner, payload, *, contest=False):
+        class MeteredRunner:
+            async def _execute(self, **kwargs):
+                value = await runner._execute(**kwargs)
+                protected = phase_result('compile', exitCode=value.get('exit_code', 0),
+                    failureReason=value.get('failure_reason'))
+                return {**value, 'execution_phase':'compile',
+                    'resource_usage':protected['resource_usage']}
+
+            async def run(self, **kwargs):
+                value = await runner.run(**kwargs)
+                protected = phase_result('run', exitCode=value.get('exit_code', 0),
+                    failureReason=value.get('failure_reason'))
+                return {**value, 'execution_phase':'run',
+                    'resource_usage':protected['resource_usage']}
+
+        metrics = JudgeMetrics(payload)
+        result = await _judge_cases(MeteredRunner(), payload, contest=contest, metrics=metrics)
+        result['_resource_report'] = metrics.finish()
+        return result
+    monkeypatch.setattr('app.services.execution_worker.judge_code', mock_resource_judge)
     def worker():
         return ExecutionWorker(execution_runtime.execution_queue(),
             pool=SimpleNamespace(labels=lambda *args:{}, reap=lambda *args:None),
@@ -51,9 +87,11 @@ def env(tmp_path, monkeypatch):
         with factory() as session:
             yield session
     app.dependency_overrides[get_db] = session_override
-    yield SimpleNamespace(db=db, factory=factory, clock=clock, admin=admin, alice=alice, bob=bob, worker=worker)
-    app.dependency_overrides.clear()
-    db.close(); engine.dispose()
+    try:
+        yield SimpleNamespace(db=db, factory=factory, clock=clock, admin=admin, alice=alice, bob=bob, worker=worker)
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
 
 
 def headers(user):
@@ -61,26 +99,113 @@ def headers(user):
 
 
 def payload(env):
-    return {"title": "Test contest", "description": "Rules", "published": True,
+    result = {"title": "Test contest", "description": "Rules", "published": True,
             "startsAt": access.iso(env.clock[0] + timedelta(seconds=10)), "endsAt": access.iso(env.clock[0] + timedelta(seconds=100)),
             "problems": [{"points": 500, "newProblem": {"title": "Secret problem", "description": "Print 42", "difficulty": "iron5",
                 "tags": ["io"], "points": 120, "testCases": [{"input": "", "expectedOutput": "42"}],
                 "hiddenTestCases": [{"input": "secret-input", "expectedOutput": "42"}]}}]}
+    problem = result['problems'][0]['newProblem']
+    problem['judgePolicy'] = policy_fixture(problem['testCases'], problem['hiddenTestCases'], SUPPORTED_LANGUAGES)
+    return result
 
 
-async def setup_contest(client, env):
-    response = await client.post('/api/v1/contests', headers=headers(env.admin), json=payload(env))
+async def authorize_private_contest(client, env, contest, *, publish=True):
+    """Install synthetic review/runner evidence for unrelated contest tests."""
+    with env.factory() as db:
+        row = db.query(m.ContestProblem).filter_by(contest_id=contest['id']).one()
+        digest = 'sha256:' + 'a' * 64
+        metadata = {
+            'sources': [{'url':'https://example.invalid/synthetic','title':'Synthetic fixture',
+                'author':'','event':'','reuseBasis':'original','reuseEvidence':'Unit-test fixture only',
+                'externalTier':None,'tierCheckedAt':None}],
+            'adaptationNotes':'Synthetic contest transaction fixture only',
+            'requiredLanguages':['python'],
+            'assets': [
+                {'role':'reference','name':'reference.py','digest':digest,'language':'python'},
+                {'role':'validator','name':'validator.py','digest':'sha256:'+'b'*64},
+                {'role':'generator','name':'generator.py','digest':'sha256:'+'c'*64},
+                {'role':'wrong_solution','name':'wrong.py','digest':'sha256:'+'d'*64},
+            ],
+        }
+        db.add(m.ProblemAuthoring(problem_id=row.problem_id, metadata_json=metadata))
+        db.flush()
+        snap = problem_authoring.current_snapshot(db, db.get(m.Problem, row.problem_id))
+        stamp = problem_authoring.fingerprint(snap)
+        for sequence, category in enumerate(problem_authoring.CATEGORIES, 1):
+            db.add(m.ProblemReviewEvent(problem_id=row.problem_id, actor_id=env.admin.id,
+                request_id=f'{contest["id"]}-{category}', request_hash=f'fixture-{category}',
+                fingerprint=stamp, category=category, decision='approved',
+                note='Synthetic fixture approval only', sequence=sequence))
+        contract = freeze_stored_submission(snap['judgePolicy'], 'python', snap['sample'], snap['hidden'], settings=settings)
+        db.add(m.ProblemValidationAttestation(job_id='fixture-'+contest['id'],
+            problem_id=row.problem_id, contest_id=contest['id'], contest_problem_id=row.id,
+            problem_snapshot_hash=content_hash(snap), authoring_fingerprint=stamp,
+            language='python', source_hash=digest, reference_asset_digest=digest,
+            policy_hash=contract['policyHash'], test_suite_hash=contract['testSuiteHash']))
+        db.commit()
+    manage = (await client.get(f"/api/v1/contests/{contest['id']}/manage", headers=headers(env.admin))).json()
+    if not publish:
+        return manage
+    publish = payload(env); publish['problems'] = manage['problems']; publish['published'] = True
+    response = await client.put(f"/api/v1/contests/{contest['id']}", headers=headers(env.admin), json=publish)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def setup_contest(client, env, *, join=True):
+    draft = payload(env); draft['published'] = False
+    response = await client.post('/api/v1/contests', headers=headers(env.admin), json=draft)
     assert response.status_code == 201, response.text
-    contest = response.json()
-    for user in (env.alice, env.bob):
-        assert (await client.post(f"/api/v1/contests/{contest['id']}/join", headers=headers(user))).status_code == 200
+    contest = await authorize_private_contest(client, env, response.json())
+    if join:
+        for user in (env.alice, env.bob):
+            assert (await client.post(f"/api/v1/contests/{contest['id']}/join", headers=headers(user))).status_code == 200
     return contest, contest["problems"][0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target', ['contest', 'practice'])
+@pytest.mark.parametrize('field,value', [
+    ('cpuMs', 300_000), ('wallMs', 300_000),
+    ('memoryBytes', 8 * 1024**3), ('pids', 4096),
+    ('judgePolicy', {'run': {'cpuMs': 300_000}}),
+])
+async def test_submit_http_rejects_client_resource_overrides_before_enqueue(env, target, field, value):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        contest, problem = await setup_contest(client, env)
+        if target == 'contest':
+            env.clock[0] += timedelta(seconds=10)
+            url = f"/api/v1/contests/{contest['id']}/problems/{problem['id']}/submit"
+            valid = {'code': 'print(42)', 'language': 'python', 'requestId': 'override-check'}
+        else:
+            env.clock[0] += timedelta(seconds=101)
+            service.finalize_contests()
+            url = f"/api/v1/problems/{problem['problemId']}/submit"
+            valid = {'code': 'print(42)', 'language': 'python'}
+        before = tuple(env.db.query(model).count() for model in
+                       (m.ExecutionJob, m.ContestSubmission, m.Submission))
+        rejected = await client.post(url, headers=headers(env.alice), json={**valid, field: value})
+        assert rejected.status_code == 422, rejected.text
+        env.db.expire_all()
+        assert tuple(env.db.query(model).count() for model in
+                     (m.ExecutionJob, m.ContestSubmission, m.Submission)) == before
+        admitted = await client.post(url, headers=headers(env.alice), json=valid)
+        assert admitted.status_code == 202, admitted.text
+        env.db.expire_all()
+        job_id = admitted.json()['id' if target == 'contest' else 'executionId']
+        if target == 'contest':
+            job_id = env.db.query(m.ContestSubmission).filter_by(public_id=job_id).one().execution_job_id
+            job = env.db.get(m.ExecutionJob, job_id)
+        else:
+            job = env.db.query(m.ExecutionJob).filter_by(public_id=job_id).one()
+        assert job is not None and job.payload['judge_contract']['profile']['run']['cpuMs'] < 300_000
 
 
 @pytest.mark.asyncio
 async def test_visibility_permissions_and_publication(env):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         assert (await c.post('/api/v1/contests', headers=headers(env.alice), json=payload(env))).status_code == 403
+        assert (await c.post('/api/v1/contests', headers=headers(env.admin), json=payload(env))).status_code == 409
         contest, p = await setup_contest(c, env)
         root = f"/api/v1/contests/{contest['id']}"
         assert (await c.get(root)).json()["problems"] == []
@@ -126,7 +251,17 @@ async def test_deadline_idempotency_and_late_judging(env):
         env.db.expire_all()
         assert env.db.get(m.User, 'alice').total_score == 120
         assert env.db.query(m.UserProblemScore).count() == 1
-        assert (await c.get(f"{root}/submissions/{response.json()['id']}", headers=headers(env.bob))).status_code == 404
+        submission_url = f"{root}/submissions/{response.json()['id']}"
+        owner_submission = await c.get(submission_url, headers=headers(env.alice))
+        assert owner_submission.status_code == 200
+        assert owner_submission.headers['cache-control'] == 'no-store'
+        assert owner_submission.json()['code'] == body['code']
+        assert (await c.get(submission_url, headers=headers(env.bob))).status_code == 404
+        async with AsyncClient(transport=ASGITransport(app=app, root_path='/webcompiler'), base_url='http://test') as prefixed:
+            prefixed_submission = await prefixed.get(submission_url, headers=headers(env.alice))
+        assert prefixed_submission.status_code == 200
+        assert prefixed_submission.headers['cache-control'] == 'no-store'
+        assert prefixed_submission.json()['code'] == body['code']
         assert (await c.get(f"{root}/scoreboard")).json()['rows'][0]['totalPoints'] == 500
 
 
@@ -152,12 +287,142 @@ async def test_snapshot_and_edit_lock(env):
         assert (await c.put(f"/api/v1/contests/{contest['id']}",headers=headers(env.admin),json=data)).status_code == 409
 
 
+@pytest.mark.asyncio
+async def test_existing_problem_cannot_bypass_contest_test_suite_bounds(env):
+    # Existing public problems bypass ProblemCreate validation when selected by
+    # ID. Publication must still check the frozen snapshot before committing.
+    public = m.Problem(creator_id='admin', title='Legacy tests', description='old',
+                       difficulty='iron5', tags=[], points=50,
+                       test_cases=[{'input':'', 'expectedOutput':'42'}] * 201)
+    env.db.add(public); env.db.commit()
+    data = payload(env)
+    data['problems'] = [{'problemId':public.id, 'points':200}]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as c:
+        excessive_count = await c.post('/api/v1/contests', headers=headers(env.admin), json=data)
+        assert excessive_count.status_code == 400
+        assert env.db.query(m.Contest).count() == 0
+
+        public.test_cases = [{'input':'x' * (MAX_TEST_DATA_BYTES + 1), 'expectedOutput':'42'}]
+        env.db.commit()
+        excessive_data = await c.post('/api/v1/contests', headers=headers(env.admin), json=data)
+        assert excessive_data.status_code == 400
+        assert env.db.query(m.Contest).count() == 0
+
+        public.test_cases = [{'input':'', 'expectedOutput':'42'}] * 200
+        env.db.commit()
+        at_limit = await c.post('/api/v1/contests', headers=headers(env.admin), json=data)
+        assert at_limit.status_code == 201, at_limit.text
+
+
+@pytest.mark.asyncio
+async def test_invalid_draft_update_rolls_back_replacement_and_private_cleanup(env):
+    draft_body = payload(env)
+    draft_body['published'] = False
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as c:
+        created = await c.post('/api/v1/contests', headers=headers(env.admin), json=draft_body)
+        assert created.status_code == 201, created.text
+        contest = created.json()
+        root = f"/api/v1/contests/{contest['id']}"
+        private_problem_id = contest['problems'][0]['problemId']
+
+        with env.factory() as db:
+            db.add(m.ProblemAuthoring(problem_id=private_problem_id, metadata_json={
+                'sources': [{'url': 'https://example.invalid/source', 'title': 'Source',
+                             'author': '', 'event': '', 'reuseBasis': 'pending',
+                             'reuseEvidence': '', 'externalTier': None, 'tierCheckedAt': None}],
+                'adaptationNotes': 'Preserve this private authoring record on rollback.',
+                'assets': [],
+                'requiredLanguages': ['python'],
+            }))
+            bad_public = m.Problem(
+                creator_id=env.admin.id,
+                title='Invalid legacy suite',
+                description='Must fail during the transactional replacement.',
+                difficulty='iron5',
+                tags=[],
+                points=50,
+                test_cases=[{'input': str(index), 'expectedOutput': str(index)} for index in range(201)],
+            )
+            db.add(bad_public)
+            db.commit()
+            bad_public_id = bad_public.id
+
+        manage = await c.get(root + '/manage', headers=headers(env.admin))
+        assert manage.status_code == 200
+        original_edit_problems = manage.json()['problems']
+        with env.factory() as db:
+            original_contest = db.get(m.Contest, contest['id'])
+            original_fields = (
+                original_contest.title,
+                original_contest.description,
+                original_contest.starts_at,
+                original_contest.ends_at,
+                original_contest.published,
+                original_contest.scoreboard_revision,
+            )
+            original_rows = [
+                (row.id, row.problem_id, row.position, row.points, row.is_new, deepcopy(row.snapshot))
+                for row in service.problem_rows(db, contest['id'])
+            ]
+            original_authoring = deepcopy(db.get(m.ProblemAuthoring, private_problem_id).metadata_json)
+            original_counts = {
+                'problems': db.query(m.Problem).count(),
+                'authoring': db.query(m.ProblemAuthoring).count(),
+                'mappings': db.query(m.ContestProblem).count(),
+            }
+
+        invalid_update = {
+            **draft_body,
+            'title': 'This title must roll back',
+            'description': 'This description must roll back',
+            'startsAt': access.iso(env.clock[0] + timedelta(minutes=20)),
+            'endsAt': access.iso(env.clock[0] + timedelta(hours=3)),
+            'problems': [
+                original_edit_problems[0],
+                {'problemId': bad_public_id, 'points': 300},
+            ],
+        }
+        rejected = await c.put(root, headers=headers(env.admin), json=invalid_update)
+        assert rejected.status_code == 400, rejected.text
+
+        # A new session is essential: the failed request deleted and flushed the
+        # old mappings before it reached the invalid existing problem suite.
+        with env.factory() as db:
+            rolled_back_contest = db.get(m.Contest, contest['id'])
+            assert (
+                rolled_back_contest.title,
+                rolled_back_contest.description,
+                rolled_back_contest.starts_at,
+                rolled_back_contest.ends_at,
+                rolled_back_contest.published,
+                rolled_back_contest.scoreboard_revision,
+            ) == original_fields
+            rolled_back_rows = [
+                (row.id, row.problem_id, row.position, row.points, row.is_new, deepcopy(row.snapshot))
+                for row in service.problem_rows(db, contest['id'])
+            ]
+            assert rolled_back_rows == original_rows
+            assert db.get(m.Problem, private_problem_id) is not None
+            assert db.get(m.ProblemAuthoring, private_problem_id).metadata_json == original_authoring
+            assert {
+                'problems': db.query(m.Problem).count(),
+                'authoring': db.query(m.ProblemAuthoring).count(),
+                'mappings': db.query(m.ContestProblem).count(),
+            } == original_counts
+
+        valid_update = {**draft_body, 'problems': original_edit_problems}
+        saved = await c.put(root, headers=headers(env.admin), json=valid_update)
+        assert saved.status_code == 200, saved.text
+
+
 def test_scoring_first_accept_penalties_ties_and_no_duplicate_rewards(env):
     start = env.clock[0]
     contest = m.Contest(id='c',creator_id='admin',title='Contest',description='',starts_at=start,ends_at=start+timedelta(hours=2),published=True)
     env.db.add(contest)
     for i in range(2):
         env.db.add(m.Problem(id=f'p{i}', creator_id='admin', title='P', description='', difficulty='iron5', tags=[],points=100,test_cases=[]))
+    env.db.flush()  # Persist parents before FK-only links; SQLite hid this ordering bug.
+    for i in range(2):
         env.db.add(m.ContestProblem(id=f'cp{i}',contest_id='c',problem_id=f'p{i}',position=i,points=500,is_new=False,snapshot={'practicePoints':100}))
     for user in ('alice','bob'):
         env.db.add(m.ContestParticipant(contest_id='c',user_id=user))
@@ -182,6 +447,79 @@ def test_scoring_first_accept_penalties_ties_and_no_duplicate_rewards(env):
     assert env.db.get(m.User,'bob').total_score==100
 
 
+def test_finalizer_exception_rolls_back_claim_awards_evidence_and_revision(env, monkeypatch):
+    finished = env.clock[0] - timedelta(seconds=1)
+    with env.factory() as db:
+        db.add(m.Contest(
+            id='atomic-finalize', creator_id=env.admin.id, title='Atomic finalize', description='',
+            starts_at=finished - timedelta(hours=1), ends_at=finished, published=True,
+        ))
+        db.add(m.Problem(
+            id='atomic-problem', creator_id=env.admin.id, title='Atomic problem', description='',
+            difficulty='iron5', tags=[], points=100, test_cases=[],
+        ))
+        db.flush()
+        db.add(m.ContestProblem(
+            id='atomic-contest-problem', contest_id='atomic-finalize', problem_id='atomic-problem',
+            position=0, points=500, is_new=False, snapshot={'practicePoints': 100},
+        ))
+        db.add(m.ContestParticipant(contest_id='atomic-finalize', user_id=env.alice.id))
+        db.flush()
+        db.add(m.ContestSubmission(
+            id='atomic-accepted', contest_id='atomic-finalize',
+            contest_problem_id='atomic-contest-problem', user_id=env.alice.id,
+            request_id='atomic-finalize-request', language='python', code='print(42)',
+            received_at=finished - timedelta(minutes=1), status='completed', verdict='accepted',
+        ))
+        db.commit()
+
+    original_bump = service.bump_scoreboard_revision
+
+    def fail_after_awards(_db, _contest_id):
+        raise RuntimeError('injected finalizer failure before commit')
+
+    monkeypatch.setattr(service, 'bump_scoreboard_revision', fail_after_awards)
+    with pytest.raises(RuntimeError, match='injected finalizer failure'):
+        service.finalize_contests()
+
+    with env.factory() as db:
+        contest = db.get(m.Contest, 'atomic-finalize')
+        assert contest.finalized_at is None
+        assert contest.scoreboard_revision == 0
+        assert db.get(m.User, env.alice.id).total_score == 0
+        assert db.query(m.UserProblemScore).filter_by(
+            user_id=env.alice.id, challenge_id='atomic-problem'
+        ).count() == 0
+        assert db.query(m.SolveEvidence).filter_by(
+            user_id=env.alice.id, problem_id='atomic-problem'
+        ).count() == 0
+
+    monkeypatch.setattr(service, 'bump_scoreboard_revision', original_bump)
+    service.finalize_contests()
+    service.finalize_contests()
+
+    with env.factory() as db:
+        contest = db.get(m.Contest, 'atomic-finalize')
+        assert contest.finalized_at == env.clock[0]
+        assert contest.scoreboard_revision == 1
+        assert db.get(m.User, env.alice.id).total_score == 100
+        score = db.query(m.UserProblemScore).filter_by(
+            user_id=env.alice.id, challenge_id='atomic-problem'
+        ).one()
+        assert score.points_awarded == 100
+        evidence = db.query(m.SolveEvidence).filter_by(
+            user_id=env.alice.id, problem_id='atomic-problem'
+        ).one()
+        assert evidence.source_kind == 'contest'
+        assert evidence.source_id == 'atomic-accepted'
+        assert db.query(m.UserProblemScore).filter_by(
+            user_id=env.alice.id, challenge_id='atomic-problem'
+        ).count() == 1
+        assert db.query(m.SolveEvidence).filter_by(
+            user_id=env.alice.id, problem_id='atomic-problem'
+        ).count() == 1
+
+
 @pytest.mark.asyncio
 async def test_expired_lease_recovery_and_compile_error(env, monkeypatch):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
@@ -203,7 +541,7 @@ async def test_expired_lease_recovery_and_compile_error(env, monkeypatch):
         result = await env.worker()._execute(recovered)
         assert queue.finish(recovered.id, recovered.token, result)
         env.db.expire_all()
-        record=env.db.get(m.ContestSubmission,r.json()['id'])
+        record=env.db.query(m.ContestSubmission).filter_by(public_id=r.json()['id']).one()
         assert record.status=='completed' and record.verdict=='compile_error'
         assert service.scoreboard(env.db,env.db.get(m.Contest,contest['id']))['rows'][0]['penaltySeconds']==0
 
@@ -212,8 +550,7 @@ async def test_expired_lease_recovery_and_compile_error(env, monkeypatch):
 @pytest.mark.parametrize('language', ['bpp', 'c', 'cpp', 'python', 'java', 'javascript'])
 async def test_exact_start_late_join_and_language_routing(env, monkeypatch, language):
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as c:
-        response = await c.post('/api/v1/contests', headers=headers(env.admin), json=payload(env))
-        contest = response.json(); p = contest['problems'][0]
+        contest, p = await setup_contest(c, env, join=False)
         root = f"/api/v1/contests/{contest['id']}"
         url = f"{root}/problems/{p['id']}/submit"
         body = {'code':'solution', 'language':language, 'requestId':'start'}
@@ -255,7 +592,7 @@ async def test_system_retry_and_shutdown_recovery(env, monkeypatch):
         with pytest.raises(asyncio.CancelledError):
             await task
         env.db.expire_all()
-        assert env.db.get(m.ContestSubmission, response.json()['id']).status == 'running'
+        assert env.db.query(m.ContestSubmission).filter_by(public_id=response.json()['id']).one().status == 'running'
         # Cancellation never releases capacity by assumption. The next worker
         # first reaps this expired claim, then retries the persisted receipt.
         env.clock[0] += timedelta(seconds=121)
@@ -264,10 +601,10 @@ async def test_system_retry_and_shutdown_recovery(env, monkeypatch):
         monkeypatch.setattr(compiler_service.compiler_instance, '_execute', unavailable)
         assert await env.worker().run_once()
         env.db.expire_all()
-        assert env.db.get(m.ContestSubmission, response.json()['id']).status == 'queued'
+        assert env.db.query(m.ContestSubmission).filter_by(public_id=response.json()['id']).one().status == 'queued'
         assert await env.worker().run_once()
         env.db.expire_all()
-        record = env.db.get(m.ContestSubmission, response.json()['id'])
+        record = env.db.query(m.ContestSubmission).filter_by(public_id=response.json()['id']).one()
         assert record.status == 'completed' and record.verdict == 'system_error'
 
 
@@ -279,9 +616,23 @@ async def test_draft_edit_publish_and_no_hidden_metadata(env):
         root = f"/api/v1/contests/{contest['id']}"
         assert (await c.get(root)).status_code == 404
         assert (await c.get('/api/v1/contests')).json() == []
-        manage = (await c.get(root+'/manage',headers=headers(env.admin))).json()
-        data['problems'] = manage['problems']; data['published'] = True
+        manage_response = await c.get(root+'/manage',headers=headers(env.admin))
+        assert manage_response.status_code == 200
+        assert manage_response.headers['cache-control'] == 'no-store'
+        manage = manage_response.json()
+        assert manage['problems'][0]['contestProblemId'] == contest['problems'][0]['id']
+        assert manage['problems'][0]['newProblem']['hiddenTestCases'][0]['input'] == 'secret-input'
+        async with AsyncClient(transport=ASGITransport(app=app, root_path='/webcompiler'), base_url='http://test') as prefixed:
+            prefixed_manage = await prefixed.get(root+'/manage', headers=headers(env.admin))
+        assert prefixed_manage.status_code == 200
+        assert prefixed_manage.headers['cache-control'] == 'no-store'
+        assert prefixed_manage.json()['problems'][0]['newProblem']['hiddenTestCases'][0]['input'] == 'secret-input'
+        data['problems'] = manage['problems']
         data['problems'][0]['newProblem']['title'] = 'Revised secret'
+        revised = await c.put(root,headers=headers(env.admin),json=data)
+        assert revised.status_code == 200, revised.text
+        authorized = await authorize_private_contest(c, env, revised.json(), publish=False)
+        data['problems'] = authorized['problems']; data['published'] = True
         assert (await c.put(root,headers=headers(env.admin),json=data)).status_code == 200
         assert 'Revised secret' not in (await c.get(root)).text
         assert 'secret-input' not in (await c.get(root+'/scoreboard')).text

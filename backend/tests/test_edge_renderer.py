@@ -158,7 +158,8 @@ def test_render_caps_shutdown_and_disables_post_retry():
     rendered = render(layout(), release())
 
     assert rendered.count('worker_shutdown_timeout 150s;') == 1
-    assert rendered.count('proxy_next_upstream off;') == 1
+    # Global policy plus the two streaming-upload locations on each listener.
+    assert rendered.count('proxy_next_upstream off;') == 5
 
 
 def test_render_routes_api_and_websocket_prefixes_to_expected_upstreams():

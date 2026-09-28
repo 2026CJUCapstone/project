@@ -23,7 +23,7 @@ def expire_execution_content(db, *, retention_days, at=None, batch_size=500):
     cutoff = at - timedelta(days=retention_days)
     execution_lock(db)
     eligible = db.query(ExecutionJob.id).filter(
-        ExecutionJob.kind.in_(('compile', 'run', 'practice', 'terminal')),
+        ExecutionJob.kind.in_(('compile', 'run', 'practice', 'terminal', 'authoring-validation-v1')),
         ExecutionJob.status.in_(('completed', 'failed')),
         ExecutionJob.finished_at < cutoff,
         ExecutionJob.content_expired_at.is_(None),

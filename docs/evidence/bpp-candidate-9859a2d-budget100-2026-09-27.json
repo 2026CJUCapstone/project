@@ -1,0 +1,26 @@
+{
+  "scope": "isolated native candidate build, not a deployed or approved runtime",
+  "image": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "before": {
+    "availableMemoryBytes": 6344282112,
+    "freeDiskBytes": 5105061888
+  },
+  "owner": "2394d06aea4e45d4b6adc788fa742ea2",
+  "containerId": "df876c5b7fb0261fab44ed765fa4ecfc575025ffb5ae517b8aa8df65f8d14bd9",
+  "scriptSha256": "19c0ab43b0937be8ea68f499e7c80be6a03dcfefb6eb2731fb500ef55d63572e",
+  "exitCode": 1,
+  "stdout": "{\"phase\": \"stage0-compile\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-asm\", \"/work/candidate/src/main.bpp\"], \"timeoutSeconds\": 120, \"exitCode\": -9, \"wallSeconds\": 100.454, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 99.879}\n{\"scope\": \"bounded native compiler candidate, NOT approved image or contest acceptance\", \"commit\": \"9859a2dc783c9346be2ab9447e1569218bcc5093\", \"sourceArchiveSha256\": \"010e9abd3e2469b6bd1b4ee006ed142e695ecf8ee8af0b81b62fac764d2355bf\", \"phases\": [{\"phase\": \"stage0-compile\", \"argv\": [\"/usr/local/libexec/bpp/v13_stage1\", \"-asm\", \"/work/candidate/src/main.bpp\"], \"timeoutSeconds\": 120, \"exitCode\": -9, \"wallSeconds\": 100.454, \"stdoutBytes\": 0, \"stdoutSha256\": \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\", \"stderrBytes\": 0, \"diagnostic\": \"\", \"cpuSeconds\": 99.879}], \"passed\": false, \"bootstrapBinarySha256\": \"8cd02a03dd9f817bc50a644160dd06b70f4dfe8982abac9f61d6faebcfa9e960\", \"error\": \"Native compiler candidate phase failed: stage0-compile\", \"cgroupCounters\": {\"cpu.stat\": \"usage_usec 100133051\\nuser_usec 99937283\\nsystem_usec 195767\\ncore_sched.force_idle_usec 0\\nnr_periods 1006\\nnr_throttled 112\\nthrottled_usec 18734\\nnr_bursts 0\\nburst_usec 0\\n\", \"memory.peak\": \"196149248\\n\", \"memory.events\": \"low 0\\nhigh 0\\nmax 0\\noom 0\\noom_kill 0\\noom_group_kill 0\\n\"}}\n",
+  "stderr": "",
+  "timedOut": false,
+  "containerState": {
+    "Status": "exited",
+    "Running": false,
+    "OOMKilled": false,
+    "ExitCode": 1,
+    "Error": ""
+  },
+  "after": {
+    "availableMemoryBytes": 6205419520,
+    "freeDiskBytes": 5104578560
+  }
+}

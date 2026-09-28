@@ -1,5 +1,19 @@
 # 감사 후속 수정 진행표
 
+## 2026-09-28 최종 후보 검증 — `30402851`
+
+최종 제품 코드 기준선 `304028511f65cbfd35762a15dbab930ef57e7026`의 새 worktree에서 백엔드 전체 **3,153 PASS/456 조건부 SKIP/10 subtests PASS/실패 0/377.83초**, 프런트 **58 files/322 PASS**, TypeScript 검사·production build가 통과했다. 작업 폴더 정리 실패를 성공으로 숨기지 않도록 보강한 뒤의 전체 결과다. 별도 서버 audit PostgreSQL·Redis에서는 정리 단위검사 3건, 일반 제출↔삭제와 대회 연결↔삭제 직렬화 2건, IP 한도를 높이고 global 한도 8을 확인한 single-host LB 1건을 합쳐 **6 PASS/150.38초**로 통과했다. 활성 WebSocket을 유지한 API 2→3→2, 대기 receipt 조회, worker 강제 교체와 lease 복구, 고유 receipt exact-once, 누적 10→50→100, readiness 실패, typed ImageNotFound 정리를 포함한다. 강제 교체에서 재현된 workdir 잔류는 정리 실패를 fail-closed하도록 고친 뒤 0건이었고, 모든 audit resource 잔여값도 0이다. [실행 증거 요약](evidence/final-serialization-global-admission-2026-09-28.json)에 명령·출력 요약·archive/전송 조립 SHA·실패 이력·정리 결과를 보존했다.
+
+운영 SHA는 여전히 `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`다. 공개 `/webcompiler/ready`가 200 HTML SPA fallback을 반환하는 문제도 다시 확인했다. push, main 병합, 배포, 운영 데이터 변경, A–J 등록은 하지 않았다. A01–A25와 5.4, A–J 패키지, 실제 검증 결과와 남은 외부 조건은 [최종 준비 상태 문서](final-readiness-acceptance-2026-09-27.md)를 기준으로 한다. 아래 과거 checkpoint는 이 판정을 덮어쓰지 않는다.
+
+## 2026-09-27 최신 상태 — migration release와 최종 잔여 조건
+
+운영은 release `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`로 교체됐다. 운영 dump 복원 리허설과 추가형 migration, 실패 시 이전 application image rollback을 실제 수행했고 PostgreSQL·Redis·PgBouncer·API-proxy identity를 보존했다. API 2개, worker, frontend 및 상태 서비스는 healthy다. C/C++/Python/Java/JavaScript와 새 B++ 실행 `694bf991-357a-4cfa-9232-082c32fa9d03`이 stdout `42`로 완료됐고, CE·RE·TLE·MLE, 기록 필터와 public request-size 경계를 확인했다. 고유 read-only GET 12개는 두 API에 7/5로 분배됐으며 live proxy는 `least_conn`이다. 대기·실행 작업과 잔여 sandbox는 검증 뒤 0이다.
+
+새로 발견한 외부 `/webcompiler/ready`의 SPA fallback은 로컬 Nginx 두 설정과 회귀 테스트에서 수정했지만 아직 운영 재배포 전이다. 현재 증거를 A01–A25 전체 운영 수락으로 확대하지 않는다. 전용 non-default Docker daemon/VM에서의 cgroup·PID·OOM·6언어×A–J 반복 측정, 실제 PostgreSQL/Redis worker 장애 복구, HTTP·WebSocket 혼합 봇 부하, scale/drain/idempotent POST와 multi-host HA, SMTP, ingress TLS/HSTS 및 백업 보존 정책은 외부 인프라·운영 선택이 필요하다. A–J bundle은 `releaseReady=false`, `published=false`인 검토 초안으로 유지하며 일정·배점·J 순위 반영·출처 이용 조건·AI 규칙·종료 후 공개·최종 언어 정책 승인 전에는 업로드하지 않는다. Git 배포 ref는 어느 branch에도 포함되지 않았고 push/main 병합도 하지 않았다. 아래의 과거 checkpoint는 이 최신 상태를 덮어쓰지 않는다.
+
+현재 worktree의 최종 전체 회귀는 **backend 3,123 PASS/450 조건부 환경 SKIP/10 subtests PASS/실패 0(408.79초)**, **frontend 58 files/322 PASS**, TypeScript 검사와 production build PASS다. readiness 수정 집중 검사는 16 PASS, runtime/readiness/release 관련 묶음은 249 PASS/6 명시적 SKIP이다. `git diff --check`도 오류 없이 통과했고 줄바꿈 경고만 남았다. 450개 skip을 수락으로 바꾸지 않는다. 실제 Linux/cgroup/별도 Docker daemon/PostgreSQL/Redis/reverse-proxy·장애/부하 기능이 있는 격리 환경이 있어야 해당 조건을 실행할 수 있다.
+
 ## 최신 결과 — 기본 LB 운영 배포 완료
 
 사용자가 축소 승인한 기본2-API LB 범위는 운영 배포 및 HTTPS6언어 실행·로그인·목록·API1개 중지 후 신규 실행까지 확인했다. 최종 release는 `eef08f2486926bbf5eb1017886d0b88634eddb45`이며 두 API/worker가 healthy다. 일반/대회 전체 채점은 운영 복사본의 격리 환경에서 검증했다. 전환 중 익명 제출1개가 TTL로 삭제되어 백업에서 그 행만 복원했고, 자동 삭제를 비활성화한 뒤 원본9개 테이블을 다시 대조했다. [배포·검증·복구 기록](basic-load-balancing-release-2026-09-10.md)에 정확한 범위와 미완료를 기록한다. 아래 전체 감사/managed lifecycle 상태를 완료로 바꾸지 않는다.
@@ -437,14 +451,14 @@ inventory-v5 전체86700은1237 passed /20 host-tool skipped /2 subtests passed(
 | A02 계정 초안 | 주 에이전트 | 로컬 검증 | v2 계정/guest 저장 키, legacy는 guest만, account switch/늦은 GET/잘못된 계정 PUT 방지 4개 테스트 통과 |
 | A03 비밀번호/SMTP | 주 에이전트 | 부분 검증 | auth_version로 기존 JWT 폐기, reset CAS/만료 경계 3개 회귀 통과. 실메일 미설정/미검증 |
 | A04 0테스트 문제 | 주 에이전트 | 로컬 검증 | 공개 생성/수정 1–200 테스트 필수, legacy 빈 테스트 제출 409. 대회 초안은 유지 |
-| A05 삭제 점수 원장 | 주 에이전트 | 로컬 검증 | deleted_at 논리 삭제, 점수/풀이/댓글/레이팅 보존·접근 차단. 동시 삭제/제출 통합 검증 남음 |
-| A06 다중 프로세스 큐 | 주 에이전트 | 부분 검증 | DB durable receipt→worker→fenced result 연결. 두 실제 API 중 접수 프로세스 종료 후 다른 API 조회/별도 worker 채점 성공(SQLite·PG). WS API/worker 강제 종료 및 실제 Nginx 경유 실행·receipt 공유 통과. 혼합 부하 검증 남음 |
+| A05 삭제 점수 원장 | 주 에이전트 | 로컬 검증 | deleted_at 논리 삭제, 점수/풀이/댓글/레이팅 보존·접근 차단. 실제 PostgreSQL에서 일반 제출↔삭제와 대회 연결↔삭제의 두 잠금 순서를 모두 검증: 삭제 선점은 새 접수·연결 거부, 제출/연결 선점은 receipt/relation 보존 후 삭제 409 |
+| A06 다중 프로세스 큐 | 주 에이전트 | 부분 검증 | DB durable receipt→worker→fenced result 연결. 두 실제 API 중 접수 프로세스 종료 후 다른 API 조회/별도 worker 채점 성공(SQLite·PG). 활성 terminal socket의 정확한 upstream API 종료→취소 1회와 survivor 신규 접수, 고유 receipt exact-once 완료 통과. 장시간 혼합 soak는 남음 |
 | A07 실행 출력/로그 | 주 에이전트 | 부분 검증 | 합산 1MiB 스트리밍/초과 종료, Docker 로그 none, swap 금지. 실제 Docker 출력·시간 제한과 WS 한글 입출력/종료 통과. 프록시 경유 느린 소비자·혼합 부하 추가 검증 남음 |
 | A08 Docker 권한 분리 | 주 에이전트/Terra ultra | 부분 검증 | 실제 LB의 API nonroot/read-only/socket·소스 mount 없음, worker sandbox 소유 UID/GID·socket 보조 그룹 및 접수 API 종료 후 별도 채점 검증. frontend 최종 Nginx stage의 UID10001/read-only/cap-drop/NNP/tmpfs/8080 실행도 검증. React 빌드는 fixture였으며 전체 이미지 빌드·Compose 수명주기 검증은 남음 |
 | A09 재시작/readiness | 주 에이전트/Terra ultra/Luna max | 부분 검증 | PG 초기화/rollback, readiness, controller/edge 복구, worker fence와 API crash/SIGTERM·migration 검증 이력이 있다. runtime-evidence-v1(4004d1c…)의 DB/kernel snapshot·살아 있는 다른 스레드의 unknown 판정은 집중122개, 전체1302개와 호스트20개 검사에서 통과했다. 해당 실행은 종료됐으며 이후 소스의 정확한 컨테이너 종료 증명·retirement·전체 cold Compose/빌드 수명주기 검증을 대신하지 않는다 |
 | A10 일반 제출 내구성 | 주 에이전트 | 부분 검증 | 접수 코드·시각·문제 snapshot·job 단일 commit→202→private polling, 동시 정답 1회 지급/rollback/수정 후 retry/한도 거절 원자성 PG 검증. legacy offline 복구/rollback PG 통과; 실제 배포 이관 및 최종 부하 시험 남음 |
 | A11 점수판 조회 | Terra ultra/주 에이전트 (초기 Sol 이력) | 부분 검증 | 제출6열·문제3열 projection, 공개 revision 캐시/15초 TTL/같은 transaction bump 구현. cleanup-cache-v1(d987066…) 실제95개에 Redis hit/TTL/동시 revision 검증이 포함됐다. setex 경고 수정 후 ownedpg-registration-v3(e3e0554…) 집중82129도125개 통과로 종료됐다. 이 과거 소스의 증거와 별도로 현재 최종 구성의 대규모 조회 비용·혼합 부하 검증이 남는다 |
-| A12 Redis 큐 정체 | 초기 Sol 기여 보존; 주 에이전트 | 부분 검증 | HTTP/WS 모두 DB job 사용, legacy contest/closure/Redis callback 실행기 제거. 공개 큐는 별도 thread에서 SELECT만 수행. initialize-v2(9a385d…) 실제 PG/Redis/Docker 전체245개 검사는 skip 없이186.18초에 종료됐다. 이후 변경된 worker/retirement·혼합 부하·전체 rollout 검증을 그 결과로 대체하지 않는다 |
+| A12 Redis 큐 정체 | 초기 Sol 기여 보존; 주 에이전트 | 부분 검증 | HTTP/WS 모두 DB job 사용, legacy contest/closure/Redis callback 실행기 제거. 실제 두 API에서 IP 한도 1,000·global 한도 8로 서로 다른 인증 계정 9건과 terminal 1건을 함께 넣어 8건 허용, HTTP 429 두 건, 생성 job exact-once 완료를 확인했다. 장시간 backlog·Redis process 장애·전체 rollout은 남음 |
 | A13 저장 충돌/유실 | 주 에이전트 | 부분 검증 | 즉시 local 저장+UUID revision CAS/UTC/동시 수정·삭제 재생성 방지 backend4개 PG 통과, frontend 충돌 테스트 및 실제 Edge 두 탭 충돌→명시 해결 통과 |
 | A14 모바일 IDE/목록 | Sol | 부분 검증 | 모바일 full-width 탭/마운트 유지·카드 목록·390px 브라우저 확인. 실제 데이터 카드 검증 남음 |
 | A15 503 로그아웃 | Terra | 로컬 검증 | ApiError 상태 보존, 401/403만 세션 폐기, 임시 실패 재시도/회귀 통과 |
@@ -454,10 +468,10 @@ inventory-v5 전체86700은1237 passed /20 host-tool skipped /2 subtests passed(
 | A19 백업 복구 | 주 에이전트/Luna max (초기 Sol 이력) | 부분 검증 | private mktemp/no-clobber custom dump, stdin hash, empty DB 복원. 이전 실제10table 복원에 더해 정식 Docker/PG 회귀에서 관계·한글/CR 경로·덮어쓰기·비어 있지 않은 대상·checksum 거부 통과. 정기일정/외부보관/RPO·RTO 미적용 |
 | A20 보안 헤더/origin | Terra/주 에이전트 | 부분 검증 | nosniff/XFO/Referrer/Permissions/512k body limit, CSP Report-Only self-host 정책 및4개 정적 회귀. CSP enforce/HTTPS terminator HSTS·trusted proxy 검증 남음 |
 | A21 보관 정책 | 주 에이전트/Terra ultra/Luna max | 부분 검증 | 일반 제출200개/익명7일 정책에 공개 완료 이력 기본500개·회당500건 정리 및 opt-in 실행 본문 만료/410 접수 기록 보존 추가. 기본값0은 본문 만료 비활성. 현재 실제 PG/HTTP 재시작 포함 집중105통과, Compose5통과. 기간 승인, 최소 receipt 장기 상한·대규모 지연·혼합 버전 교체 검증 남음. 상세는 최상단 A21 절 |
-| A22 임시 파일 정리 | Terra/주 에이전트 | 부분 검증 | 초기화·파일 작성 실패시 정리 및 미확인 RPC의 컨테이너/작업폴더 증거 보존 검증. v9 일반 정리 journal·원래 데몬/claim 종료 확인 뒤 삭제로 보강했으며 현재 소스 실제 장애 복구 검증 남음 |
+| A22 임시 파일 정리 | Terra/주 에이전트 | 부분 검증 | 초기화·파일 작성 실패시 정리 및 미확인 RPC의 증거 보존 검증. typed Docker ImageNotFound는 동일 daemon/lease/operation의 권위 있는 no-effect 응답일 때만 create journal을 정산하며, 실제 세 번 재시도 뒤 system_error·journal 0·worker UID 기준 workdir 0을 확인했다. 연결 단절·daemon 장애 같은 불확실 RPC 조정은 남음 |
 | A23 조회/번들 | Terra/Sol/주 에이전트 | 부분 검증 | 커뮤니티 GROUP BY, 13 lazy routes로 초기JS1655→786KB. Monaco/worker self-host 실제 Edge 검증(CDN0). 문제/대회/library 서버 필터 후 pagination/count, 프런트 더보기/필터 재시작 테스트 통과. 대규모 데이터 조회 비용/번들 추가 최적화 검증 남음 |
 | A24 안내/접근성 | Terra/Sol | 부분 검증 | tokenless 비밀번호 재설정 요청 폼, Admin 로그인 안내, 모바일 탭 접근성 테스트 통과. 전체 화면 검사 남음 |
-| A25 로드밸런싱 | 주 에이전트/Terra ultra 검토/Luna max 단위검사 | 부분 검증 | 다섯 overlay/edge adapter, internal API·frontend plane와 frontend/proxy 전용 ingress, 색상별 loopback 포트·pooler alias·두 peer promotion 구현. 실제 분배·차단·단일 peer 거부·loopback HTTP·별도 edge rollback 중 HTTP/WS 유지 통과. 실제 controller+adapter의 전체 cold 배포·검증된 drain/종료·신뢰 프록시·혼합 부하·장시간 WS·proxy 재생성은 남음 |
+| A25 로드밸런싱 | 주 에이전트/Terra ultra 검토/Luna max 단위검사 | 부분 검증 | 실제 두 API 분배, 접수 API loss 후 survivor receipt, 활성 WS upstream loss, 고유 인증 receipt 전역 한도와 exact-once, 10→50→100, 활성 WS·대기 backlog 중 2→3→2, worker 교체·lease 복구, readiness 503 및 controller quarantine를 single-host 격리 시험으로 통과. cold 전체 Compose·Redis process loss·장시간 soak·독립 daemon/VM·multi-host HA는 남음 |
 
 ## 최신 통합 checkpoint
 
@@ -561,3 +575,30 @@ inventory-v5 전체86700은1237 passed /20 host-tool skipped /2 subtests passed(
 - 다음 checkpoint: 실제 PG/Redis/Docker 전체 **165 passed**, opt-in skip 없이 실행. SIGTERM worker 재시작 시 두 DB에서 orphan sandbox 회수→다음 작업 성공, claim별 temp 정리도 검증. 기존 3개 backup fixture 실패는 noexec /tmp 때문이었고, 별도 test-only exec tmpfs에서 그대로 통과. 이는 아직 HTTP/WS durable 연결 완료를 의미하지 않는다.
 - 브라우저 두 탭 revision 충돌/명시 해결 1 passed, 1440/390px 로컬 Monaco 실제 편집·JS worker same-origin/CDN 0·가로 overflow 없음 2 passed. API는 mock으로 격리했다.
 - 실제 백업/복원은 테스트 PostgreSQL `audit_stage`→`audit_restore_t82h_verification`이며, `/tmp/audit-restore-glcEFD/stage.dump` 및 체크섬이 해당 테스트 컨테이너 안에 남아 있다. 운영 데이터를 복제하지 않았다.
+
+## 2026-09-27 운영 ref 재현 후보와 public readiness 후속
+
+- 운영 ref `ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e`의 detached 후보에서 readiness 수정과 검증 폐쇄를 다시 실행했다. 백엔드 **2,315 PASS/380 조건부 SKIP/8 subtests PASS**, 프런트 **58 files/322 PASS**, 타입 검사와 production build, diff-check가 통과했다. 임시 Git 저장소의 `core.autocrlf=true` fresh checkout과 archive round-trip도 launcher byte identity를 보존했다.
+- 운영 `/webcompiler/ready`의 HTML fallback 원인은 host include drift까지 포함한다. 일반 배포는 Git archive를 컨테이너에 반영할 뿐 `/etc/nginx/snippets/webcompiler.locations.conf`를 설치·reload하지 않는다. 따라서 A09/A25의 public readiness 완료는 container 배포와 별도의 승인된 host 단계가 필요하다.
+- host 설치기는 root-owned lock 아래 source/current 전체 해시 재검사, symlink·unsafe parent 거절, 원자 교체·fsync, Nginx syntax/reload, 외부 JSON/no-store/200 계약과 실패 rollback fingerprint를 검사한다. 로컬 회귀는 전체 후보 suite에 포함됐지만 운영 적용은 하지 않았다.
+- Windows checkout에서 byte-addressed launcher가 CRLF로 바뀌면 과거 영수증 재생이 실패하는 문제를 발견해 active/archive launcher의 LF 고정과 파일명 digest 회귀를 추가했다. 이는 A09/A18의 artifact 재현성 보강이며 실제 Linux archived-runtime 실행을 대체하지 않는다.
+- 실제 전용 daemon/cgroup 6언어, PostgreSQL·Redis 장애, 혼합 부하·replica failure·장시간 WebSocket·multi-host HA 조건은 계속 외부 수락 항목이다. 12건 read-only 7/5 분배를 그 결과로 확대하지 않는다.
+- 위 후보는 로컬 `codex/readiness-release-candidate-20260927` commit `3fb0e72e3f0a55324eebadd3b92a469d4b2f574d`로 고정했다. complete-history bundle SHA-256은 `d4a82ca5490f8818d00a6aa44cd1bb9a35d62c3dc5beab2bf923fe78f389b180`이며 `git bundle verify`를 통과했다. 이 기록은 로컬 패키징 증거일 뿐 push/main/deploy/host 적용 증거가 아니다.
+
+## 2026-09-27 최신 main 통합 준비
+
+- 원격 `main` SHA `269da3312a24ef5dd3f4b34a783237e5a7ff23ba`에 전체 검증 릴리스 계보를 별도 로컬 브랜치에서 merge했다. 충돌은 없었으며 merge 결과 tree는 검증된 `3fb0e72e...` tree와 정확히 같다.
+- 실제 merge 상태의 백엔드는 **2,315 PASS/380 조건부 SKIP/8 subtests PASS/실패 0/143.50초**, 프런트는 **58 files/322 tests PASS**, 타입 검사와 production build PASS, diff-check PASS다.
+- 로컬 merge commit은 `5623a7ecf8f5ab719fe69f460938b5b4122eb8ba`다. complete-history bundle은 `.sandbox-work/readiness-main-candidate-5623a7ec.bundle`, 58,968,162 bytes, SHA-256 `b5becb59cdd6d2ac269adc87aca326cfbb94a66424779e45e5d6df83b2f6de38`이며 `git bundle verify`를 통과했다.
+- 기계 판독 manifest `.sandbox-work/readiness-main-candidate-5623a7ec.json`도 commit/bundle/size/hash와 교차 검증했으며 SHA-256은 `7b22261553a11f096666e488883d4182fc14832bd1f5211916a46d53c55bacde`다.
+- 운영 반영 전 남은 외부 조건은 변함없다: 명시적 push/deploy 승인, host include 적용을 위한 대화형 root 인증, 전용 daemon/VM 기반 cgroup·6언어 수락, 격리 PostgreSQL/Redis 장애 복구, 혼합 부하·replica failure·장시간 WebSocket·multi-host HA, A–J 권리와 운영 일정·배점·공개/J 정책 결정. 이를 통과하지 않은 항목은 완료로 계산하지 않는다.
+
+## 2026-09-27 전체 기능·신입생 대회 통합 후보
+
+- 기존 최신-main 통합 후보에 원본 작업 트리의 온라인 저지 확장, 언어별 자원 정책, 컴파일 기록 필터, 일반 문제·대회 문제 검수/공개 게이트, 재채점, 숨김 테스트 저장, A~J 비공개 신입생 대회 작성 도구와 회귀를 빠짐없이 추가했다. `node_modules`, 빌드 산출물, 문서 압축본과 보고서 편집 자산은 후보에서 제외했다. 검증 근거로 문서에서 직접 참조하는 `docs/evidence` 영수증은 포함했다.
+- Windows의 자동 줄바꿈 변환이 고정된 A~J corpus와 실행기 해시를 깨뜨리던 문제를 재현해 관련 Python·문제 문서·대회 도구를 LF로 고정했다. `corpus-manifest-draft-v2.json` 검증은 `sha256:e5213ca9d1aaf3691c91db22aa021870b532b653c015c58c4bf90fff8a8539fc`, 문제별 테스트 수 A5/B12/C7/D5/E7/F6/G7/H7/I11/J12로 통과했다.
+- 공개 예시의 고정 `SECRET_KEY`를 제거하고 운영 모드에서 과거 공개 예시 키도 거부한다. 저장소 비밀 패턴 점검에서 실제 private key나 운영 비밀은 발견되지 않았다. 테스트 fixture의 가짜 SMTP 값과 예시 DB URL은 운영 비밀로 계산하지 않는다.
+- 깨끗한 Git worktree에서 백엔드 전체 **3,148 PASS/454 조건부 SKIP/10 subtests PASS/실패 0/645.85초**, 핵심 A~J·실행기·비공개 import 묶음 **107 PASS/10 조건부 SKIP**, 프런트 전체 **58 files/322 tests PASS**, 타입 검사와 production build PASS다. 제출 기록 필터 회귀는 드롭다운과 결과 배지의 같은 문구 때문에 비동기 목록보다 먼저 통과할 수 있던 경쟁 조건을 발견해 실제 결과 배지를 기다리도록 수정했다.
+- 조건부 skip은 성공으로 세지 않는다. 현재 저장소에 포함되지 않는 `.deploy` 측정/컴파일러 아카이브, 실제 PostgreSQL·Redis, POSIX/Linux, 별도 Docker daemon/cgroup 및 설치된 언어 런타임이 필요한 항목은 외부 검증 조건으로 분리했다. 로컬 부재를 제품 실패나 허위 통과로 처리하지 않는다.
+- A~J 패키지는 의도적으로 `draft-unapproved`이며 builder도 `releaseReady: false`를 반환한다. 문제 권리·최종 지문과 J 정답 증명, 제목·일정·배점·난이도·태그·종료 후 공개 여부·AI 정책, 실측 한도, 관리자 토큰과 운영 import 승인이 확정되기 전에는 공개·등록·배포하지 않는다.
+- 운영 데이터 변경, Git push/main 변경, 서버 전송, 배포와 host Nginx 적용은 수행하지 않았다. 실제 격리 PostgreSQL/Redis 장애 복구, 전용 daemon의 6언어/cgroup 자원 판정, 혼합 부하·replica failure·장시간 WebSocket·multi-host HA와 공개 readiness host include는 여전히 별도 승인·인프라가 필요한 수락 항목이다.

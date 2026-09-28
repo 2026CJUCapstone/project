@@ -102,7 +102,9 @@ function DifficultyBadge({ difficulty }: { difficulty: string }) {
   const value = difficultyValue.get(difficulty) ?? 0;
   const family = difficulty.replace(/\d+$/, '');
   const level = difficulty.match(/\d+$/)?.[0] ?? String(value);
-  const colorClass = family === 'diamond'
+  const colorClass = family === 'ruby'
+    ? 'border-rose-300/60 bg-rose-400 text-rose-950'
+    : family === 'diamond'
     ? 'border-sky-300/60 bg-sky-400 text-sky-950'
     : family === 'platinum'
       ? 'border-cyan-300/60 bg-cyan-400 text-cyan-950'
@@ -134,12 +136,12 @@ function StatPill({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+    <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-3 sm:px-4">
+      <div className="mb-2 flex flex-wrap items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:gap-2 sm:text-xs">
         {icon}
         {label}
       </div>
-      <div className="font-mono text-xl font-bold text-white">{value}</div>
+      <div className="break-all font-mono text-lg font-bold text-white sm:text-xl">{value}</div>
     </div>
   );
 }
@@ -163,19 +165,19 @@ export function ProfileStatsPanel({ user }: { user: LeaderboardProfile }) {
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-700 bg-[#05080d] text-white shadow-2xl">
-      <div className="relative border-b border-slate-800 px-6 pb-6 pt-8">
+      <div className="relative border-b border-slate-800 px-4 pb-6 pt-8 sm:px-6">
         <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-r from-fuchsia-500/20 via-sky-500/10 to-emerald-500/20" />
-        <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div className="flex items-end gap-4">
-            <div className={`relative h-24 w-24 rounded-full border-4 border-slate-900 bg-slate-900 shadow-xl ${accent.glow}`}>
+        <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-6 sm:flex-row sm:items-end sm:gap-4">
+            <div className={`relative h-24 w-24 shrink-0 rounded-full border-4 border-slate-900 bg-slate-900 shadow-xl ${accent.glow}`}>
               <img src={user.avatar} alt={user.name} className="h-full w-full rounded-full object-cover" />
               <div className="absolute -bottom-3 left-1/2 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-md bg-fuchsia-600 font-mono text-lg font-black text-white shadow-lg shadow-fuchsia-600/40">
                 {Math.max(0, Math.min(9, Math.floor(solvedCount / 4)))}
               </div>
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="mb-2 flex flex-wrap items-center gap-2">
-                <h3 className="text-3xl font-black tracking-tight">{user.name}</h3>
+                <h3 className="break-all text-3xl font-black tracking-tight">{user.name}</h3>
                 <span className="rounded-md border border-sky-400/30 bg-sky-400/10 px-2 py-1 font-mono text-xs font-bold text-sky-300">
                   {solvedCount.toLocaleString()} solved
                 </span>
@@ -184,7 +186,7 @@ export function ProfileStatsPanel({ user }: { user: LeaderboardProfile }) {
                 </span>
               </div>
               <p className={`text-sm font-bold ${accent.text}`}>{tier} {rating.toLocaleString()}</p>
-              <div className="mt-3 h-3 w-full min-w-[280px] overflow-hidden rounded-full bg-slate-700 md:w-[520px]">
+              <div className="mt-3 h-3 w-full max-w-[520px] overflow-hidden rounded-full bg-slate-700">
                 <div
                   className={`h-full rounded-full bg-gradient-to-r ${accent.bar}`}
                   style={{ width: `${progress.percent}%` }}
@@ -195,7 +197,7 @@ export function ProfileStatsPanel({ user }: { user: LeaderboardProfile }) {
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 text-right">
+          <div className="grid shrink-0 grid-cols-3 gap-2 text-right sm:gap-3">
             <StatPill icon={<Trophy size={14} />} label="Rating" value={rating.toLocaleString()} />
             <StatPill icon={<BadgeCheck size={14} />} label="XP" value={totalScore.toLocaleString()} />
             <StatPill icon={<Tags size={14} />} label="Tags" value={tagProficiencies.length.toLocaleString()} />
@@ -203,9 +205,9 @@ export function ProfileStatsPanel({ user }: { user: LeaderboardProfile }) {
         </div>
       </div>
 
-      <div className="grid gap-5 p-6">
-        <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-5">
-          <div className="mb-5 flex items-center justify-between gap-3">
+      <div className="grid min-w-0 gap-5 p-3 sm:p-6">
+        <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/80 p-4 sm:p-5">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-400">
                 <TrendingUp size={16} />
@@ -249,13 +251,13 @@ export function ProfileStatsPanel({ user }: { user: LeaderboardProfile }) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-800 bg-slate-950/80 p-5">
+        <div className="min-w-0 rounded-xl border border-slate-800 bg-slate-950/80 p-4 sm:p-5">
           <div className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-400">
             <Activity size={16} />
             태그 분포
           </div>
-          <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="h-[280px]">
+          <div className="grid min-w-0 gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="h-[280px] min-w-0">
               {radarData.length >= 3 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart data={radarData}>
@@ -272,11 +274,11 @@ export function ProfileStatsPanel({ user }: { user: LeaderboardProfile }) {
               )}
             </div>
 
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               {tagProficiencies.length > 0 ? tagProficiencies.slice(0, 10).map((item) => {
                 const share = (item.solvedCount / totalTagSolves) * 100;
                 return (
-                  <div key={item.tag} className="grid grid-cols-[minmax(0,1fr)_72px_72px_84px] items-center gap-3 text-sm">
+                  <div key={item.tag} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 text-xs sm:gap-3 sm:text-sm">
                     <div className="min-w-0 truncate font-semibold text-white">
                       #{getProblemTagLabel(item.tag)}
                     </div>

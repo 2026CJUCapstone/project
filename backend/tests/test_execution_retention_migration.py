@@ -192,8 +192,11 @@ def test_v10_execution_retention_migration_preserves_v9_jobs_and_is_idempotent(
 
     with engine.connect() as connection:
         versions = list(connection.execute(text("SELECT version FROM schema_migrations")).scalars())
-    assert versions.count(V9_SCHEMA_VERSION) == 1
+    assert versions.count(V9_SCHEMA_VERSION) == 0
     assert versions.count(RUNTIME_SCHEMA_VERSION) == 1
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT 1 FROM runtime_schema_history WHERE version=:v'),
+                                  {'v':V9_SCHEMA_VERSION}).first()
 
 
     initialize(bind=engine)
@@ -204,8 +207,11 @@ def test_v10_execution_retention_migration_preserves_v9_jobs_and_is_idempotent(
     assert retention_indexes[0]["column_names"] == ["status", "content_expired_at", "finished_at"]
     with engine.connect() as connection:
         versions = list(connection.execute(text("SELECT version FROM schema_migrations")).scalars())
-    assert versions.count(V9_SCHEMA_VERSION) == 1
+    assert versions.count(V9_SCHEMA_VERSION) == 0
     assert versions.count(RUNTIME_SCHEMA_VERSION) == 1
+    with engine.connect() as connection:
+        assert connection.execute(text('SELECT 1 FROM runtime_schema_history WHERE version=:v'),
+                                  {'v':V9_SCHEMA_VERSION}).first()
 
 
 def test_queue_history_index_is_added_even_when_old_performance_migration_exists(legacy_execution_engine):

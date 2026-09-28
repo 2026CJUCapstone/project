@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { ChevronLeft, ChevronRight, Home, ListChecks, Users, LogOut, Plus, Pencil, Search, Trash2, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, ListChecks, Users, LogOut, Plus, Pencil, Search, Trash2, ShieldCheck, ClipboardCheck } from "lucide-react";
 import { ProblemFormModal } from "../components/ProblemFormModal";
-import { getProblems, createProblem, deleteProblem, updateProblem } from "../services/problemApi";
+import { ProblemAuthoringPanel } from "../components/ProblemAuthoringPanel";
+import { ReferenceSolutionValidationPanel } from "../components/ReferenceSolutionValidationPanel";
+import { getProblems, createProblem, deleteProblem, updateProblem, publishProblem } from "../services/problemApi";
 import type { Problem, ProblemCreateRequest } from "../services/problemApi";
+import { type ProblemAuthoringRecord } from "../services/problemAuthoringApi";
 import { getCurrentUser, type AuthUser } from "../services/authApi";
 import { getAdminUsers, updateAdminUser, type AdminUser } from "../services/adminApi";
 import { DIFFICULTY_LABELS } from "../constants/difficulty";
@@ -14,6 +17,7 @@ const difficultyLabel: Record<string, string> = {
   ...DIFFICULTY_LABELS,
 };
 const USER_PAGE_SIZE = 50;
+const publicationLabels = { legacy: '기존 공개', draft: '초안', published: '공개' } as const;
 
 export function Admin() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -24,6 +28,8 @@ export function Admin() {
   const [tab, setTab] = useState<"home" | "problems" | "users">("home");
   const [showForm, setShowForm] = useState(false);
   const [editingProblem, setEditingProblem] = useState<Problem | null>(null);
+  const [reviewProblemId, setReviewProblemId] = useState<string | null>(null);
+  const [reviewAuthoring, setReviewAuthoring] = useState<ProblemAuthoringRecord | null>(null);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [usersTotal, setUsersTotal] = useState(0);
@@ -113,6 +119,10 @@ export function Admin() {
     if (!window.confirm('정말 이 문제를 삭제하시겠습니까?')) return;
     try {
       await deleteProblem(problemId);
+      if (reviewProblemId === problemId) {
+        setReviewProblemId(null);
+        setReviewAuthoring(null);
+      }
       await loadProblems();
     } catch (deleteError) {
       setPageError(deleteError instanceof Error ? deleteError.message : "문제 삭제에 실패했습니다.");
@@ -120,8 +130,21 @@ export function Admin() {
   };
 
   const handleEditProblem = (problem: Problem) => {
+    if (reviewProblemId === problem.id) {
+      setReviewProblemId(null);
+      setReviewAuthoring(null);
+    }
     setEditingProblem(problem);
     setShowForm(true);
+  };
+
+  const handlePublishProblem = async (problemId: string) => {
+    try {
+      await publishProblem(problemId);
+      await loadProblems();
+    } catch (publishError) {
+      setPageError(publishError instanceof Error ? publishError.message : '문제 공개에 실패했습니다.');
+    }
   };
 
   const handleLogout = () => {
@@ -138,12 +161,21 @@ export function Admin() {
       setPageError(roleError instanceof Error ? roleError.message : "권한 변경에 실패했습니다.");
     }
   };
+  const handlePublicVisibilityChange = async (user: AdminUser) => {
+    try {
+      await updateAdminUser(user.id, { publicProfileEnabled: user.publicProfileEnabled === false });
+      await loadUsers();
+    } catch (visibilityError) {
+      setPageError(visibilityError instanceof Error ? visibilityError.message : "공개 상태 변경에 실패했습니다.");
+    }
+  };
   const totalUserPages = Math.max(1, Math.ceil(usersFilteredTotal / USER_PAGE_SIZE));
 
   const applyUserSearch = () => {
     setUserSearch(userSearchDraft.trim());
     setUserPage(1);
   };
+  const reviewProblem = problems.find(problem => problem.id === reviewProblemId) ?? null;
 
   if (checkingSession) {
     return (
@@ -266,13 +298,14 @@ export function Admin() {
                     <th className="py-2 px-3">점수</th>
                     <th className="py-2 px-3">태그</th>
                     <th className="py-2 px-3">채점</th>
+                    <th className="py-2 px-3">공개 상태</th>
                     <th className="py-2 px-3">관리</th>
                   </tr>
                 </thead>
                 <tbody>
                   {problems.length === 0 ? (
                     <tr className="text-sm text-gray-500 border-b border-[#222]">
-                      <td className="py-3 px-3" colSpan={7}>
+                      <td className="py-3 px-3" colSpan={8}>
                         등록된 문제가 없습니다.
                       </td>
                     </tr>
@@ -299,7 +332,32 @@ export function Admin() {
                           </div>
                         </td>
                         <td className="py-3 px-3">
-                          <div className="flex gap-2">
+                          <span className={`inline-flex rounded px-2 py-0.5 text-xs font-semibold ${p.publicationStatus === 'published' ? 'bg-emerald-500/15 text-emerald-300' : p.publicationStatus === 'draft' ? 'bg-amber-500/15 text-amber-300' : 'bg-gray-500/20 text-gray-300'}`}>
+                            {publicationLabels[p.publicationStatus ?? 'legacy']}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReviewProblemId(current => current === p.id ? null : p.id);
+                                setReviewAuthoring(null);
+                              }}
+                              className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 text-sm"
+                              aria-expanded={reviewProblemId === p.id}
+                            >
+                              <ClipboardCheck size={13} /> {reviewProblemId === p.id ? '검수 닫기' : '검수'}
+                            </button>
+                            {p.publicationStatus === 'draft' && (
+                              <button
+                                type="button"
+                                onClick={() => void handlePublishProblem(p.id)}
+                                className="inline-flex items-center gap-1 text-amber-300 hover:text-amber-200 text-sm"
+                              >
+                                <ShieldCheck size={13} /> 공개
+                              </button>
+                            )}
                             <button
                               onClick={() => handleEditProblem(p)}
                               className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm"
@@ -319,11 +377,31 @@ export function Admin() {
                   )}
                 </tbody>
               </table>
+              {reviewProblem && (
+                <section aria-label={`${reviewProblem.title} 검수 및 공개`} className="mt-6 space-y-3 rounded-lg border border-[#333] bg-[#161616] p-4">
+                  <div>
+                    <h3 className="font-semibold text-white">{reviewProblem.title} · 출처 검수 및 공개</h3>
+                    <p className="mt-1 text-xs text-gray-400">현재 상태: {publicationLabels[reviewProblem.publicationStatus ?? 'legacy']}. 검수가 끝난 초안은 목록의 공개 버튼으로 서버 공개 게이트를 통과해야 합니다.</p>
+                  </div>
+                  <ProblemAuthoringPanel
+                    problemId={reviewProblem.id}
+                    isAdmin={currentUser?.role === 'admin'}
+                    initialRecord={reviewAuthoring?.problemId === reviewProblem.id ? reviewAuthoring : undefined}
+                    onRecordChange={record => setReviewAuthoring(record)}
+                  />
+                  <ReferenceSolutionValidationPanel
+                    problemId={reviewProblem.id}
+                    policy={reviewProblem.judgePolicy}
+                    authoring={reviewAuthoring?.problemId === reviewProblem.id ? reviewAuthoring : undefined}
+                    isAdmin={currentUser?.role === 'admin'}
+                  />
+                </section>
+              )}
               {showForm && (
                 <ProblemFormModal
                   onClose={() => { setShowForm(false); setEditingProblem(null); }}
                   onSubmit={handleAddProblem}
-                  initialData={editingProblem ? { title: editingProblem.title, difficulty: editingProblem.difficulty, tags: editingProblem.tags, points: editingProblem.points ?? 100, description: editingProblem.description, testCases: editingProblem.testCases, hiddenTestCases: editingProblem.hiddenTestCases } : undefined}
+                  initialData={editingProblem ? { title: editingProblem.title, difficulty: editingProblem.difficulty, tags: editingProblem.tags, points: editingProblem.points ?? 100, description: editingProblem.description, testCases: editingProblem.testCases, hiddenTestCases: editingProblem.hiddenTestCases, judgePolicy: editingProblem.judgePolicy } : undefined}
                 />
               )}
 
@@ -371,7 +449,7 @@ export function Admin() {
                           })()}
                           cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                         >
-                          {['#78716c', '#a16207', '#64748b', '#ca8a04', '#0891b2', '#2563eb'].map((color, i) => <Cell key={i} fill={color} />)}
+                          {['#78716c', '#a16207', '#64748b', '#ca8a04', '#0891b2', '#2563eb', '#e11d48'].map((color, i) => <Cell key={i} fill={color} />)}
                         </Pie>
                         <Tooltip contentStyle={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 8, color: '#fff' }} />
                         <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />
@@ -431,13 +509,14 @@ export function Admin() {
                     <th className="py-2 px-3">닉네임</th>
                     <th className="py-2 px-3">점수</th>
                     <th className="py-2 px-3">권한</th>
+                    <th className="py-2 px-3">공개</th>
                     <th className="py-2 px-3">관리</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.length === 0 ? (
                     <tr className="text-sm text-gray-500 border-b border-[#222]">
-                      <td className="py-3 px-3" colSpan={6}>
+                      <td className="py-3 px-3" colSpan={7}>
                         등록된 사용자가 없습니다.
                       </td>
                     </tr>
@@ -455,6 +534,15 @@ export function Admin() {
                             {user.role === 'admin' && <ShieldCheck size={12} />}
                             {user.role === 'admin' ? '관리자' : '사용자'}
                           </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => void handlePublicVisibilityChange(user)}
+                            className={user.publicProfileEnabled === false ? 'text-amber-300 hover:text-amber-200' : 'text-emerald-300 hover:text-emerald-200'}
+                          >
+                            {user.publicProfileEnabled === false ? '비공개' : '공개'}
+                          </button>
                         </td>
                         <td className="py-3 px-3">
                           <button

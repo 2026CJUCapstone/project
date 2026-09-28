@@ -1,4 +1,15 @@
 // Storage partition only; server authorization must always validate the JWT.
+let observedToken: string | null | undefined;
+let identityRevision = 0;
+
+/** Opaque synchronous scope: no bearer token in component keys or props. */
+export function getAuthScope(): string {
+  const stored = typeof window === 'undefined' ? null : localStorage.getItem('authToken');
+  const token = stored && stored !== 'undefined' && stored !== 'null' ? stored : null;
+  if (token !== observedToken) { observedToken = token; identityRevision += 1; }
+  return token ? `session:${identityRevision}` : 'guest';
+}
+
 export function getAuthOwner(): string {
   const token = typeof window === 'undefined' ? null : localStorage.getItem('authToken');
   if (!token) return 'guest';

@@ -26,7 +26,7 @@ def from_lines(path):
 
 
 def test_application_dockerfiles_use_exact_locked_base_image_lines():
-    assert from_lines("backend/Dockerfile") == [f"FROM {locked_image('python')}"]
+    assert from_lines("backend/Dockerfile") == [f"FROM {locked_image('ubuntuBackend')}"]
     assert from_lines("frontend/Dockerfile") == [
         f"FROM {locked_image('node')} AS build",
         f"FROM {locked_image('nginx')}",
@@ -35,6 +35,22 @@ def test_application_dockerfiles_use_exact_locked_base_image_lines():
         f"FROM {locked_image('nodeRuntime')} AS node-runtime",
         f"FROM {locked_image('ubuntu')}",
     ]
+
+
+def test_backend_uses_the_locked_ubuntu_python312_venv_with_hashed_dependencies():
+    dockerfile = source("backend/Dockerfile")
+
+    # Retain the historical Python image record for auditability; the backend
+    # now deliberately uses the separately locked Ubuntu security baseline.
+    assert "python" in LOCK["images"]
+    assert f"FROM {locked_image('python')}" not in dockerfile
+    assert 'ENV PATH="/opt/venv/bin:${PATH}"' in dockerfile
+    assert "apt-get install -y --no-install-recommends ca-certificates python3 python3-venv" in dockerfile
+    assert "python3 -m venv /opt/venv" in dockerfile
+    assert 'sys.version_info[:2] == (3, 12)' in dockerfile
+    assert "COPY requirements.lock ." in dockerfile
+    assert "pip install --no-cache-dir --require-hashes -r requirements.lock" in dockerfile
+    assert "gcc" not in dockerfile and "g++" not in dockerfile and "build-essential" not in dockerfile
 
 
 def test_compose_service_defaults_use_locked_stateful_and_load_balancer_images():

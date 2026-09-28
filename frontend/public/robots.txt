@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /webcompiler/
+Disallow: /webcompiler/admin
+Disallow: /webcompiler/profile
+Disallow: /webcompiler/settings
+Disallow: /webcompiler/queue
+Disallow: /webcompiler/submissions
+Sitemap: https://cuha.cju.ac.kr/webcompiler/sitemap.xml

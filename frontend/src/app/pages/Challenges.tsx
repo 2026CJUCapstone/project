@@ -12,6 +12,8 @@ type ChallengeTag = ProblemTag;
 const toChallenge = (p: Problem): Challenge => ({
   id: p.id, title: p.title, difficulty: p.difficulty, tags: p.tags ?? [], description: p.description,
   testCases: p.testCases, solved: p.solved, attempted: p.attempted, lastSubmissionVerdict: p.lastSubmissionVerdict,
+  judgeLimits: p.judgeLimits, judgePolicyLegacy: p.judgePolicyLegacy,
+  judgePolicyCompatibility: p.judgePolicyCompatibility,
 });
 type SortOption = 'difficultyAsc' | 'difficultyDesc' | 'title';
 
@@ -25,6 +27,9 @@ interface Challenge {
   solved: boolean;
   attempted: boolean;
   lastSubmissionVerdict?: string | null;
+  judgeLimits?: Problem['judgeLimits'];
+  judgePolicyLegacy?: boolean;
+  judgePolicyCompatibility?: boolean;
 }
 
 const difficultyTrackStops: Difficulty[] = [
@@ -35,6 +40,8 @@ const difficultyTrackStops: Difficulty[] = [
   'platinum5',
   'diamond5',
   'diamond1',
+  'ruby5',
+  'ruby1',
 ];
 
 function getProblemSummary(description: string): string {
@@ -73,7 +80,7 @@ function ChallengeRow({ challenge, index }: { challenge: Challenge; index: numbe
       </div>
       <button
         type="button"
-        onClick={() => navigate(`/challenges/${challenge.id}`)}
+        onClick={() => navigate(`/problems/${challenge.id}`)}
         className="min-w-0 text-left focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
         aria-label={`${challenge.title} 문제 상세 보기`}
       >
@@ -112,7 +119,7 @@ export function Challenges() {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [minDifficulty, setMinDifficulty] = useState<Difficulty>('iron5');
-  const [maxDifficulty, setMaxDifficulty] = useState<Difficulty>('diamond1');
+  const [maxDifficulty, setMaxDifficulty] = useState<Difficulty>('ruby1');
   const [selectedTags, setSelectedTags] = useState<Set<ChallengeTag>>(new Set());
   const [sortBy, setSortBy] = useState<SortOption>('difficultyAsc');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -206,7 +213,7 @@ export function Challenges() {
   const resetFilters = () => {
     setSearchText('');
     setMinDifficulty('iron5');
-    setMaxDifficulty('diamond1');
+    setMaxDifficulty('ruby1');
     setSelectedTags(new Set());
     setSortBy('difficultyAsc');
   };
@@ -397,7 +404,7 @@ export function Challenges() {
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <Code2 size={48} className="text-gray-300 dark:text-[#333] mb-4" />
-                <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">조건에 맞는 챌린지가 없습니다</h3>
+                <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">조건에 맞는 문제가 없습니다</h3>
                 <p className="text-gray-500 text-sm">필터를 조정하여 다른 결과를 확인해보세요.</p>
                 <button
                   onClick={resetFilters}

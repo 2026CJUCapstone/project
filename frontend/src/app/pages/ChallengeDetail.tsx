@@ -6,6 +6,8 @@ import { getProblem, getSubmissions } from '../services/problemApi';
 import type { Problem, SubmissionRecord } from '../services/problemApi';
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from '../constants/difficulty';
 import { getProblemTagClass, getProblemTagLabel } from '../constants/problemTags';
+import { useCompilerStore } from '../store/compilerStore';
+import { JudgeLimitTable } from '../components/JudgeLimitTable';
 
 type Difficulty = Problem['difficulty'];
 
@@ -16,6 +18,9 @@ const verdictLabels: Record<string, string> = {
   runtime_error: '런타임 오류',
   time_limit_exceeded: '시간 초과',
   memory_limit_exceeded: '메모리 초과',
+  output_limit_exceeded: '출력 초과',
+  process_limit_exceeded: '프로세스 제한 초과',
+  compile_resource_error: '컴파일 자원 초과',
   system_error: '시스템 오류',
   pending: '대기',
   running: '실행 중',
@@ -32,6 +37,7 @@ function formatSubmissionTime(value: string): string {
 
 export function ChallengeDetail() {
   const navigate = useNavigate();
+  const language = useCompilerStore((state) => state.language);
   const { challengeId } = useParams<{ challengeId: string }>();
   const [challenge, setChallenge] = useState<Problem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,7 +98,7 @@ export function ChallengeDetail() {
               <h2 className="text-lg font-bold text-red-600 dark:text-red-400 mb-1">문제 로딩 실패</h2>
               <p className="text-sm text-gray-700 dark:text-gray-300">{loadError}</p>
               <button
-                onClick={() => navigate('/challenges')}
+                onClick={() => navigate('/problems')}
                 className="mt-4 px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-[#444] bg-white dark:bg-[#1e1e1e] hover:bg-gray-50 dark:hover:bg-[#252525]"
               >
                 목록으로 돌아가기
@@ -111,7 +117,7 @@ export function ChallengeDetail() {
           <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">문제를 찾을 수 없습니다</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">삭제되었거나 잘못된 URL일 수 있습니다.</p>
           <button
-            onClick={() => navigate('/challenges')}
+            onClick={() => navigate('/problems')}
             className="px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-[#444] bg-white dark:bg-[#1e1e1e] hover:bg-gray-100 dark:hover:bg-[#252525]"
           >
             목록으로 돌아가기
@@ -126,7 +132,7 @@ export function ChallengeDetail() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-6">
           <button
-            onClick={() => navigate('/challenges')}
+            onClick={() => navigate('/problems')}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-[#444] bg-white dark:bg-[#1e1e1e] text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525]"
           >
             <ArrowLeft size={16} />
@@ -181,6 +187,15 @@ export function ChallengeDetail() {
 
           <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none text-gray-800 dark:text-gray-200">
             <ReactMarkdown>{challenge.description}</ReactMarkdown>
+          </div>
+
+          <div className="mt-8">
+            <JudgeLimitTable
+              policy={challenge.judgeLimits ?? null}
+              selectedLanguage={language}
+              legacy={challenge.judgePolicyLegacy === true}
+              compatibility={challenge.judgePolicyCompatibility === true}
+            />
           </div>
 
           {(challenge.testCases?.length ?? 0) > 0 ? (

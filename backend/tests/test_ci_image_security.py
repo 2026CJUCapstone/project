@@ -16,6 +16,16 @@ COMPILER = 'b'*40
 IDS = {role: 'sha256:'+str(index)*64 for index, role in enumerate(ci.ROLES, 1)}
 
 
+@pytest.mark.parametrize('error,expected', [(ci.ScanError('Image OS inventory was not detected'), 'Image OS inventory was not detected'), (subprocess.CalledProcessError(1, ['tool', 'private-credential']), 'CalledProcessError')])
+def test_main_reports_fixed_validation_reason_but_not_subprocess_secrets(monkeypatch, capsys, error, expected):
+    monkeypatch.setattr(sys, 'argv', ['ci_image_security.py', '--commit', COMMIT, '--trivy', 'scanner', '--output-dir', 'output', '--cache-dir', 'cache'])
+    def fail(**kwargs):
+        raise error
+    monkeypatch.setattr(ci, 'build_and_scan', fail)
+    assert ci.main() == 2
+    assert capsys.readouterr().out.strip() == 'Application image security failed: ' + expected
+
+
 def test_builds_real_contexts_with_no_service_start_or_mutable_tag():
     for role in ci.ROLES:
         command = ci.build_command(role, COMMIT, COMPILER, 'bounded', Path('id'))
@@ -82,6 +92,7 @@ def test_application_pipeline_binds_every_role_and_failures_cannot_publish_succe
         assert len(checks) == 7
         assert receipt['policyPassed'] is (failure is None)
         assert receipt['compilerCommit'] == COMPILER
+        assert receipt['excludedRoles'] == []
         assert all(item['manifestSha256'] for item in receipt['roles'].values())
         assert json.loads((output/'application-images.json').read_text()) == receipt
     else:
@@ -91,3 +102,32 @@ def test_application_pipeline_binds_every_role_and_failures_cannot_publish_succe
         if failure in {'build', 'budget', 'id'}: assert not scanned
         if failure == 'duplicate': assert scanned == ['backend']
         if failure == 'compiler': assert scanned == ['backend', 'frontend']
+
+
+def test_application_only_scan_excludes_undeployed_sandbox(tmp_path,monkeypatch):
+    (tmp_path/'runtime').mkdir()
+    (tmp_path/'runtime/bpp-ref.txt').write_text(COMPILER)
+    monkeypatch.setattr(ci,'ROOT',tmp_path)
+    for key,value in {'WEBCOMPILER_BUILD_BUILDER':'bounded','WEBCOMPILER_BUILD_CONTAINER_ID':'a'*64}.items():
+        monkeypatch.setenv(key,value)
+    monkeypatch.setattr(ci,'verify',lambda _config: None)
+    monkeypatch.setattr(ci.subprocess,'check_output',
+        lambda args,**_kwargs: '' if args[:2]==['git','status'] else COMMIT+'\n')
+    built=[]
+    def run(args,**_kwargs):
+        if args[:2]==['git','diff']: return subprocess.CompletedProcess(args,0)
+        role=Path(args[args.index('--iidfile')+1]).stem
+        built.append(role)
+        Path(args[args.index('--iidfile')+1]).write_text(IDS[role])
+        return subprocess.CompletedProcess(args,0)
+    monkeypatch.setattr(ci.subprocess,'run',run)
+    def scan(**kwargs):
+        kwargs['output'].mkdir()
+        (kwargs['output']/'manifest.json').write_text('fixture')
+        return {'policyPassed':True}
+    monkeypatch.setattr(ci,'run_scan',scan)
+    receipt=ci.build_and_scan(commit=COMMIT,trivy='tool',output=tmp_path/'evidence',
+        cache=tmp_path/'cache',roles=('backend','frontend'))
+    assert built==['backend','frontend']
+    assert set(receipt['roles'])=={'backend','frontend'}
+    assert receipt['excludedRoles']==['sandbox']

@@ -119,11 +119,23 @@ def extract(archive, prefix=None):
     with tarfile.open(archive) as tar:
         assert sum(m.size for m in tar.getmembers()) <= 256 * 1024**2
         for member in tar.getmembers():
+            assert '..' not in member.name.split('/'), 'Parent traversal is not a deployment archive path'
             path = (ROOT / member.name).resolve()
             assert path.is_relative_to(ROOT) and (member.isdir() or member.isfile())
             assert member.size <= 128 * 1024**2
             if prefix: assert path.is_relative_to(ROOT / prefix)
         tar.extractall(ROOT, filter='data')
+        # SSH receives secrets with umask077. Tar's data filter intentionally
+        # drops directory modes, including implicit parents in frontend bundles.
+        # Only extracted asset/source directories become traversable by the
+        # non-root runtime. ROOT and its private journal/backups remain0700/0600.
+        for member in tar.getmembers():
+            assert '..' not in member.name.split('/'), 'Parent traversal is not a deployment archive path'
+            path = (ROOT / member.name).resolve()
+            directory = path if path.is_dir() else path.parent
+            while directory != ROOT:
+                directory.chmod(0o755)
+                directory = directory.parent
 
 def prepare():
     assert not STATE.exists()
@@ -145,7 +157,6 @@ def prepare():
     extract(ROOT / 'frontend-tested.tar.gz', 'frontend-dist')
     assert json.loads((ROOT / 'frontend-dist/.well-known/webcompiler-release.json').read_text()) == {'deployment_sha': SHA}
     assert (ROOT / 'frontend-dist/index.html').is_file()
-    (ROOT / 'release.json').write_text(json.dumps({'deployment_sha': SHA}) + '\n')
     (ROOT / 'runtime/sandbox/run.sh').chmod(0o755)
     bases = {'backend': old['backend_id'], 'frontend': old['frontend_id'], 'sandbox': old['env']['SANDBOX_IMAGE']}
     assert all(o.inspect(value)['Id'] == value for value in bases.values())
@@ -160,7 +171,7 @@ def prepare():
 
 def build_context(role):
     context = Path(tempfile.mkdtemp(prefix='build-' + role + '-', dir=ROOT))
-    inputs = {'backend': ['backend/app'], 'frontend': ['frontend-dist', 'release.json'],
+    inputs = {'backend': ['backend/app'], 'frontend': ['frontend-dist'],
               'sandbox': ['runtime/sandbox/run.sh']}
     for relative in inputs[role]:
         source, target = ROOT / relative, context / relative
@@ -174,7 +185,7 @@ def build_context(role):
 def build():
     s = json.loads(STATE.read_text()); assert s['phase'] == 'building'
     copies = {'backend': 'COPY backend/app /app/app\n',
-        'frontend': 'COPY frontend-dist /usr/share/nginx/html\nCOPY release.json /usr/share/nginx/html/.well-known/webcompiler-release.json\n',
+        'frontend': 'COPY frontend-dist /usr/share/nginx/html\n',
         'sandbox': 'COPY runtime/sandbox/run.sh /usr/local/bin/run.sh\n'}
     for role, body in copies.items():
         if role in s['images']: continue

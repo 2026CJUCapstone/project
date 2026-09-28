@@ -1,0 +1,17 @@
+{
+  "scope": "Recorded assembly-only root-cause experiment; NOT compiler fix or measured acceptance",
+  "runtimeImage": "sha256:7a3aa3717f2c62f60ff52f680335ebee414151136d6f836382b1b543a43c5db1",
+  "probeSha256": "915b46c1aef880750c315ab60de25b5b34712eb9fbd9b9a9fc87ea33dcf52402",
+  "sourceSha256": "621021dbfce96ffc3f3b3e7d3a0ab5c24b41bfe439e7effd389d8d2be56b9610",
+  "compilerCommand": ["bpp", "-O1", "-asm", "/source/G.bpp"],
+  "originalStackReserve": 2048,
+  "mainRbpOffsets": [8008, 8016, 8024, 8032, 8040, 8048],
+  "mainPrefix": "    push rbp\n    mov rbp, rsp\n    sub rsp, 2048\n    mov rax, 0\n    mov [rbp-8016], rax\n.L325:\n    mov rax, [rbp-8016]\n    push rax\n    mov rax, 1000\n    mov rbx, rax\n    pop rax\n    cmp rax, rbx\n    setbe al\n    movzx rax, al\n    test rax, rax\n    jz .L326\n    mov rax, 0\n    push rax\n    lea rax, [rbp-8008]\n    push rax\n    mov rax, [rbp-8016]\n    imul rax, 8\n    pop rbx\n    add rax, rbx\n    pop rbx\n    mov [rax], rbx\n    mov rax, [rbp-8016]\n    ",
+  "observations": [
+    {"name": "original", "assemblySha256": "f70b1254fac6216b06262f2026135a8cd34544a2e52705def7d158dc9dfadf6c", "timeout": true, "stdout": ""},
+    {"name": "main-frame-only-16384", "assemblySha256": "c705df4051c85f789e09b3d54948eb7f73fd9ba6f03c46db7cb8d6dd5d060cb2", "exitCode": 0, "stdout": "1000\n", "stderr": "", "timeout": false}
+  ],
+  "containerLimits": {"memoryBytes": 268435456, "cpuCores": 1, "pids": 32, "tmpBytes": 33554432, "workBytes": 33554432, "network": "none", "readOnlyRoot": true, "user": "65534:65534"},
+  "executionWallTimeoutSeconds": 1,
+  "cgroupPhaseMeasurements": false
+}

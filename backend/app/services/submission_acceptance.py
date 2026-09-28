@@ -8,6 +8,10 @@ from app.services.durable_queue import IdempotencyConflict, QueueFull, EXECUTION
 from app.services.execution_admission import admit_execution, validate_execution_input
 from app.services.execution_identity import execution_owner, execution_quota
 from app.services.execution_runtime import execution_queue
+from app.services.judge_policy import freeze_stored_submission
+from app.services.judge_test_manifest import validate_stored_cases
+from app.core.config import settings
+from app.services.public_identity import public_execution_id, public_receipt_id
 
 
 def accept_practice(problem_id, data, request, response, db, user):
@@ -35,7 +39,7 @@ def accept_practice(problem_id, data, request, response, db, user):
             # Ordinary history retention must not turn a retry of a completed
             # receipt into a new score-earning submission (or a server error).
             status = ((previous.result or {}).get('value') or {}).get('status', previous.status)
-            return {'id':payload['submission_id'], 'executionId':previous.id,
+            return {'id':public_receipt_id(payload['submission_id']), 'executionId':public_execution_id(previous),
                     'status':status, 'receivedAt':iso(previous.received_at)}
         return receipt(record, previous)
     require_public_problem(db, problem_id)
@@ -48,8 +52,13 @@ def accept_practice(problem_id, data, request, response, db, user):
     if not sample and not hidden:
         raise HTTPException(409, '채점 테스트가 없어 제출할 수 없습니다. 관리자에게 문의하세요.')
     submission_id = str(uuid4())
+    try:
+        validate_stored_cases(db,sample,hidden)
+        judge_contract = freeze_stored_submission(problem.judge_policy, data.language, sample, hidden, settings=settings)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
     payload = {'submission_id':submission_id, 'problem_id':problem.id, 'code':data.code, 'language':data.language,
-               'sample':sample, 'hidden':hidden, 'practice_points':problem.points}
+               'sample':sample, 'hidden':hidden, 'practice_points':problem.points, 'judge_contract':judge_contract}
     try:
         job = queue.enqueue_in_session(db, owner_key=owner, quota_key=execution_quota(request,user),
             request_id=key, kind='practice', payload=payload, at=received)
@@ -72,4 +81,5 @@ def accept_practice(problem_id, data, request, response, db, user):
 
 
 def receipt(submission, job):
-    return {'id':submission.id, 'executionId':job.id, 'status':submission.status, 'receivedAt':iso(submission.created_at)}
+    return {'id':public_receipt_id(submission.id), 'executionId':public_execution_id(job),
+            'status':submission.status, 'receivedAt':iso(submission.created_at)}

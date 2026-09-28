@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -7,12 +7,32 @@ from app.api.routes.auth import require_admin
 from app.core.database import get_db
 from app.models import database as db_models
 from app.models import schemas
+from app.models.legacy_execution import LegacyExecutionResolutionWrite
+from app.services.rating import invalidate_rating_cache
 
 router = APIRouter()
 
 
+@router.get('/execution-jobs/{job_id}/legacy-resolution')
+def get_legacy_execution_resolution(job_id: str, response: Response,
+        db: Session = Depends(get_db), current_user: db_models.User = Depends(require_admin)):
+    from app.services import legacy_execution_resolution as service
+    response.headers['Cache-Control'] = 'no-store'
+    return service.read(db, job_id)
+
+
+@router.post('/execution-jobs/{job_id}/legacy-resolution')
+def create_legacy_execution_resolution(job_id: str, data: LegacyExecutionResolutionWrite,
+        response: Response, db: Session = Depends(get_db),
+        current_user: db_models.User = Depends(require_admin)):
+    from app.services import legacy_execution_resolution as service
+    response.headers['Cache-Control'] = 'no-store'
+    return service.append(db, job_id, data, current_user)
+
+
 @router.get("/users", response_model=schemas.AdminUsersResponse)
 def list_users(
+    response: Response,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     search: str | None = Query(None, max_length=80),
@@ -38,6 +58,7 @@ def list_users(
         .limit(limit)
         .all()
     )
+    response.headers["Cache-Control"] = "no-store"
     return {"users": users, "total": total, "filtered_total": filtered_total}
 
 
@@ -82,6 +103,9 @@ def update_user(
     if 'avatar_url' in payload.model_fields_set:
         user.avatar_url = (payload.avatar_url or '').strip() or None
 
+    if payload.public_profile_enabled is not None:
+        user.public_profile_enabled = payload.public_profile_enabled
+
     db.add(user)
     try:
         db.commit()
@@ -89,4 +113,5 @@ def update_user(
         db.rollback()
         raise HTTPException(409, "이미 사용 중인 이메일 또는 닉네임입니다.") from exc
     db.refresh(user)
+    invalidate_rating_cache(user.id)
     return user

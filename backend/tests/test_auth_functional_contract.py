@@ -71,8 +71,8 @@ def test_auth_request_aliases_accept_browser_payloads():
     assert reset_confirm.new_password == "new-password-123"
 
 
-def test_header_sends_explicit_nulls_when_profile_fields_are_cleared():
-    source = (ROOT / "frontend" / "src" / "app" / "components" / "Header.tsx").read_text(
+def test_settings_sends_explicit_nulls_when_profile_fields_are_cleared():
+    source = (ROOT / "frontend" / "src" / "app" / "pages" / "Settings.tsx").read_text(
         encoding="utf-8"
     )
     assert "email: profileEmail.trim() || null" in source

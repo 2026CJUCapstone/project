@@ -27,6 +27,23 @@ pytestmark = pytest.mark.skipif(os.getenv('RUN_LB_INTEGRATION') != '1',
                               reason='Explicit isolated multi-container audit required')
 
 
+async def wait_for_container_exit(container, *, timeout=30):
+    """Poll bounded state instead of relying on Docker's streaming wait call.
+
+    A container can already have logged its startup failure while the daemon's
+    wait response is still blocked long enough to hit the SDK read timeout on a
+    CPU-limited audit host. Inspect polling proves the actual PID-1 state and
+    keeps the fail-closed assertion independent of that transport behavior.
+    """
+    async with asyncio.timeout(timeout):
+        while True:
+            await asyncio.to_thread(container.reload)
+            state = container.attrs['State']
+            if not state['Running']:
+                return state['ExitCode']
+            await asyncio.sleep(.1)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('replicas',['postgres'],indirect=True)
 async def test_ready_only_membership_reload_and_controller_fail_closed(replicas):
@@ -171,7 +188,7 @@ async def trace(request, call_next):
             buildargs={'FRONTEND_API_UPSTREAM':'api-proxy:8080','ENVIRONMENT':'production','DEPLOY_SHA':'a'*40})
         images.append(frontend_image)
         initializer = await asyncio.to_thread(start,image.id,'init',['python','-m','app.proxy_initialize'])
-        assert (await asyncio.to_thread(initializer.wait,timeout=15))['StatusCode'] == 0
+        assert await wait_for_container_exit(initializer) == 0
         assert control.stat().st_uid == 10001 and control.stat().st_mode & 0o777 == 0o700
         command = ['python','-m','uvicorn','ready_api:app','--host','0.0.0.0','--port','8000',
                    '--no-proxy-headers','--log-level','error']
@@ -191,7 +208,7 @@ async def trace(request, call_next):
                     ('pool', {'RUNTIME_POOL_ID':prefix+'-conflict'})):
                 conflict = await asyncio.to_thread(start,image.id,'api-conflicting-'+name,
                                                    command,extra=overrides)
-                assert (await asyncio.to_thread(conflict.wait,timeout=15))['StatusCode'] != 0
+                assert await wait_for_container_exit(conflict) != 0
                 assert b'Runtime instance identity mismatch' in await asyncio.to_thread(conflict.logs)
             await wait_http(http,'http://'+address(bad)+':8000/health')
             # A worker from release A cannot ready an API from release B.
@@ -249,20 +266,20 @@ async def trace(request, call_next):
                 assert f'server {address(api,api_network)}:8000 ' in active_config
             assert f'server {address(bad,api_network)}:8000 ' not in active_config
             repeated = await asyncio.to_thread(start,image.id,'init-repeat',['python','-m','app.proxy_initialize'])
-            assert (await asyncio.to_thread(repeated.wait,timeout=15))['StatusCode'] == 0
+            assert await wait_for_container_exit(repeated) == 0
             assert (control/'nginx.conf').read_text() == active_config
             wrong = await asyncio.to_thread(start,image.id,'init-wrong-release',['python','-m','app.proxy_initialize'],
                                            extra={'DEPLOYMENT_SHA':'b'*40})
-            assert (await asyncio.to_thread(wrong.wait,timeout=15))['StatusCode'] != 0
+            assert await wait_for_container_exit(wrong) != 0
             assert (control/'nginx.conf').read_text() == active_config
             wrong_pool = await asyncio.to_thread(start,image.id,'init-wrong-pool',['python','-m','app.proxy_initialize'],
                                                 extra={'PROXY_POOL_ID':prefix+'-other-color'})
-            assert (await asyncio.to_thread(wrong_pool.wait,timeout=15))['StatusCode'] != 0
+            assert await wait_for_container_exit(wrong_pool) != 0
             assert (control/'nginx.conf').read_text() == active_config
             # Generation diagnostics cannot be fetched from another container.
             wrong_runtime = await asyncio.to_thread(start,image.id,'init-wrong-runtime',['python','-m','app.proxy_initialize'],
                                                    extra={'RUNTIME_INSTANCE_ID':uuid4().hex})
-            assert (await asyncio.to_thread(wrong_runtime.wait,timeout=15))['StatusCode'] != 0
+            assert await wait_for_container_exit(wrong_runtime) != 0
             assert (control/'nginx.conf').read_text() == active_config
             assert (await http.get(url+'/_proxy_generation')).status_code == 403
             assert (await http.get(url+'/_proxy_membership')).status_code == 404

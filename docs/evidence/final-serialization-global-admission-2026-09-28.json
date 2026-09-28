@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 2,
+  "recordedAtKst": "2026-09-28",
+  "sourceCommit": "304028511f65cbfd35762a15dbab930ef57e7026",
+  "sourceArchive": {
+    "purpose": "local deterministic reproduction archive",
+    "format": "git-archive-tar-gzip",
+    "sha256": "0205ab2d97eb57af52169fcdef3e949c5e764b1c1dbe7c885e97134425a3896e",
+    "bytes": 2783505
+  },
+  "serverSourceAssembly": {
+    "base": {
+      "commit": "975403efd9d383749da9ca0435f014c6f48ace46",
+      "archiveSha256": "23f01a3973237c46f40f58b0365e7e03c1d2490d6e21aabb13cff510c42aa9f7"
+    },
+    "verifiedDeltasInAppliedOrder": [
+      "1ff9037c0ecae11be237b55d3919f564e38304170931a76156c567630abd5668",
+      "cfde86ffac68db1b54e795a09ea03418986d6dbca7881b7070cc09a7b166a192",
+      "7df3729cd3ea5438633a760f64852c04af48568491253edb98d18ea07303c990"
+    ],
+    "resultingCommit": "304028511f65cbfd35762a15dbab930ef57e7026"
+  },
+  "scope": {
+    "operatingServicesChanged": false,
+    "operatingDataChanged": false,
+    "hostPortsPublished": false,
+    "isolatedPostgresRedis": true,
+    "sharedDefaultDockerDaemon": true,
+    "dedicatedDaemonAcceptance": false
+  },
+  "selectedTests": [
+    "backend/tests/test_runner_cleanup.py",
+    "backend/tests/test_problem_delete_submit_race.py",
+    "backend/tests/test_load_balancer_live.py"
+  ],
+  "isolatedCommand": "RUN_LB_INTEGRATION=1 pytest -q tests/test_runner_cleanup.py tests/test_problem_delete_submit_race.py tests/test_load_balancer_live.py --tb=short -p no:cacheprovider --basetemp=/test-tmp/pytest-scale-3040",
+  "isolatedStdoutSummary": "6 passed in 150.38s (0:02:30)",
+  "isolatedResult": {
+    "passed": 6,
+    "failed": 0,
+    "seconds": 150.38,
+    "contracts": [
+      "practice submission and problem archival have one PostgreSQL serial order",
+      "contest attachment and problem archival have one PostgreSQL serial order",
+      "terminal plus distinct authenticated HTTP receipts use an eight-request global admission window",
+      "active terminal upstream loss cancels once and a survivor accepts a new terminal",
+      "API membership grows from two to three and shrinks to two while one terminal is live and seven HTTP receipts remain queued",
+      "an interrupted worker lease is recovered by a replacement worker without losing its queued backlog",
+      "accepted global-window jobs retain one-attempt completion",
+      "work-directory deletion failure is fail-closed instead of being published as successful cleanup",
+      "missing sandbox image retries three times and leaves no journal or workdir"
+    ]
+  },
+  "freshLfBackendFull": {
+    "passed": 3153,
+    "skipped": 456,
+    "subtestsPassed": 10,
+    "failed": 0,
+    "seconds": 377.83
+  },
+  "localCleanupRecoveryFocused": {
+    "command": "pytest -q backend/tests/test_runner_cleanup.py backend/tests/test_execution_worker.py backend/tests/test_sandbox_reconciliation.py",
+    "passed": 36,
+    "skipped": 13,
+    "failed": 0,
+    "seconds": 9.39
+  },
+  "cleanup": {
+    "mountReferences": 0,
+    "auditLoadBalancerContainers": 0,
+    "auditLoadBalancerImages": 0,
+    "projectNetworks": 0,
+    "projectVolumes": 0,
+    "sandboxEntries": 0,
+    "runnerContainers": 0,
+    "temporaryServerRootRemoved": true
+  },
+  "executionNotes": [
+    "The first transfer of the 975403ef archive was interrupted at 16 KiB by repeated SSH resets. A 340-part owner-only transfer was reassembled and its SHA-256 was verified before extraction.",
+    "The first scale-under-load assertion incorrectly required least_conn to route receipt GETs to the API already holding the active WebSocket. The 12-second timeout exposed the invalid assertion; the final test instead requires the new third peer and a live original peer while separately proving the socket stays open.",
+    "The first worker-replacement observation used a 90-second window with the default 120-second execution lease. The final fixture explicitly uses an eight-second test-only lease; no operating lease setting changed.",
+    "That retry exposed a real cleanup defect: shutil.rmtree(ignore_errors=True) allowed a completed receipt to leave one work directory. Cleanup now fails closed and the replacement worker reconciles the retained lease. The final six-test run passed and the sandbox was empty.",
+    "All disposable Compose resources were removed. Exact mount, container, image, network, volume, sandbox and runner counts were zero before the owner-only temporary root was removed."
+  ],
+  "remainingExternalConditions": [
+    "long simultaneous bot and WebSocket soak",
+    "Redis process and cold full-Compose failure",
+    "dedicated non-default Docker daemon or VM cgroup acceptance",
+    "multi-host loss if multi-host high availability is required"
+  ]
+}

@@ -41,8 +41,8 @@ test.describe("webcompiler browser e2e", () => {
 
     await expect(page.getByTestId("compile-run-button")).toBeVisible();
     await expect(page.getByTestId("output-console")).not.toContainText("> _");
-    await expect(page.locator(".view-lines").first()).toContainText("var spf: [101]i64;");
-    await expect(page.locator(".view-lines").first()).toContainText("// spf[i] = i의 가장 작은 소인수");
+    await expect(page.locator(".view-lines").first()).toContainText("import emitln from std.io;");
+    await expect(page.locator(".view-lines").first()).toContainText('emitln("Hello, World!");');
   });
 
   test("runs B++ code through the browser at /webcompiler", async ({ page }) => {

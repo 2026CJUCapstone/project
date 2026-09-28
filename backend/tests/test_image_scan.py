@@ -177,3 +177,36 @@ def test_inventory_coalesces_duplicate_purls_and_checks_encoded_epoch():
     inventory = bom(value)
     value['Results'][0]['Packages'].append(copy.deepcopy(package))
     assert scan.verify_inventory(value, inventory) == 1
+
+
+@pytest.mark.parametrize('kind,epoch', [('deb/debian', 1), ('deb/debian', 2), ('rpm/redhat', 1)])
+def test_inventory_preserves_native_epoch_from_purl_qualifier(kind, epoch):
+    value = report()
+    package = value['Results'][0]['Packages'][0]
+    package.update(Version='1.3.dfsg+really1.3.1', Release='1+b1', Epoch=epoch)
+    package['Identifier']['PURL'] = f'pkg:{kind}/fixture@1.3.dfsg%2Breally1.3.1-1%2Bb1?arch=amd64&epoch={epoch}'
+    inventory = bom(value)
+    component = inventory['components'][0]
+    component['version'] = f'{epoch}:1.3.dfsg+really1.3.1-1+b1'
+    assert scan.verify_inventory(value, inventory) == 1
+    for wrong in ('1.3.dfsg+really1.3.1-1+b1', '3:1.3.dfsg+really1.3.1-1+b1', f'{epoch}:1.3.dfsg+really1.3.1-2'):
+        component['version'] = wrong
+        with pytest.raises(scan.ScanError, match='version mismatch'):
+            scan.verify_inventory(value, inventory)
+
+
+@pytest.mark.parametrize('purl', [
+    'pkg:deb/debian/pkg@2-3?epoch=1&epoch=2',
+    'pkg:deb/debian/pkg@2-3?epoch=',
+    'pkg:deb/debian/pkg@2-3?epoch=-1',
+    'pkg:deb/debian/pkg@2-3?epoch=01',
+    'pkg:deb/debian/pkg@2-3?epoch=word',
+    'pkg:deb/debian/pkg@1%3A2-3?epoch=1',
+    'pkg:pypi/pkg@2-3?epoch=1',
+    'pkg:deb/debian/pkg@2-3?epoch',
+])
+def test_inventory_rejects_ambiguous_or_invalid_epoch(purl):
+    value = report()
+    value['Results'][0]['Packages'][0]['Identifier']['PURL'] = purl
+    with pytest.raises(scan.ScanError):
+        scan.verify_inventory(value, bom(value))

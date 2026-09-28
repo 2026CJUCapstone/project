@@ -19,7 +19,8 @@ source "$PROJECT_ROOT/scripts/deploy_guard.sh"
 # fall through into managed blue/green ownership or migration logic.
 if [[ -e "$PROJECT_ROOT/.deploy/basic-pool.json" || -L "$PROJECT_ROOT/.deploy/basic-pool.json" ]]; then
   export WEBCOMPILER_DEPLOY_LOCK_HELD=1
-  exec python3 -I "$PROJECT_ROOT/scripts/basic_pool_deploy.py"
+  export WEBCOMPILER_APPLICATION_RELEASE=approved
+  exec python3 -I "$PROJECT_ROOT/scripts/basic_pool_application_release.py"
 fi
 python3 "$PROJECT_ROOT/scripts/validate_ingress.py"
 python3 "$PROJECT_ROOT/scripts/runtime_secrets.py" validate --deployment --allow-missing --file "$PROJECT_ROOT/.deploy/runtime-secrets.env"
@@ -60,7 +61,7 @@ export WEBCOMPILER_DOCKER_GID="$(stat -c %g /var/run/docker.sock)"
 export SECRET_KEY="${SECRET_KEY:-$WEBCOMPILER_SECRET_KEY}"
 export ADMIN_PASSWORD="${ADMIN_PASSWORD:-$WEBCOMPILER_ADMIN_PASSWORD}"
 export ENVIRONMENT="${ENVIRONMENT:-production}"
-export PASSWORD_RESET_BASE_URL="${PASSWORD_RESET_BASE_URL:-${WEBCOMPILER_PASSWORD_RESET_BASE_URL:-https://cuha.cju.ac.kr/webcompiler/}}"
+export PASSWORD_RESET_BASE_URL="${PASSWORD_RESET_BASE_URL:-${WEBCOMPILER_PASSWORD_RESET_BASE_URL:-https://cuha.cju.ac.kr/webcompiler/reset-password}}"
 export SMTP_HOST="${SMTP_HOST:-${WEBCOMPILER_SMTP_HOST:-}}"
 export SMTP_PORT="${SMTP_PORT:-${WEBCOMPILER_SMTP_PORT:-587}}"
 export SMTP_USERNAME="${SMTP_USERNAME:-${WEBCOMPILER_SMTP_USERNAME:-}}"
