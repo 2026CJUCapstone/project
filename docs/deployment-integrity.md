@@ -14,7 +14,9 @@ checkout 전에 job 조건에서도 같은 저장소의 main/push 성공만 허�
 
 ## SSH와 소스 갱신
 
-`dispatch_deploy.py`가 한 번의 SSH 연결로 전체 작업을 수행한다. 알려진 호스트 키를 `WEBCOMPILER_DEPLOY_KNOWN_HOSTS`에서 받아 임시 600 파일에 넣고, 정확한 host/port 항목이 있는지 확인한다. `StrictHostKeyChecking=yes`이며 실시간 `ssh-keyscan` 결과를 처음부터 신뢰하는 경로는 없다. 토큰·배포 경로 등은 셸 인자가 아니라 인용 처리한 표준입력으로 보낸다.
+`dispatch_deploy.py`는 프런트 아카이브를 전용 SSH 스트림으로 먼저 전송하고, 별도 SSH 연결에서 잠금·소스 갱신·배포를 수행한다. 아카이브는 Bash가 해석하는 스크립트에 포함하지 않고 원격 `cat`의 표준입력으로 직접 전달한다. 업로드 이름은 커밋 SHA와 SHA-256으로 고정하고, 배포 잠금을 잡은 뒤 일반 파일·symlink 여부와 digest를 다시 검증한다. 실패 시 임시 업로드를 제거하며 운영 전환 스크립트는 검증된 경로만 사용한다.
+
+두 연결 모두 `WEBCOMPILER_DEPLOY_KNOWN_HOSTS`를 임시 600 파일에 넣고 정확한 host/port 항목이 있는지 확인한다. `StrictHostKeyChecking=yes`이며 실시간 `ssh-keyscan` 결과를 처음부터 신뢰하는 경로는 없다. GitHub 토큰은 명령행이나 아카이브 전송에 포함하지 않고, 인용 처리한 작은 배포 스크립트의 표준입력으로만 전달한다. 배포 경로는 아카이브 전송 명령에 필요하지만 설정 검증과 POSIX 인용을 거친다.
 
 `sync_remote_repo.sh`는 `.deploy/deploy.lock`을 잡은 상태로 지정된 40자리 SHA와 그 조상 이력만 fetch한다. 자동 application release가 현재 운영 SHA의 조상 관계를 검증해야 하므로 depth-1 shallow fetch는 사용하지 않는다. origin이 다르거나 tracked 파일에 변경이 있으면 중단한다. detached checkout에서 `--no-overwrite-ignore`를 사용하고 `--force`나 `git clean`은 사용하지 않는다. 무시된 운영 파일과 새 tracked 파일이 충돌하는 경우에도 덮지 않고 실패한다.
 

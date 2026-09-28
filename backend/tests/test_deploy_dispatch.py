@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import importlib.util
 from pathlib import Path
@@ -59,7 +58,7 @@ def test_missing_exact_host_key_blocks_ssh():
     assert len(calls) == 1 and calls[0][0] == 'ssh-keygen'
 
 
-def test_frontend_archive_is_exactly_decoded_after_remote_lock(tmp_path):
+def test_frontend_archive_uses_a_dedicated_binary_ssh_stream(tmp_path):
     archive_bytes = b'frontend archive fixture\x00\xff\n'
     archive = tmp_path/'frontend.tar.gz'
     archive.write_bytes(archive_bytes)
@@ -71,24 +70,52 @@ def test_frontend_archive_is_exactly_decoded_after_remote_lock(tmp_path):
         calls.append((command, kwargs))
         if command[0] == 'ssh-keygen':
             return SimpleNamespace(returncode=0)
+        assert command[0] == 'ssh'
+        if kwargs.get('text') is not True:
+            assert kwargs['input'] == archive_bytes
+            assert 'cat >"$TMP_PATH"' in command[-1]
+            assert 'base64' not in command[-1]
+            return SimpleNamespace(returncode=0)
+
         payload = kwargs['input']
-        marker = '# DEPLOY_FRONTEND_PAYLOAD'
-        assert payload.index('flock -n 9') < payload.index(marker)
-        assert payload.index(marker) < payload.index('git -C "$DEPLOY_PATH" init')
-        assert 'scp' not in payload and 'ssh ' not in payload
-        assert 'WEBCOMPILER_FRONTEND_ARCHIVE="$(mktemp "$DEPLOY_PATH/.deploy/frontend-$DEPLOY_SHA-XXXXXX.tar.gz")"' in payload
-        encoded_start = payload.index("<<'__DEPLOY_FRONTEND_PAYLOAD__'\n")
-        encoded_start += len("<<'__DEPLOY_FRONTEND_PAYLOAD__'\n")
-        encoded_end = payload.index('\n__DEPLOY_FRONTEND_PAYLOAD__\n', encoded_start)
-        encoded_payload = payload[encoded_start:encoded_end]
-        assert base64.b64decode(encoded_payload) == archive_bytes
-        assert max(map(len, encoded_payload.splitlines())) <= 76
-        assert f"export WEBCOMPILER_FRONTEND_SHA256='{hashlib.sha256(archive_bytes).hexdigest()}'" in payload
-        assert 'export WEBCOMPILER_FRONTEND_ARCHIVE' in payload
+        digest = hashlib.sha256(archive_bytes).hexdigest()
+        assert command[-1] == 'bash -s'
+        assert archive_bytes not in payload.encode()
+        assert f'frontend-upload-{"a" * 40}-{digest}.tar.gz' in payload
+        assert f'export WEBCOMPILER_FRONTEND_SHA256={digest}' in payload
         return SimpleNamespace(returncode=0)
 
     dispatch.dispatch(env, run=run)
-    assert [command[0] for command, _ in calls] == ['ssh-keygen', 'ssh']
+    assert [command[0] for command, _ in calls] == ['ssh-keygen', 'ssh', 'ssh']
+    sync = (ROOT/'scripts/sync_remote_repo.sh').read_text()
+    assert sync.index('flock -n 9') < sync.index('expected_frontend=')
+    assert 'sha256sum "$WEBCOMPILER_FRONTEND_UPLOAD"' in sync
+    assert 'export WEBCOMPILER_FRONTEND_ARCHIVE=' in sync
+
+
+def test_failed_deploy_removes_uploaded_frontend(tmp_path):
+    archive = tmp_path/'frontend.tar.gz'
+    archive.write_bytes(b'frontend')
+    env = environment()
+    env['DEPLOY_FRONTEND_ARCHIVE'] = str(archive)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        if command[0] == 'ssh-keygen':
+            return SimpleNamespace(returncode=0)
+        if len(calls) == 3:
+            raise subprocess.CalledProcessError(1, command)
+        return SimpleNamespace(returncode=0)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        dispatch.dispatch(env, run=run)
+    assert [command[0] for command, _ in calls] == ['ssh-keygen', 'ssh', 'ssh', 'ssh']
+    cleanup_command, cleanup_kwargs = calls[-1]
+    assert 'rm -f --' in cleanup_command[-1]
+    assert cleanup_kwargs['check'] is False
+    assert cleanup_kwargs['stdout'] is subprocess.DEVNULL
+    assert cleanup_kwargs['stderr'] is subprocess.DEVNULL
 
 
 @pytest.mark.parametrize('archive_factory, message', [
