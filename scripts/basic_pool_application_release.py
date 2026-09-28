@@ -63,9 +63,11 @@ DEPLOYED_CHANGED_CONTRACT_HASHES = {
     "frontend/nginx.conf": "e99ffcaa1519da292843be84e3a7705e6b2c8fb9e68438055ef52a082a6190dd",
 }
 
-EXPECTED_PREVIOUS_RELEASE = "ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e"
-EXPECTED_REVIEWED_BASE = "488356236e7181b7c7a4e7da09d47cdad4cd40b1"
+EXPECTED_PREVIOUS_RELEASE = "2e8e08841e7463a654e35460592913bca3c65f03"
+EXPECTED_REVIEWED_BASE = "2e8e08841e7463a654e35460592913bca3c65f03"
 EXPECTED_RELEASE_DELTA = {
+    "backend/app/services/public_identity.py",
+    "backend/tests/test_leaderboard.py",
     "backend/tests/test_basic_pool_application_release.py",
     "scripts/basic_pool_application_release.py",
 }
@@ -101,7 +103,7 @@ def check_application_contracts(previous: Path, candidate: Path) -> None:
 
     old_runtime = _runtime_files(previous)
     new_runtime = _runtime_files(candidate)
-    expected_additions = {"runtime/sandbox/verify_bpp_runtime.py"}
+    expected_additions: set[str] = set()
     assert new_runtime - old_runtime == expected_additions, "Unexpected runtime addition"
     assert not old_runtime - new_runtime, "Runtime file removal is not application-only"
     ignored = set(NONDEPLOYED_RUNTIME_HASHES)

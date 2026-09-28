@@ -36,13 +36,11 @@ def _tree(release, root: Path, *, candidate: bool) -> None:
         nginx.write_text("historical frontend config\n", encoding="utf-8")
     dockerfile = root / "runtime/docker/Dockerfile"
     dockerfile.parent.mkdir(parents=True, exist_ok=True)
-    if candidate:
-        source = ROOT / "runtime/docker/Dockerfile"
-        shutil.copyfile(source, dockerfile)
-        verifier = root / "runtime/sandbox/verify_bpp_runtime.py"
-        shutil.copyfile(ROOT / "runtime/sandbox/verify_bpp_runtime.py", verifier)
-    else:
-        dockerfile.write_text("historical sandbox recipe\n", encoding="utf-8")
+    source = ROOT / "runtime/docker/Dockerfile"
+    shutil.copyfile(source, dockerfile)
+    verifier = root / "runtime/sandbox/verify_bpp_runtime.py"
+    verifier.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "runtime/sandbox/verify_bpp_runtime.py", verifier)
 
 
 def test_exact_non_deployed_runtime_gate_is_allowed():
@@ -113,9 +111,11 @@ def test_candidate_preflight_is_networkless_and_validates_runtime_security():
 def test_release_is_pinned_to_the_reviewed_operating_transition():
     release = load_release()
     assert release.m.b is release.b
-    assert release.EXPECTED_PREVIOUS_RELEASE == "ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e"
-    assert release.EXPECTED_REVIEWED_BASE == "488356236e7181b7c7a4e7da09d47cdad4cd40b1"
+    assert release.EXPECTED_PREVIOUS_RELEASE == "2e8e08841e7463a654e35460592913bca3c65f03"
+    assert release.EXPECTED_REVIEWED_BASE == "2e8e08841e7463a654e35460592913bca3c65f03"
     assert release.EXPECTED_RELEASE_DELTA == {
+        "backend/app/services/public_identity.py",
+        "backend/tests/test_leaderboard.py",
         "backend/tests/test_basic_pool_application_release.py",
         "scripts/basic_pool_application_release.py",
     }
