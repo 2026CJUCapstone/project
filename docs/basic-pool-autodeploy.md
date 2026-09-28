@@ -33,8 +33,8 @@
 
 ## 승인된 B++ 그래프 출력 런타임 교체
 
-일반 배포는 여전히 모든 runtime 변경을 거부한다. 예외는 운영자가 이번 출력 전용
-패치를 명시적으로 승인하고, 별도로 빌드한 불변 이미지와 정확한 이전/후속 SHA를
+일반 배포는 여전히 모든 runtime 변경을 거부한다. 예외는 운영자가 이번 그래프 출력
+패치와 검증된 컴파일러 수정을 명시적으로 승인하고, 별도로 빌드한 불변 이미지와 정확한 이전/후속 SHA를
 `.deploy/basic-pool-runtime-approval.json`에 기록한 경우뿐이다. 파일은 운영자 소유
 일반 파일이며 권한 0600이어야 한다. 이 파일은 비공개 운영 기록이며 Git에 넣지 않는다.
 
@@ -45,14 +45,19 @@ Dockerfile의 `io.bpp.runtime_source_digest` label, compiler ref/repo/build poli
 확인한다. label은 운영자가 수행한 빌드 기록을 묶는 값이지 별도 서명된 provenance가
 아니다. 정확한 committed archive, 빌드 로그, 검증 결과를 함께 보존한다.
 
-허용 변경은 runtime Dockerfile, 두 exploration 패치 파일, exploration 검증기 네 개뿐이다.
-launcher, compiler ref, 나머지 runtime 파일, 스키마, 의존성, 보안 설정, topology는
+허용 변경은 runtime Dockerfile, 두 exploration 패치 파일, exploration 검증기와
+compiler pin뿐이다. pin 변경은 기존 `2d596233f45973394a5d951c40b11f78171c8870`에서
+수정 후보 `9859a2dc783c9346be2ab9447e1569218bcc5093`로 가는 정확한 전환만 허용한다.
+다른 ref나 mutable branch는 승인 digest가 있어도 거부한다. launcher, 나머지 runtime 파일, 스키마, 의존성, 보안 설정, topology는
 기존과 동일해야 한다. 파일 삭제도 거부한다. 이전 배포에 소비된 승인은 이후 변경에
 재사용되지 않는다. 잘못된 승인/이미지/계약은 점검 화면에 진입하기 전에 중단된다.
 
 1. 운영자 승인 후 충분한 디스크 여유와 별도 named BuildKit의 CPU·메모리·PID 상한을
    확인하고 정확한 Git archive에서 후보 이미지만 빌드한다. stable tag는 바꾸지 않는다.
-2. 기존 native compiler gate와 새 O0/O1 exploration gate를 후보 이미지에서 통과시킨다.
+2. 기존 native compiler gate와 새 O0/O1 exploration gate, 여섯 언어 실행,
+   Unicode/LF/CRLF 소스 매핑, 실제 sandbox 이미지 보안 검사를 통과시킨다.
+   빌드에 `WEB_SOURCE_SHA`를 정확한 committed archive SHA로 지정하고, 해당 label과
+   불변 image ID를 scan 결과에 묶는다. backend/frontend CI만으로 sandbox 검사를 대체하지 않는다.
 3. 승인 파일을 기록한 후 CI에 통과한 main SHA의 배포 workflow를 실행한다.
 4. 배포는 위 검증기를 네트워크 없는 제한 컨테이너에서 다시 실행한 뒤, 기존
    접수 차단·drain·DB 백업·fingerprint 절차로 API/worker/frontend와 SANDBOX_IMAGE를

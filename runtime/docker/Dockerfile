@@ -73,6 +73,7 @@ ARG TEST_FAST_IO=0
 ARG BPP_TEST_NAME_FILTER="14_print_anything_success|43_language_feature_runtime_bundle_success"
 ARG RUNTIME_BUILD_SIGNATURE=unknown
 ARG RUNTIME_SOURCE_DIGEST=unknown
+ARG WEB_SOURCE_SHA=unknown
 
 LABEL org.opencontainers.image.source="${BPP_REPO}"
 LABEL io.bpp.repo="${BPP_REPO}"
@@ -85,6 +86,8 @@ LABEL io.bpp.test_fast_io="${TEST_FAST_IO}"
 LABEL io.bpp.test_name_filter="${BPP_TEST_NAME_FILTER}"
 LABEL io.bpp.runtime_build_signature="${RUNTIME_BUILD_SIGNATURE}"
 LABEL io.bpp.runtime_source_digest="${RUNTIME_SOURCE_DIGEST}"
+LABEL io.webcompiler.source-sha="${WEB_SOURCE_SHA}"
+LABEL io.webcompiler.image-role="sandbox"
 
 ENV BPP_REPO="${BPP_REPO}"
 ENV BPP_REF="${BPP_REF}"

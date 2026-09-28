@@ -1,4 +1,4 @@
-"""Explicit, exact-revision approval for an output-only Bpp runtime update.
+"""Explicit, exact-revision approval for a reviewed Bpp runtime update.
 
 No automatic toolchain adoption: the operator first builds/tests an immutable
 image, then records the approved old/new revisions and image identities in a
@@ -14,11 +14,16 @@ import re
 import stat
 
 ALLOWED_CHANGES = frozenset({
+    "runtime/bpp-ref.txt",
     "runtime/docker/Dockerfile",
     "runtime/compiler-patches/apply_exploration.py",
     "runtime/compiler-patches/exploration.bpp",
     "runtime/sandbox/verify_bpp_exploration.py",
 })
+REVIEWED_COMPILER_TRANSITION = (
+    "2d596233f45973394a5d951c40b11f78171c8870",
+    "9859a2dc783c9346be2ab9447e1569218bcc5093",
+)
 
 
 def runtime_digest(root: Path) -> str:
@@ -63,6 +68,10 @@ def validate_approval(value, *, previous, candidate, old_sha, new_sha, old_image
     changes = changed_runtime(previous, candidate)
     if not changes or not changes <= ALLOWED_CHANGES:
         raise ValueError("Unreviewed runtime change")
+    if "runtime/bpp-ref.txt" in changes:
+        refs = tuple((root / "runtime/bpp-ref.txt").read_text().strip() for root in (previous, candidate))
+        if refs != REVIEWED_COMPILER_TRANSITION:
+            raise ValueError("Unreviewed compiler revision transition")
     if value["runtime_digest"] != runtime_digest(candidate):
         raise ValueError("Runtime source approval mismatch")
     return value

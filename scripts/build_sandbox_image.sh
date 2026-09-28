@@ -39,6 +39,8 @@ BPP_TEST_NAME_FILTER="${BPP_TEST_NAME_FILTER:-14_print_anything_success|43_langu
 RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE:-$(runtime_build_signature)}"
 RUNTIME_SOURCE_DIGEST="$(python3 "$PROJECT_ROOT/scripts/basic_pool_runtime_release.py" digest "$PROJECT_ROOT")"
 [[ "$RUNTIME_SOURCE_DIGEST" =~ ^[0-9a-f]{64}$ ]] || { echo 'Invalid runtime source digest' >&2; exit 2; }
+WEB_SOURCE_SHA="${WEB_SOURCE_SHA:-unknown}"
+[[ "$WEB_SOURCE_SHA" == unknown || "$WEB_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid web source revision' >&2; exit 2; }
 
 if [[ -z "$BPP_REF" ]]; then
   if ! BPP_REF="$(git ls-remote "$BPP_REPO" "refs/heads/$BPP_BRANCH" | awk 'NR==1 { print $1 }')"; then
@@ -71,6 +73,7 @@ docker buildx build --builder "${WEBCOMPILER_BUILD_BUILDER:?Explicit bounded bui
   --build-arg "BPP_TEST_NAME_FILTER=$BPP_TEST_NAME_FILTER" \
   --build-arg "RUNTIME_BUILD_SIGNATURE=$RUNTIME_BUILD_SIGNATURE" \
   --build-arg "RUNTIME_SOURCE_DIGEST=$RUNTIME_SOURCE_DIGEST" \
+  --build-arg "WEB_SOURCE_SHA=$WEB_SOURCE_SHA" \
   -t "$SANDBOX_IMAGE" \
   -f "$PROJECT_ROOT/runtime/docker/Dockerfile" \
   "$PROJECT_ROOT/runtime"

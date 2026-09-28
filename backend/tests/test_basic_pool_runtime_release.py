@@ -28,6 +28,8 @@ def transition(tmp_path):
     (previous / "backend/app/initialize.py").write_text("RUNTIME_SCHEMA_VERSION = 'v26'\n")
     shutil.copytree(previous, candidate)
     for relative in app.runtime.ALLOWED_CHANGES:
+        if relative == "runtime/bpp-ref.txt":
+            continue
         path = candidate / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("reviewed candidate\n", newline="\n")
@@ -86,6 +88,21 @@ def test_deletion_and_unknown_fields_are_rejected(transition):
     (args["candidate"] / "runtime/sandbox/run.sh").unlink()
     with pytest.raises(ValueError, match="deletion"):
         app.runtime.validate_approval(approval, **args)
+
+
+def test_only_exact_reviewed_compiler_upgrade_can_be_approved(transition):
+    app, approval, args = transition
+    for root, ref in zip((args["previous"], args["candidate"]), app.runtime.REVIEWED_COMPILER_TRANSITION):
+        (root / "runtime/bpp-ref.txt").write_text(ref + "\n")
+    approval["runtime_digest"] = app.runtime.runtime_digest(args["candidate"])
+    verified = app.runtime.validate_approval(approval, **args)
+    app.check_application_contracts(args["previous"], args["candidate"], runtime_approval=verified)
+    for ref in ("main", "c" * 40, app.runtime.REVIEWED_COMPILER_TRANSITION[0]):
+        (args["candidate"] / "runtime/bpp-ref.txt").write_text(ref + "\n")
+        (args["previous"] / "runtime/bpp-ref.txt").write_text("d" * 40 + "\n")
+        approval["runtime_digest"] = app.runtime.runtime_digest(args["candidate"])
+        with pytest.raises(ValueError, match="Unreviewed compiler"):
+            app.runtime.validate_approval(approval, **args)
 
 
 def test_networkless_candidate_gate_uses_exact_image_and_limits(transition):
