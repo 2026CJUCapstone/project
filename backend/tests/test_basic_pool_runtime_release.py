@@ -142,6 +142,13 @@ def test_networkless_candidate_gate_uses_exact_image_and_limits(transition):
         assert command[command.index("--cpus") + 1] == "1"
         assert approval["candidate_image"] in command
         assert "--read-only" in command and "--rm" in command
+        assert command[command.index("--user") + 1] == "1000:1000"
+        assert command[command.index("--cap-drop") + 1] == "ALL"
+        assert command[command.index("--security-opt") + 1] == "no-new-privileges"
+        scratch = command[command.index("--tmpfs") + 1]
+        target, options = scratch.split(":", 1)
+        assert target == "/tmp"
+        assert set(options.split(",")) == {"rw", "exec", "size=128m", "mode=1777", "nosuid", "nodev"}
         assert kwargs["timeout"] == 240
 
 

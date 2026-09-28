@@ -125,7 +125,9 @@ def verify_candidate(state, run):
         run("docker", "run", "--rm", "--pull", "never", "--network", "none",
             "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--pids-limit", "64",
-            "--user", "1000:1000", "--tmpfs", "/tmp:size=128m,mode=1777,nosuid",
+            # The gates compile then execute native binaries in this private
+            # tmpfs. Docker defaults tmpfs to noexec unless explicitly enabled.
+            "--user", "1000:1000", "--tmpfs", "/tmp:rw,exec,size=128m,mode=1777,nosuid,nodev",
             "--entrypoint", "python3", image, "-I", "/usr/local/share/" + verifier,
             timeout=240)
 
