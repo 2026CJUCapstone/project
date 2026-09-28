@@ -80,7 +80,9 @@ def test_frontend_archive_is_exactly_decoded_after_remote_lock(tmp_path):
         encoded_start = payload.index("<<'__DEPLOY_FRONTEND_PAYLOAD__'\n")
         encoded_start += len("<<'__DEPLOY_FRONTEND_PAYLOAD__'\n")
         encoded_end = payload.index('\n__DEPLOY_FRONTEND_PAYLOAD__\n', encoded_start)
-        assert base64.b64decode(payload[encoded_start:encoded_end]) == archive_bytes
+        encoded_payload = payload[encoded_start:encoded_end]
+        assert base64.b64decode(encoded_payload) == archive_bytes
+        assert max(map(len, encoded_payload.splitlines())) <= 76
         assert f"export WEBCOMPILER_FRONTEND_SHA256='{hashlib.sha256(archive_bytes).hexdigest()}'" in payload
         assert 'export WEBCOMPILER_FRONTEND_ARCHIVE' in payload
         return SimpleNamespace(returncode=0)

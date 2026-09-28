@@ -62,7 +62,12 @@ def _read_frontend_archive(path):
 
 def _inject_frontend_payload(script, archive):
     data, digest = archive
-    encoded = base64.b64encode(data).decode('ascii')
+    # Do not send the archive as one multi-megabyte shell line.  Bash reads a
+    # here-document a line at a time; one unbounded line can leave the remote
+    # shell waiting indefinitely while SSH still considers the channel alive.
+    # MIME-style wrapping is accepted by GNU base64 --decode and keeps the
+    # transport/parser buffers bounded.
+    encoded = base64.encodebytes(data).decode('ascii').rstrip('\n')
     payload = (
         f'{FRONTEND_PAYLOAD_MARKER}\n'
         'umask 077\n'
