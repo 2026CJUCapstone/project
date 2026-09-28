@@ -169,11 +169,15 @@ async def test_leaderboard_excludes_admin_users():
 async def test_public_leaderboard_never_exposes_email_or_hidden_test_accounts():
     suffix = uuid.uuid4().hex[:10]
     email_username = f"person_{suffix}@example.test"
+    email_nickname = f"profile_{suffix}@example.test"
+    safe_username = f"nickname_owner_{suffix}"
     hidden_username = f"validation_bot_{suffix}"
     db = SessionLocal()
     try:
         db.add_all([
             User(username=email_username, hashed_password="unused", total_score=15),
+            User(username=safe_username, nickname=email_nickname,
+                 hashed_password="unused", total_score=16),
             User(username=hidden_username, hashed_password="unused", total_score=999,
                  public_profile_enabled=False),
         ])
@@ -188,14 +192,17 @@ async def test_public_leaderboard_never_exposes_email_or_hidden_test_accounts():
 
         assert response.status_code == 200
         assert email_username not in response.text
+        assert email_nickname not in response.text
         assert hidden_username not in response.text
         assert not any(row["username"] == hidden_username for row in response.json())
         assert any(row["username"].startswith("사용자 ") and row["totalScore"] == 15
                    for row in response.json())
+        assert any(row["username"] == safe_username and row["totalScore"] == 16
+                   for row in response.json())
     finally:
         db = SessionLocal()
         try:
-            db.query(User).filter(User.username.in_([email_username, hidden_username])).delete(
+            db.query(User).filter(User.username.in_([email_username, safe_username, hidden_username])).delete(
                 synchronize_session=False
             )
             db.commit()

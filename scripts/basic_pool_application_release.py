@@ -60,7 +60,7 @@ NONDEPLOYED_RUNTIME_HASHES = {
     "runtime/sandbox/verify_bpp_runtime.py": "8d4dbf3a25df5c4cdf29250c9f65943afdb81500e4e525298de529243357f536",
 }
 DEPLOYED_CHANGED_CONTRACT_HASHES = {
-    "frontend/nginx.conf": "7787e3403839f7abf3658f8939c00f0e1b3f871610e8b9e36ff8bd3d2b7a55cb",
+    "frontend/nginx.conf": "e99ffcaa1519da292843be84e3a7705e6b2c8fb9e68438055ef52a082a6190dd",
 }
 
 EXPECTED_PREVIOUS_RELEASE = "ebd7e367f396dfab20a3a1f1f6ce96a4fdd4c79e"

@@ -18,7 +18,7 @@ def public_display_name(user) -> str:
     if not bool(getattr(user, "public_profile_enabled", True)):
         return f"비공개 사용자 {public_user_key(user.id)[-4:].upper()}"
     nickname = (getattr(user, "nickname", None) or "").strip()
-    if nickname:
+    if nickname and not _EMAIL_LIKE.match(nickname):
         return nickname
     username = (getattr(user, "username", None) or "").strip()
     if username and not _EMAIL_LIKE.match(username):
