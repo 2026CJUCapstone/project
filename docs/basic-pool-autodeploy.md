@@ -30,3 +30,41 @@
 `.deploy/basic-pool-pending.json`은 private release journal 경로를 가리킨다. journal은0600이며 자격증명을 포함하므로 출력·Git 업로드하지 않는다. `deployed`/`rolled-back`이 아닌 중단 상태에서는 다음 자동 배포를 막는다. 관리자가 해당 journal·실제 컨테이너·lock/edge 상태를 확인하고 복구해야 한다. 무조건 marker 삭제나 DB restore로 해결하지 않는다. 이전 이미지·dump를 자동 prune하지 않는다.
 
 현재 topology에서 동일한 코드/설정 계약의 업데이트를 자동화한다. DB migration·dependency/컴파일러 toolchain 갱신·topology 변경·다중 호스트 HA를 자동화했다고 주장하지 않는다. 동시 사용자 데이터 변경 때문에 fingerprint 검사가 실패하면 데이터 삭제 없이 rollback하고 원인을 확인한다.
+
+## 승인된 B++ 그래프 출력 런타임 교체
+
+일반 배포는 여전히 모든 runtime 변경을 거부한다. 예외는 운영자가 이번 그래프 출력
+패치와 검증된 컴파일러 수정을 명시적으로 승인하고, 별도로 빌드한 불변 이미지와 정확한 이전/후속 SHA를
+`.deploy/basic-pool-runtime-approval.json`에 기록한 경우뿐이다. 파일은 운영자 소유
+일반 파일이며 권한 0600이어야 한다. 이 파일은 비공개 운영 기록이며 Git에 넣지 않는다.
+
+허용 필드는 `version: 1`, `previous_sha`, `candidate_sha`, `previous_image`,
+`candidate_image`, `runtime_digest`뿐이다. 이미지 값은 tag가 아닌 전체 `sha256:` ID다.
+digest는 `python3 scripts/basic_pool_runtime_release.py digest SOURCE_ROOT`로 계산한다.
+Dockerfile의 `io.bpp.runtime_source_digest` label, compiler ref/repo/build policy도
+확인한다. label은 운영자가 수행한 빌드 기록을 묶는 값이지 별도 서명된 provenance가
+아니다. 정확한 committed archive, 빌드 로그, 검증 결과를 함께 보존한다.
+
+허용 변경은 runtime Dockerfile, 두 exploration 패치 파일, exploration 검증기와
+compiler pin뿐이다. pin 변경은 기존 `2d596233f45973394a5d951c40b11f78171c8870`에서
+수정 후보 `9859a2dc783c9346be2ab9447e1569218bcc5093`로 가는 정확한 전환만 허용한다.
+다른 ref나 mutable branch는 승인 digest가 있어도 거부한다. launcher, 나머지 runtime 파일, 스키마, 의존성, 보안 설정, topology는
+기존과 동일해야 한다. 파일 삭제도 거부한다. 이전 배포에 소비된 승인은 이후 변경에
+재사용되지 않는다. 잘못된 승인/이미지/계약은 점검 화면에 진입하기 전에 중단된다.
+
+1. 운영자 승인 후 충분한 디스크 여유와 별도 named BuildKit의 CPU·메모리·PID 상한을
+   확인하고 정확한 Git archive에서 후보 이미지만 빌드한다. stable tag는 바꾸지 않는다.
+2. 기존 native compiler gate와 새 O0/O1 exploration gate, 여섯 언어 실행,
+   Unicode/LF/CRLF 소스 매핑, 실제 sandbox 이미지 보안 검사를 통과시킨다.
+   빌드에 `WEB_SOURCE_SHA`를 정확한 committed archive SHA로 지정하고, 해당 label과
+   불변 image ID를 scan 결과에 묶는다. backend/frontend CI만으로 sandbox 검사를 대체하지 않는다.
+3. 승인 파일을 기록한 후 CI에 통과한 main SHA의 배포 workflow를 실행한다.
+4. 배포는 위 검증기를 네트워크 없는 제한 컨테이너에서 다시 실행한 뒤, 기존
+   접수 차단·drain·DB 백업·fingerprint 절차로 API/worker/frontend와 SANDBOX_IMAGE를
+   함께 전환한다. DB와 큐의 컨테이너는 교체하지 않는다.
+5. 이전 env에 기존 불변 sandbox ID를 보존하므로 검증된 rollback은 이전 런타임도
+   복구한다. 후보 시작 후 데이터 무결성이 확인되지 않은 실패는 기존 정책대로
+   점검 상태를 유지하고 수동 검토한다. DB dump를 운영 데이터 위에 덮어쓰지 않는다.
+
+서버의 자동 sandbox updater는 이 승인 경로를 대신하지 않는다. 별도 빌드 환경·용량이
+충족되지 않으면 런타임 배포 완료로 기록하지 않는다.

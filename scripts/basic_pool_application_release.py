@@ -30,6 +30,7 @@ def _load(name: str):
 b = _load("basic_pool_deploy")
 m = _load("basic_pool_migration_release")
 r = _load("runtime_secrets")
+runtime = _load("basic_pool_runtime_release")
 # The migration helper loads its own copy of the base module.  Rebind it so
 # every reused helper observes this release's configured ROOT/STATE/SHA.
 m.b = b
@@ -64,8 +65,10 @@ def _runtime_files(root: Path) -> set[str]:
     }
 
 
-def check_application_contracts(previous: Path, candidate: Path) -> None:
+def check_application_contracts(previous: Path, candidate: Path, *, runtime_approval=None) -> None:
     for relative in APPLICATION_CONTRACTS:
+        if runtime_approval and relative in runtime.ALLOWED_CHANGES:
+            continue
         assert b.contract_bytes(previous / relative) == b.contract_bytes(candidate / relative), (
             "Application-only release contract changed: " + relative
         )
@@ -83,8 +86,11 @@ def check_application_contracts(previous: Path, candidate: Path) -> None:
 
     old_runtime = _runtime_files(previous)
     new_runtime = _runtime_files(candidate)
-    assert new_runtime == old_runtime, "Runtime file-set change is not application-only"
+    assert (new_runtime == old_runtime if not runtime_approval else
+            not old_runtime - new_runtime and new_runtime - old_runtime <= runtime.ALLOWED_CHANGES), "Runtime file-set change is not application-only"
     for relative in old_runtime:
+        if runtime_approval and relative in runtime.ALLOWED_CHANGES:
+            continue
         assert b.contract_bytes(previous / relative) == b.contract_bytes(candidate / relative), (
             "Active runtime contract changed: " + relative
         )
@@ -106,7 +112,9 @@ def prepare() -> None:
     source = b.o.run("git", "-C", str(b.PROD), "archive", "--format=tar", b.SHA, timeout=60)
     (b.ROOT / "source.tar").write_bytes(source)
     b.extract(b.ROOT / "source.tar")
-    check_application_contracts(previous, b.ROOT)
+    runtime_approval = runtime.load_approval(b.PROD, previous, b.ROOT, previous_sha, b.SHA,
+                                             old["env"]["SANDBOX_IMAGE"], b.o.inspect)
+    check_application_contracts(previous, b.ROOT, runtime_approval=runtime_approval)
     # The adopted pool does not source the checkout's env files. Require a
     # complete private SMTP configuration before an application release, then
     # load it again immediately before candidate startup.
@@ -146,8 +154,9 @@ def prepare() -> None:
         "old": old,
         "old_ids": ids,
         "bases": bases,
-        "images": {"sandbox": bases["sandbox"]},
-        "sandbox_reused": True,
+        "images": {"sandbox": runtime_approval["candidate_image"] if runtime_approval else bases["sandbox"]},
+        "sandbox_reused": not bool(runtime_approval),
+        "runtime_approval": runtime_approval,
         "postgres_id": b.o.inspect("webcompiler-postgres")["Id"],
         "tags": [],
     }
@@ -297,6 +306,8 @@ def rollout() -> None:
     assert state["phase"] == "built"
     preflight_candidate_configuration(state)
     preflight_candidate_smtp(state)
+    if not state["sandbox_reused"]:
+        runtime.verify_candidate(state, b.o.run)
     current = json.loads(b.o.STATE.read_text())
     assert current["source_sha"] == state["old"]["source_sha"] and current["phase"] == "deployed"
     for role, container_id in state["old_ids"].items():
@@ -359,7 +370,7 @@ def rollout() -> None:
         for role in ("redis", "pgbouncer", "api-proxy"):
             assert b.o.inspect(b.PROJECT + "-" + role + "-1")["Id"] == state["old_ids"][role]
         assert b.o.inspect("webcompiler-postgres")["Id"] == state["postgres_id"]
-        assert environment["SANDBOX_IMAGE"] == state["bases"]["sandbox"]
+        assert environment["SANDBOX_IMAGE"] == (state["bases"]["sandbox"] if state["sandbox_reused"] else state["runtime_approval"]["candidate_image"])
         state["integrity_verified"] = True
         b.save(state)
 
@@ -379,7 +390,7 @@ def rollout() -> None:
             "phase": "deployed",
             "sha": b.SHA,
             "database_migrated": False,
-            "sandbox": "reused",
+            "sandbox": "reused" if state["sandbox_reused"] else "approved-runtime-update",
         }), flush=True)
     except BaseException:
         handle_rollout_failure(touched=touched)

@@ -501,6 +501,7 @@ def build_bpp_ssa_graph_from_json(payload: dict, source_code: str, source_filena
     blocks: list[dict] = []
     edges: list[dict] = []
     block_lookup: dict[str, dict] = {}
+    optimization_summaries: list[dict] = []
 
     for function_index, raw_function in enumerate(raw_functions):
         if not isinstance(raw_function, dict):
@@ -513,6 +514,20 @@ def build_bpp_ssa_graph_from_json(payload: dict, source_code: str, source_filena
         display_name = _match_user_function(compiled_name, source_names) or compiled_name
         if not _json_function_has_source_ranges(raw_function, source_filename) and _match_user_function(compiled_name, source_names) is None:
             continue
+
+        raw_summary = raw_function.get("optimizationSummary")
+        if (isinstance(raw_summary, dict) and type(raw_summary.get("version")) is int and raw_summary.get("version") == 1
+                and raw_summary.get("scope") == "function" and type(raw_summary.get("level")) is int
+                and 0 <= raw_summary["level"] <= 3):
+            counters = {}
+            for name in ("constantOperands", "constantBranches", "commonExpressions", "unusedCopies",
+                         "deadStores", "unreachableBlocks", "simplifiedPhi", "algebraicSimplifications"):
+                count = raw_summary.get(name)
+                if type(count) is int and 0 <= count <= 1_000_000_000:
+                    counters[name] = count
+            optimization_summaries.append({"functionId": compiled_name, "functionName": display_name,
+                                           "level": raw_summary.get("level"), "scope": "function",
+                                           "evidence": "compiler-counters-v1", "counters": counters})
 
         block_id_map: dict[str, str] = {}
         for block_index, raw_block in enumerate(raw_blocks):
@@ -541,9 +556,15 @@ def build_bpp_ssa_graph_from_json(payload: dict, source_code: str, source_filena
             block = {
                 "id": block_id,
                 "label": f"{display_name} · {raw_block_id}",
+                # Bpp emits function.blocks in creation order; its first block
+                # is the entry, including when it has a loop-back predecessor.
+                "functionId": compiled_name,
+                "isEntry": block_index == 0,
                 "instructions": instruction_lines,
                 "instructionSourceRanges": instruction_source_ranges,
                 "instructionIds": instruction_ids,
+                "instructionDetails": [_instruction_details(item, instruction_ids[index])
+                                       for index, item in enumerate(instruction_items)],
                 "sourceRanges": _normalize_source_ranges(raw_block.get("sourceRanges"), source_filename),
                 "predecessors": [],
                 "successors": [],
@@ -580,7 +601,40 @@ def build_bpp_ssa_graph_from_json(payload: dict, source_code: str, source_filena
         if target is not None and edge["from"] not in target["predecessors"]:
             target["predecessors"].append(edge["from"])
 
-    return {"blocks": blocks, "edges": deduped_edges}
+    return {"blocks": blocks, "edges": deduped_edges, "optimizationSummaries": optimization_summaries}
+
+
+def _instruction_details(raw: object, instruction_id: str) -> dict:
+    """Preserve typed register provenance. Never infer from display text/pointers."""
+    if not isinstance(raw, dict):
+        return {"id": instruction_id, "opcode": "", "definitions": [], "uses": [], "complete": False}
+    opcode = _string_or_empty(raw.get("opcode"))
+    flow = raw.get("valueFlow")
+    def valid_regs(values):
+        return list(dict.fromkeys(value for value in values
+                                  if isinstance(value, str) and re.fullmatch(r"r[1-9][0-9]*", value)))
+    if isinstance(flow, dict) and flow.get("version") == 1 and isinstance(flow.get("uses"), list) and isinstance(flow.get("definitions"), list):
+        definitions = valid_regs(flow["definitions"])
+        uses = valid_regs(flow["uses"])
+        complete = flow.get("complete") is True
+    else:
+        # Legacy call payload contains an opaque call-info pointer, not arguments.
+        # Expose incompleteness instead of inventing a use relationship.
+        opaque = opcode in {"call", "call_ptr", "call_slice_store", "ret_slice_heap"}
+        def reg(value):
+            if isinstance(value, dict) and value.get("kind") == "reg" and type(value.get("id")) is int and value["id"] > 0:
+                return f'r{value["id"]}'
+            return None
+        definition = reg(raw.get("result"))
+        no_result = opcode in {"br", "jmp", "ret", "ret_slice_heap", "store", "store8", "store16", "store32", "store64", "store_slice", "call_slice_store"}
+        definitions = [definition] if definition and not no_result else []
+        operands = raw.get("operands", [])
+        uses = valid_regs([reg(item.get("value") if opcode == "phi" and isinstance(item, dict) else item)
+                           for item in operands]) if isinstance(operands, list) and not opaque else []
+        complete = not opaque
+    return {"id": instruction_id, "opcode": opcode, "result": definitions[0] if definitions else None,
+            "definitions": definitions, "uses": uses, "complete": complete,
+            "generated": bool(raw.get("generated")), "generatedReason": raw.get("generatedReason")}
 
 
 def build_bpp_ir_from_json(payload: dict, source_code: str, source_filename: str | None = None) -> dict | None:
@@ -707,6 +761,10 @@ def _extract_view_payload(payload: dict, view_name: str) -> dict | None:
         return payload
     if view_name == "ir" and (isinstance(payload.get("ir"), dict) or isinstance(payload.get("instructions"), list)):
         return payload
+    # Bpp's dedicated IR JSON shares the SSA container shape, but declares
+    # stage="ir". Never reinterpret an actual SSA dump as pre-SSA IR.
+    if view_name == "ir" and isinstance(payload.get("ssa"), dict) and payload["ssa"].get("stage") in {"ir", "machine-ir"}:
+        return payload["ssa"]
     if view_name == "asm" and isinstance(payload.get("asm"), dict):
         return payload
     return None

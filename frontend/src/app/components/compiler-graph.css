@@ -1,0 +1,112 @@
+/* Scoped workspace tokens keep the editor and the rest of the IDE unchanged. */
+[data-graph-workspace] {
+  --graph-bg: #f3f6fb;
+  --graph-surface: #ffffff;
+  --graph-raised: #f7f9fc;
+  --graph-border: #dde5f0;
+  --graph-text: #24334a;
+  --graph-muted: #60718b;
+  --graph-accent: #2563eb;
+  --graph-tint: #eaf1ff;
+  color: var(--graph-text);
+  background: var(--graph-bg);
+  border-color: var(--graph-border);
+  container-type: inline-size;
+  scrollbar-width: thin;
+  scrollbar-color: var(--graph-border) transparent;
+}
+.dark [data-graph-workspace] {
+  --graph-bg: #0c1220;
+  --graph-surface: #111a2a;
+  --graph-raised: #172235;
+  --graph-border: #25334a;
+  --graph-text: #dae5f5;
+  --graph-muted: #8fa1bd;
+  --graph-accent: #8baeff;
+  --graph-tint: #1b2c4b;
+}
+[data-graph-workspace][data-expanded="true"] { border-radius: 16px; }
+[data-graph-workspace] button, [data-graph-workspace] select { cursor: pointer; }
+[data-graph-workspace] button:disabled { cursor: not-allowed; }
+[data-graph-workspace] :is(button, input, select):focus-visible {
+  outline: 2px solid var(--graph-accent); outline-offset: 3px;
+}
+.graph-header { padding: 12px 14px 0; background: var(--graph-surface); border-bottom: 1px solid var(--graph-border); }
+.graph-heading { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; font-size: 13px; font-weight: 650; }
+.graph-heading-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--graph-tint); color: var(--graph-accent); }
+.graph-status { display: inline-flex; align-items: center; gap: 5px; color: var(--graph-muted); font-size: 10px; font-weight: 500; white-space: nowrap; }
+.graph-status i { width: 5px; height: 5px; border-radius: 50%; background: #8a9ab0; }
+.graph-status.ready i { background: #34bfa3; box-shadow: 0 0 0 3px #34bfa31a; }
+.graph-status.stale i, .graph-status.error i { background: #e49f52; }
+.graph-icon-button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--graph-muted); }
+.graph-icon-button:hover { background: var(--graph-raised); color: var(--graph-text); }
+.graph-stage-tabs { padding: 4px; border: 1px solid var(--graph-border); border-radius: 11px; background: var(--graph-bg); }
+.graph-stage-tabs > button { flex: 1; justify-content: center; gap: 7px; min-width: 0; border: 0; border-radius: 7px; padding: 8px 5px; letter-spacing: .045em; font-size: 11px; color: var(--graph-muted); background: transparent; }
+.graph-stage-tabs > button[aria-pressed="true"] { color: var(--graph-accent); background: var(--graph-surface); box-shadow: 0 1px 4px #00000012, inset 0 0 0 1px var(--graph-border); }
+.graph-stage-tabs > button > span { padding: 1px 4px; font-size: 9px; background: var(--graph-raised); color: var(--graph-muted); }
+.graph-metrics { padding: 9px 2px; }
+.graph-metrics > span { padding: 0 9px 0 0; border: 0; border-radius: 0; background: none; color: var(--graph-muted); font-size: 10px; }
+.graph-metrics > span + span { border-left: 1px solid var(--graph-border); padding-left: 9px; }
+[data-graph-workspace] > section { flex-shrink: 0; background: var(--graph-surface); border-color: var(--graph-border); color: var(--graph-text); }
+[data-graph-workspace] > section[aria-label="B++ 예제 따라하기"] > button { padding: 9px 16px; font-size: 11px; font-weight: 500; color: var(--graph-muted); }
+.graph-analysis-tools { align-items: center; padding: 8px 12px; gap: 5px; background: var(--graph-surface); border-bottom: 1px solid var(--graph-border); }
+.graph-analysis-tools > button { padding: 6px 9px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--graph-muted); font-size: 11px; }
+.graph-analysis-tools > button:hover { background: var(--graph-raised); color: var(--graph-text); }
+.graph-analysis-tools > button[aria-pressed="true"] { color: var(--graph-accent); background: var(--graph-tint); border-color: var(--graph-border); }
+.graph-pair-select { margin-left: auto; gap: 7px; font-size: 10px; color: var(--graph-muted); }
+.graph-pair-select select { padding: 5px 6px; border-color: var(--graph-border); border-radius: 6px; background: var(--graph-raised); color: var(--graph-text); }
+.graph-toolbar { background: var(--graph-bg); padding: 10px 12px 6px; }
+.graph-toolbar > div { border: 0; border-radius: 0; padding: 0; background: transparent; box-shadow: none; gap: 3px; }
+.graph-toolbar label { background: var(--graph-surface); border-color: var(--graph-border); border-radius: 8px; min-width: 140px; }
+.graph-toolbar input { color: var(--graph-text); }
+.graph-toolbar button { color: var(--graph-muted); border-color: var(--graph-border); }
+.graph-toolbar button:hover:not(:disabled) { color: var(--graph-accent); background: var(--graph-tint); }
+.graph-toolbar button[aria-pressed="true"] { color: var(--graph-accent); background: var(--graph-tint); }
+.graph-canvas, .graph-canvas .react-flow { background: var(--graph-bg) !important; }
+.graph-canvas .react-flow__controls { overflow: hidden; box-shadow: 0 3px 14px #00000015; border-color: var(--graph-border) !important; border-radius: 9px !important; }
+.graph-canvas .react-flow__controls-button { width: 28px; height: 28px; border-color: var(--graph-border); background: var(--graph-surface); color: var(--graph-muted); fill: currentColor; }
+.graph-canvas .react-flow__edge-textbg { fill: var(--graph-surface); }
+[data-graph-workspace] [data-graph-node] { border-radius: 12px; background: var(--graph-surface); border-color: var(--graph-border); color: var(--graph-text); box-shadow: 0 6px 18px #00000015; transition: border-color .15s, box-shadow .15s, opacity .15s; }
+[data-graph-workspace] [data-graph-node="ast"] { border-top: 3px solid #718fe0; padding: 12px 14px; }
+[data-graph-workspace] [data-graph-node="ast"] > div > span:first-child { color: var(--graph-accent); background: var(--graph-tint); font-size: 9px; letter-spacing: .06em; }
+[data-graph-workspace] .react-flow__node-ast .react-flow__handle { background: #8aa4e6 !important; }
+[data-graph-workspace] [data-graph-node="ssa"] > div:nth-of-type(2) { padding: 10px 14px; border-color: var(--graph-border); background: var(--graph-raised); color: var(--graph-text); }
+[data-graph-workspace] [data-graph-node="ssa"] > div:nth-of-type(2) > div:first-child { font-size: 9px; letter-spacing: .12em; color: #50b5af; }
+[data-graph-workspace] [data-graph-node="ssa"] > div:nth-of-type(3) { background: var(--graph-surface); padding: 10px; }
+[data-graph-workspace] [data-graph-node="ssa"] > div:nth-of-type(3) > div { padding: 5px 6px; color: var(--graph-text); }
+[data-graph-workspace] [data-graph-node="ssa"] [data-mapping-quality] { margin-top: 3px; padding: 0; border: 0; font-size: 9px; color: var(--graph-muted); }
+[data-graph-workspace] [data-graph-node="ssa"] [data-value-highlight="true"] { background: #8763cf25; box-shadow: inset 2px 0 #ae8bf1; --tw-ring-color: transparent; }
+[data-graph-workspace] > section[aria-label="변수 흐름 추적"] { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; }
+[data-graph-workspace] > section[aria-label="변수 흐름 추적"] > * { margin: 0; }
+[data-graph-workspace] > section[aria-label="변수 흐름 추적"] > p { flex-basis: 100%; font-size: 11px; line-height: 1.7; color: var(--graph-muted); }
+[data-graph-workspace] > section[aria-label="변수 흐름 추적"] > input { flex: 1; min-width: 180px; max-width: 330px; padding: 7px 10px; border-radius: 8px; border-color: var(--graph-border); background: var(--graph-bg); font-size: 11px; }
+[data-graph-workspace] > section[aria-label="변수 흐름 추적"] > div:last-child { flex-basis: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+[data-graph-workspace] > section[aria-label="변수 흐름 추적"] button { font-size: 11px; border-radius: 6px; background: var(--graph-raised); color: var(--graph-muted); border-color: var(--graph-border); }
+[data-graph-workspace] > section[aria-label="변수 흐름 추적"] button[aria-pressed="true"] { background: #8763cf25; color: #ad88e8; border-color: #8763cf60; }
+[data-graph-workspace] [data-graph-node][data-source-highlight="true"],
+[data-graph-workspace] [data-graph-node][data-related="true"] { border-color: #789fe9; background: var(--graph-tint); box-shadow: 0 0 0 3px #608fe815, 0 6px 18px #00000015; }
+[data-graph-workspace] [data-graph-node][data-search-match="true"] { border-color: #bb86e2; box-shadow: 0 0 0 3px #bb86e225; }
+[data-graph-workspace] [data-graph-node][data-node-selected="true"] { border-color: var(--graph-accent); box-shadow: 0 0 0 3px #608fe830, 0 8px 24px #00000020; }
+.graph-inspector { max-height: 190px; border-top: 1px solid var(--graph-border); background: var(--graph-surface); }
+.graph-inspector > div { padding: 12px 16px; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+.graph-inspector > div > div:first-child { align-items: center; }
+.graph-inspector > div > div:first-child > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.graph-inspector > div > div:first-child > div > div { overflow-wrap: anywhere; }
+.graph-inspector > div > div:nth-of-type(2) { display: inline-block; margin-right: 8px; background: var(--graph-raised); }
+[data-graph-workspace] [data-testid="stage-comparison"] { gap: 1px; background: var(--graph-border); }
+[data-graph-workspace] [data-testid="stage-comparison"] > section { background: var(--graph-bg); }
+[data-graph-workspace] [data-testid="stage-comparison"] h3 { background: var(--graph-surface); border-color: var(--graph-border); color: var(--graph-muted); padding: 11px 16px; font-size: 11px; }
+[data-graph-workspace] [data-testid="compiler-stage-footer"] { padding: 8px 14px; font-size: 10px; background: var(--graph-surface); border-color: var(--graph-border); color: var(--graph-muted); }
+@container (max-width: 420px) {
+  .graph-header { padding: 10px 10px 0; }
+  .graph-stage-tabs > button { gap: 4px; }
+  .graph-stage-tabs > button > svg { display: none; }
+  .graph-pair-select { margin-left: 0; width: 100%; justify-content: space-between; padding: 4px 4px 0; }
+  .graph-analysis-tools > button { flex: 1; padding: 6px 4px; }
+  .graph-toolbar { padding: 8px; }
+  .graph-toolbar label { flex-basis: 100%; }
+  .graph-inspector { max-height: 170px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-graph-workspace] *, [data-graph-workspace] *::before, [data-graph-workspace] *::after { transition: none !important; animation: none !important; }
+}

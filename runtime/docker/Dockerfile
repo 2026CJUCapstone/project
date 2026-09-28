@@ -72,6 +72,8 @@ ARG TEST_SKIP_LLVM_BUILD=1
 ARG TEST_FAST_IO=0
 ARG BPP_TEST_NAME_FILTER="14_print_anything_success|43_language_feature_runtime_bundle_success"
 ARG RUNTIME_BUILD_SIGNATURE=unknown
+ARG RUNTIME_SOURCE_DIGEST=unknown
+ARG WEB_SOURCE_SHA=unknown
 
 LABEL org.opencontainers.image.source="${BPP_REPO}"
 LABEL io.bpp.repo="${BPP_REPO}"
@@ -83,6 +85,9 @@ LABEL io.bpp.test_skip_llvm_build="${TEST_SKIP_LLVM_BUILD}"
 LABEL io.bpp.test_fast_io="${TEST_FAST_IO}"
 LABEL io.bpp.test_name_filter="${BPP_TEST_NAME_FILTER}"
 LABEL io.bpp.runtime_build_signature="${RUNTIME_BUILD_SIGNATURE}"
+LABEL io.bpp.runtime_source_digest="${RUNTIME_SOURCE_DIGEST}"
+LABEL io.webcompiler.source-sha="${WEB_SOURCE_SHA}"
+LABEL io.webcompiler.image-role="sandbox"
 
 ENV BPP_REPO="${BPP_REPO}"
 ENV BPP_REF="${BPP_REF}"
@@ -94,10 +99,12 @@ ENV TEST_FAST_IO="${TEST_FAST_IO}"
 ENV BPP_TEST_NAME_FILTER="${BPP_TEST_NAME_FILTER}"
 ENV RUNTIME_BUILD_SIGNATURE="${RUNTIME_BUILD_SIGNATURE}"
 
+COPY compiler-patches /opt/compiler-patches
 RUN set -eux; \
     git clone "$BPP_REPO" /opt/Bpp; \
     cd /opt/Bpp; \
     git checkout "$BPP_REF"; \
+    python3 /opt/compiler-patches/apply_exploration.py /opt/Bpp; \
     cmake_args="-DCMAKE_INSTALL_PREFIX=/usr/local"; \
     if [ -n "$BPP_BOOTSTRAP_TAG" ]; then \
       cmake_args="$cmake_args -DBPP_BOOTSTRAP_RELEASE_TAG=$BPP_BOOTSTRAP_TAG"; \
@@ -116,6 +123,7 @@ WORKDIR /sandbox
 
 COPY sandbox/run.sh /usr/local/bin/run.sh
 COPY sandbox/verify_bpp_runtime.py /usr/local/share/verify_bpp_runtime.py
+COPY sandbox/verify_bpp_exploration.py /usr/local/share/verify_bpp_exploration.py
 RUN chmod +x /usr/local/bin/run.sh
 
 RUN useradd -ms /bin/bash sandboxuser
@@ -124,6 +132,7 @@ USER sandboxuser
 # These installed-compiler checks are mandatory even when the bootstrap test
 # filter is customized. They reproduce the G/J failures found in Linux testing.
 RUN python3 -I /usr/local/share/verify_bpp_runtime.py
+RUN python3 -I /usr/local/share/verify_bpp_exploration.py
 
 # Check executable/read permissions as the actual submission user as well.
 RUN test "$(nodejs --version)" = v24.21.0 \

@@ -25,6 +25,43 @@ describe("compilerStore", () => {
     expect(state.output.some((line) => line.text.includes("컴파일할 코드가 없습니다"))).toBe(true);
   });
 
+  it.each(['owner', 'scope'] as const)('clears identical-source results on %s changes and ignores late responses after switching back', async field => {
+    const code = 'func main() -> u64 { return 0; }';
+    useCompilerStore.setState({ code, codeStorageOwner: 'alice', codeStorageScope: 'main', lastCompile: { success: true, executionTime: 1 }, lastCompiledCode: code });
+    let resolveOld!: (value: { success: boolean; executionTime: number }) => void;
+    vi.mocked(compileCode).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+    const pending = useCompilerStore.getState().compileAndRun();
+    const signal = vi.mocked(compileCode).mock.calls[0][1]?.signal;
+    if (field === 'owner') {
+      useCompilerStore.getState().setCodeStorageOwner('bob');
+      useCompilerStore.getState().setCodeStorageOwner('alice');
+    } else {
+      useCompilerStore.getState().setCodeStorageScope('problem:another');
+      useCompilerStore.getState().setCodeStorageScope('main');
+    }
+    expect(signal?.aborted).toBe(true);
+    expect(useCompilerStore.getState().lastCompile).toBeNull();
+    vi.mocked(compileCode).mockResolvedValueOnce({ success: true, executionTime: 99 });
+    await useCompilerStore.getState().compile();
+    resolveOld({ success: true, executionTime: 1 });
+    await pending;
+    expect(useCompilerStore.getState().lastCompile?.executionTime).toBe(99);
+    expect(executeCode).not.toHaveBeenCalled();
+  });
+
+  it('does not allow an invalidated compile rejection to overwrite the new context', async () => {
+    useCompilerStore.setState({ code: 'x', codeStorageScope: 'main' });
+    let rejectOld!: (reason: Error) => void;
+    vi.mocked(compileCode).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+    const pending = useCompilerStore.getState().compile();
+    useCompilerStore.getState().setCodeStorageScope('problem:other');
+    rejectOld(new Error('private old compile error'));
+    await pending;
+    expect(useCompilerStore.getState().isCompiling).toBe(false);
+    expect(useCompilerStore.getState().lastError).not.toBe('private old compile error');
+    expect(useCompilerStore.getState().output.some(line => line.text.includes('private old'))).toBe(false);
+  });
+
   it("runs code after a successful compile", async () => {
     vi.mocked(compileCode).mockResolvedValue({
       success: true,
@@ -97,6 +134,18 @@ describe("compilerStore", () => {
     expect(useCompilerStore.getState().code).toBe('custom Python code');
     selected.setLanguage('java');
     expect(useCompilerStore.getState().code).toBe('custom Python code');
+  });
+
+  it("publishes repeatable graph-to-editor navigation requests", () => {
+    const range = { startLine: 4, startColumn: 3, endLine: 4, endColumn: 12 };
+
+    useCompilerStore.getState().navigateToSource(range);
+    const first = useCompilerStore.getState();
+    expect(first.selectedSourceRange).toEqual(range);
+    expect(first.sourceNavigationRequest).toEqual({ id: 1, range });
+
+    useCompilerStore.getState().navigateToSource(range);
+    expect(useCompilerStore.getState().sourceNavigationRequest).toEqual({ id: 2, range });
   });
 
   it("persists the language with the code while supporting older saved code", () => {

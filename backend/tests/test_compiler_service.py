@@ -3,7 +3,70 @@ import json
 import pytest
 
 from app.services.compiler import DockerCompilerRunner
-from app.services.compiler_graphs import build_bpp_asm_from_json, build_bpp_pipeline_from_json
+from app.services.compiler_graphs import build_bpp_asm_from_json, build_bpp_pipeline_from_json, build_bpp_ssa_graph_from_json
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+async def test_sandbox_writes_exact_source_bytes(monkeypatch, tmp_path, newline):
+    from app.services.compiler import settings
+    source = newline.join(["// 한글 😀", "func main() -> u64 { return 0; }", ""])
+    monkeypatch.setattr(settings, "SANDBOX_WORKDIR_ROOT", str(tmp_path))
+    runner = DockerCompilerRunner()
+    def inspect_written_source():
+        assert next(tmp_path.glob("job-*/main.bpp")).read_bytes() == source.encode("utf-8")
+        raise RuntimeError("stop before Docker")
+    monkeypatch.setattr(runner, "_get_client", inspect_written_source)
+    with pytest.raises(RuntimeError, match="stop before Docker"):
+        await runner._execute(mode="json", source_code=source, language="bpp")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_json_cfg_preserves_function_entry_even_with_loop_back_edge():
+    graph = build_bpp_ssa_graph_from_json({"ssa": {"functions": [
+        {"name": "main", "blocks": [
+            {"id": "b1", "instructions": [{"id": "i1", "opcode": "jmp", "operands": ["b1"]}]},
+            {"id": "b2", "instructions": []},
+        ]}
+    ]}}, "func main() -> u64 { return 0; }")
+    assert [(b["functionId"], b["isEntry"]) for b in graph["blocks"]] == [("main", True), ("main", False)]
+
+
+@pytest.mark.asyncio
+async def test_missing_unified_ir_uses_dedicated_ir_json_with_source_mapping(monkeypatch):
+    source = '// 한글 😀\r\nfunc main() -> u64 { return 0; }\r\n'
+    start = source.encode("utf-8").index(b"return 0;")
+    source_range = {"file": "main.bpp", "startLine": 2, "startColumn": 22,
+                    "endLine": 2, "endColumn": 31, "startOffset": start, "endOffset": start + 9,
+                    "astNodeId": "ast-7"}
+    ir_payload = {"schemaVersion": 1,
+                  "sourceRangeSemantics": {"columnEncoding": "byte", "offsetEncoding": "byte", "endColumn": "exclusive"},
+                  "ssa": {"stage": "ir", "functions": [{"name": "main", "blocks": [
+                      {"id": "b0", "instructions": [{"id": "ssa-3", "opcode": "ret",
+                          "operands": [{"kind": "reg", "id": 2}], "sourceRanges": [source_range]}]}
+                  ]}]}}
+    runner = DockerCompilerRunner()
+    calls = []
+    async def execute(**kwargs):
+        mode = kwargs["mode"]
+        calls.append(mode)
+        assert kwargs["source_code"] == source
+        assert kwargs["optimize"] is True
+        assert mode in {"compile", "json", "dump-ir-json"}
+        payload = ir_payload if mode == "dump-ir-json" else {"views": {}}
+        return {"exit_code": 0, "stdout": json.dumps(payload), "stderr": "", "execution_time": 1}
+    monkeypatch.setattr(runner, "_execute", execute)
+    result = await runner.compile(source, "bpp", optimize=True, target="ir")
+    assert calls == ["compile", "json", "dump-ir-json"]
+    mapped = result["ir"]["instructions"][-1]["sourceRanges"][0]
+    assert source.encode("utf-8")[mapped["startOffset"]:mapped["endOffset"]] == b"return 0;"
+    assert mapped["astNodeId"] == "ast-7"
+    assert result["metadata"]["source_range_semantics"]["offsetEncoding"] == "byte"
+
+
+def test_real_ssa_payload_is_not_mislabeled_as_ir():
+    payload = {"ssa": {"stage": "ssa", "functions": [{"name": "main", "blocks": []}]}}
+    assert build_bpp_pipeline_from_json(json.dumps(payload), "func main() {}", "main.bpp", {"ir"}) is None
 
 
 def test_resolve_filename_uses_java_public_class_name():
@@ -433,6 +496,8 @@ async def test_compile_bpp_all_targets_collects_graph_outputs(monkeypatch: pytes
                 "exit_code": 0,
                 "execution_time": 2.0,
             }
+        if mode == "dump-ir-json":
+            return {"stdout": "", "stderr": "unsupported option", "exit_code": 1, "execution_time": 0.5}
         if mode == "dump-ir":
             return {
                 "stdout": (
