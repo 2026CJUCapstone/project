@@ -100,3 +100,7 @@ HIGH/CRITICAL/UNKNOWN·지원 종료 OS 차단과 무예외 정책을 유지한�
 PostgreSQL/Redis/PgBouncer/proxy·샌드박스·대회 설정과 채점 registry는 교체하지 않는다.
 소비된 승인은 후속 dependency 변경을 허용하지 않는다. 일반 자동 배포는 패치된 이미지 위에
 동일 dependency 계약의 코드만 올리며, 다음 라이브러리 변경은 새로 검토해야 한다.
+
+SMTP 사전 확인은 Docker 기본 `bridge`가 아니라 운영 API가 실제 사용 중인 pool bridge를
+사용한다. 컨테이너 ID·단일 network 이름/ID·bridge driver·비 internal/ingress 조건을 확인한다.
+호스트 네트워크를 복구하거나 바꾸지 않으며, 이 임시 검사 컨테이너도 기존 자원·권한 제한을 지킨다.
