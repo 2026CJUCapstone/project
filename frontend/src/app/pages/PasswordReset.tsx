@@ -50,7 +50,7 @@ export function PasswordReset() {
           <h1 className="text-2xl font-bold">비밀번호 찾기</h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">가입한 아이디 또는 이메일을 입력하면 비밀번호 재설정 안내를 받을 수 있습니다.</p>
           <label className="mt-6 block text-sm font-medium" htmlFor="reset-identity">아이디 또는 이메일</label>
-          <input id="reset-identity" value={identity} onChange={(event) => setIdentity(event.target.value)} required className="mt-2 w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-gray-900 dark:border-[#333] dark:bg-[#141414] dark:text-white" placeholder="developer_123 또는 you@example.com" />
+          <input id="reset-identity" value={identity} onChange={(event) => setIdentity(event.target.value)} required className="mt-2 w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-gray-900 dark:border-[#333] dark:bg-[#141414] dark:text-white" placeholder="cuha_student 또는 you@example.com" />
           {notice && <p className="mt-4 text-sm text-green-700 dark:text-green-400" role="status">{notice}</p>}
           {error && <p className="mt-4 text-sm text-red-600" role="alert">{error}</p>}
           <div className="mt-6 flex items-center justify-between gap-3">

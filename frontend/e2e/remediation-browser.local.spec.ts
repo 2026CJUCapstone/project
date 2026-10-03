@@ -251,7 +251,7 @@ test('a disposable user can register, save, clear, and reload profile fields thr
   await expect(page.getByRole('heading', { name: '회원가입', exact: true })).toBeVisible();
   await page.getByLabel('사용자 이름', { exact: true }).fill(username);
   await page.getByLabel('이메일', { exact: true }).fill(registrationEmail);
-  await page.getByLabel(/닉네임/).fill(initialNickname);
+  await page.getByLabel(/표시 이름/).fill(initialNickname);
   await page.getByLabel('비밀번호', { exact: true }).fill(password);
   await page.getByLabel('비밀번호 확인', { exact: true }).fill(password);
   await page.getByRole('button', { name: '계정 생성', exact: true }).click();
@@ -344,7 +344,7 @@ test('a delayed real current-user read cannot replace typed or newly saved profi
   await page.getByRole('button', { name: '회원가입', exact: true }).click();
   await page.getByLabel('사용자 이름', { exact: true }).fill(username);
   await page.getByLabel('이메일', { exact: true }).fill(registrationEmail);
-  await page.getByLabel(/닉네임/).fill(initialNickname);
+  await page.getByLabel(/표시 이름/).fill(initialNickname);
   await page.getByLabel('비밀번호', { exact: true }).fill(password);
   await page.getByLabel('비밀번호 확인', { exact: true }).fill(password);
   await page.getByRole('button', { name: '계정 생성', exact: true }).click();

@@ -102,7 +102,7 @@ async function registerThroughUi(page: Page, account: Account, nickname: string)
   await expect(page.getByRole('heading', { name: '회원가입', exact: true })).toBeVisible();
   await page.getByLabel('사용자 이름', { exact: true }).fill(account.username);
   await page.getByLabel('이메일', { exact: true }).fill(`${account.username}@example.test`);
-  await page.getByLabel(/닉네임/).fill(nickname);
+  await page.getByLabel(/표시 이름/).fill(nickname);
   await page.getByLabel('비밀번호', { exact: true }).fill(account.password);
   await page.getByLabel('비밀번호 확인', { exact: true }).fill(account.password);
   const registered = page.waitForResponse(response => isPath(response, 'POST', `${api}/auth/register`));

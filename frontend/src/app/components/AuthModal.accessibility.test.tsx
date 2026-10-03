@@ -22,6 +22,7 @@ describe('AuthModal form accessibility', () => {
     renderOpenModal();
 
     expect(screen.getByLabelText('사용자 이름')).toBeInTheDocument();
+    expect(screen.getByLabelText('사용자 이름')).toHaveAttribute('placeholder', 'cuha_student');
     expect(screen.getByLabelText('비밀번호')).toBeInTheDocument();
   });
 
@@ -30,8 +31,12 @@ describe('AuthModal form accessibility', () => {
     fireEvent.click(screen.getByRole('button', { name: '회원가입' }));
 
     expect(screen.getByLabelText('사용자 이름')).toBeInTheDocument();
+    expect(screen.getByLabelText('사용자 이름')).toHaveAttribute('placeholder', 'cuha_student');
     expect(screen.getByLabelText('이메일')).toBeInTheDocument();
-    expect(screen.getByLabelText(/닉네임\s+\(선택\)/)).toBeInTheDocument();
+    const displayName = screen.getByLabelText(/표시 이름\s+\(실명\)/);
+    expect(displayName).toBeRequired();
+    expect(displayName).toHaveAttribute('placeholder', '실명을 입력해 주세요');
+    expect(displayName).toHaveAccessibleDescription('표시 이름은 반드시 본인의 실명으로 입력해 주세요.');
     expect(screen.getByLabelText('비밀번호')).toBeInTheDocument();
     expect(screen.getByLabelText('비밀번호 확인')).toBeInTheDocument();
   });
@@ -41,6 +46,10 @@ describe('AuthModal form accessibility', () => {
     fireEvent.click(screen.getByRole('button', { name: '비밀번호 찾기' }));
 
     expect(screen.getByLabelText('아이디 또는 이메일')).toBeInTheDocument();
+    expect(screen.getByLabelText('아이디 또는 이메일')).toHaveAttribute(
+      'placeholder',
+      'cuha_student 또는 you@example.com',
+    );
   });
 
   it('associates every password-reset label with its input', () => {

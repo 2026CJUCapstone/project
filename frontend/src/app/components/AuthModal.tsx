@@ -132,7 +132,11 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
       }
 
       if (!isLogin) {
-        await register(normalizedUsername, normalizedEmail, password, nickname.trim() || undefined);
+        const normalizedNickname = nickname.trim();
+        if (!normalizedNickname) {
+          throw new Error('표시 이름에 본인의 실명을 입력해 주세요.');
+        }
+        await register(normalizedUsername, normalizedEmail, password, normalizedNickname);
         if (localStorage.getItem('authToken') !== startingToken) return;
       }
       const token = await login(normalizedUsername, password);
@@ -211,7 +215,7 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-      <div className="relative w-full max-w-md p-8 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-[#333] rounded-lg shadow-2xl animate-in zoom-in-95 duration-200 transition-colors">
+      <div className="relative w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-8 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-[#333] rounded-lg shadow-2xl animate-in zoom-in-95 duration-200 transition-colors">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333] hover:text-gray-900 dark:hover:text-white rounded-md transition-colors"
@@ -239,7 +243,7 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                placeholder="developer_123"
+                placeholder="cuha_student"
               />
             </div>
 
@@ -259,16 +263,22 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
                 </div>
                 <div className="space-y-1.5">
                   <label htmlFor={inputId('nickname')} className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    닉네임 <span className="text-gray-400 dark:text-gray-500 font-normal">(선택)</span>
+                    표시 이름 <span className="text-gray-400 dark:text-gray-500 font-normal">(실명)</span>
                   </label>
                   <input
                     id={inputId('nickname')}
                     type="text"
+                    required
+                    autoComplete="name"
+                    aria-describedby={inputId('nickname-help')}
                     value={nickname}
                     onChange={(event) => setNickname(event.target.value)}
                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                    placeholder="표시될 이름"
+                    placeholder="실명을 입력해 주세요"
                   />
+                  <p id={inputId('nickname-help')} className="text-xs text-gray-500 dark:text-gray-400">
+                    표시 이름은 반드시 본인의 실명으로 입력해 주세요.
+                  </p>
                 </div>
               </>
             )}
@@ -331,7 +341,7 @@ export function AuthModal({ isOpen, onClose, onLogin, initialResetToken }: AuthM
                 value={resetIdentity}
                 onChange={(event) => setResetIdentity(event.target.value)}
                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#141414] border border-gray-300 dark:border-[#333] rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                placeholder="developer_123 또는 you@example.com"
+                placeholder="cuha_student 또는 you@example.com"
               />
             </div>
             <button
