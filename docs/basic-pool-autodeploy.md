@@ -70,3 +70,33 @@ exploration 검증기와 compiler pin만 허용한다. pin 변경은 기존 `2d5
 
 서버의 자동 sandbox updater는 이 승인 경로를 대신하지 않는다. 별도 빌드 환경·용량이
 충족되지 않으면 런타임 배포 완료로 기록하지 않는다.
+
+## 승인된 라이브러리 보안 패치 — 2026-10-04
+
+알림 PR #35 이후 CI가 DOMPurify·PyJWT·urllib3의 알려진 취약점을 발견해 배포를 중단했다.
+기존 이미지를 재사용하면 lock 파일만 고쳐도 실제 라이브러리는 바뀌지 않는다. 이번 예외는
+DOMPurify `3.4.13 → 3.4.16`, PyJWT `2.13.0 → 2.15.1`, urllib3 `2.7.0 → 2.8.0`의
+정확한 세 lock/package 파일 및 공식 artifact hash만 허용한다. 다른 의존성 변경,
+schema/config/Compose/Dockerfile/runtime 변경은 여전히 거부한다. 런타임 승인과 동시 적용하지 않는다.
+
+별도 제한된 builder에서 정확한 main SHA의 기존 backend/frontend Dockerfile을 **clean build**하고,
+배포할 불변 image ID 자체에 기존 Trivy 정책을 적용한다. source-lock audit와 CI 전체도 통과해야 한다.
+운영자가 `.deploy/basic-pool-dependency-approval.json`에 `version: 1`, `previous_sha`,
+`candidate_sha`, `previous_images`, `images`, `dependency_digest`, `security_root`를 기록한다.
+두 images map은 backend/frontend의 전체 `sha256:` ID이며 old/new는 달라야 한다.
+digest는 `basic_pool_dependency_release.dependency_digest(SOURCE_ROOT)`로 계산한다.
+파일·scan report는 운영자 소유 0600, evidence directory는 0700이고 `.deploy` 내부의
+canonical 경로여야 한다. 비밀 없는 scan 파일도 Git에는 올리지 않는다.
+
+검증기는 실제 이미지 label과 report/SBOM hash·installed inventory를 다시 비교하고,
+Trivy 0.74.0의 고정 실행 파일 hash 및 48시간 이내 DB/검사 시각을 요구한다.
+HIGH/CRITICAL/UNKNOWN·지원 종료 OS 차단과 무예외 정책을 유지한다. 이것은 별도 서명된 provenance가 아니다.
+점검 진입 전에 네트워크 없는 제한된 컨테이너로 설치 버전·pip check·앱/lock의 정확한
+파일 내용을 확인한다. frontend는 실행하지 않은 임시 container에서 파일을 읽어 CI가
+빌드한 dist와 대조한다. release marker의 JSON 공백만 허용하며 Nginx의 기존 stock `50x.html`
+외의 추가 asset은 거부한다. upstream도 기존 pool 경로와 같아야 한다.
+
+통과 후에는 기존 접수 차단·drain·DB backup·fingerprint·상태 저장·rollback 절차를 그대로 쓴다.
+PostgreSQL/Redis/PgBouncer/proxy·샌드박스·대회 설정과 채점 registry는 교체하지 않는다.
+소비된 승인은 후속 dependency 변경을 허용하지 않는다. 일반 자동 배포는 패치된 이미지 위에
+동일 dependency 계약의 코드만 올리며, 다음 라이브러리 변경은 새로 검토해야 한다.
