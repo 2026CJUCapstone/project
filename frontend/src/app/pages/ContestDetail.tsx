@@ -1,10 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, useParams } from 'react-router';
 import ReactMarkdown from 'react-markdown';
 import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, CheckCircle2, ChevronDown, Clock3, FileCode2, Info, LockKeyhole, Trophy, Users } from 'lucide-react';
 import { ContestEmpty, ContestStatus, contestLength, contestSchedule } from '../components/ContestUI';
 import { SubmissionResourceUsage } from '../components/SubmissionResourceUsage';
 import { ContestRejudgeHistory } from '../components/ContestRejudgeHistory';
+import { FloatingNotice } from '../components/FloatingNotice';
 import { useContestTime } from '../services/useContestTime';
 import { getAuthScope, subscribeAuthIdentity } from '../services/authIdentity';
 import { contestRequest, contestDate, duration, CONTEST_STATES, VERDICTS, type Contest, type ContestSubmission, type Scoreboard } from '../services/contestApi';
@@ -33,6 +34,9 @@ function ContestDetailForScope() {
   const [selectedSubmission, setSelectedSubmission] = useState<ContestSubmission | null>(null);
   const [tab, setTab] = useState<'problems' | 'scoreboard' | 'submissions'>('problems');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState<{ id: number; message: string } | null>(null);
+  const dismissNotice = useCallback(() => setNotice(null), []);
+  const dismissLoadError = useCallback(() => setError(''), []);
   const [joining, setJoining] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
@@ -62,14 +66,22 @@ function ContestDetailForScope() {
   };
   const join = async () => {
     setJoining(true);
-    try { setContest(await contestRequest<Contest>(`/${contestId}/join`, 'POST')); setError(''); }
-    catch (e) { setError(localStorage.getItem('authToken') ? (e as Error).message : '상단 로그인 버튼으로 로그인한 후 참가하세요.'); }
+    try { setContest(await contestRequest<Contest>(`/${contestId}/join`, 'POST')); setError(''); setNotice(null); }
+    catch (e) {
+      const message = localStorage.getItem('authToken') ? (e as Error).message : '상단 로그인 버튼으로 로그인한 후 참가하세요.';
+      setNotice(previous => ({ id: (previous?.id ?? 0) + 1, message }));
+    }
     finally { setJoining(false); }
   };
   return <div className="contest-page" data-testid="contest-detail-page"><div className="contest-shell">
     <Link to="/contests" className="contest-back"><ArrowLeft size={15} />콘테스트 목록</Link>
-    {error && <p role="alert" className="contest-error">{error}</p>}
-    {!contest && !error && <ContestEmpty icon={<Clock3 size={24} />} title="대회를 불러오는 중입니다" />}
+    {(notice || error) && <FloatingNotice
+      key={notice ? `notice-${notice.id}` : `load-${error}`}
+      message={notice?.message ?? error}
+      duration={notice ? 6000 : 0}
+      onDismiss={notice ? dismissNotice : dismissLoadError}
+    />}
+    {!contest && <ContestEmpty icon={<Clock3 size={24} />} title={error ? '대회를 불러오지 못했습니다' : '대회를 불러오는 중입니다'} />}
     {contest && <>
       <header className="contest-summary">
         <div className="contest-summary-top">
