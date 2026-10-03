@@ -108,10 +108,40 @@ def test_smtp_preflight_runs_before_maintenance_and_never_sends_message():
     import inspect
     probe = inspect.getsource(release.preflight_candidate_smtp)
     rollout = inspect.getsource(release.rollout)
-    assert '"--network","bridge"' in probe
+    assert '_smtp_preflight_network(state)' in probe
+    assert '"--network",network' in probe
     assert "verify_smtp_connection" in probe
     assert "send_password_reset_email" not in probe
     assert rollout.index("preflight_candidate_smtp(state)") < rollout.index('state["phase"] = "maintenance"')
+
+
+@pytest.mark.parametrize("mutation", [None, "container", "mode", "extra", "identity", "driver", "internal", "ingress"])
+def test_smtp_preflight_accepts_only_the_actual_adopted_pool_bridge(monkeypatch, mutation):
+    release = load_release()
+    monkeypatch.setattr(release.b, "PROJECT", "webcompiler-test-pool")
+    name = "webcompiler-test-pool-net"
+    backend = {"Id": "container-id", "HostConfig": {"NetworkMode": name},
+               "NetworkSettings": {"Networks": {name: {"NetworkID": "network-id"}}}}
+    network = {"Id": "network-id", "Name": name, "Driver": "bridge", "Internal": False, "Ingress": False}
+    if mutation == "container":
+        backend["Id"] = "replaced-container"
+    elif mutation == "mode":
+        backend["HostConfig"]["NetworkMode"] = "host"
+    elif mutation == "extra":
+        backend["NetworkSettings"]["Networks"]["untrusted"] = {"NetworkID": "other"}
+    elif mutation == "identity":
+        network["Id"] = "replaced-network"
+    elif mutation == "driver":
+        network["Driver"] = "overlay"
+    elif mutation in {"internal", "ingress"}:
+        network[mutation.capitalize()] = True
+    monkeypatch.setattr(release.b.o, "inspect", lambda identity: network if identity == name else backend)
+    state = {"old_ids": {"backend-1": "container-id"}}
+    if mutation:
+        with pytest.raises(AssertionError):
+            release._smtp_preflight_network(state)
+    else:
+        assert release._smtp_preflight_network(state) == name
 
 
 def test_release_uses_current_recorded_release_as_ancestor():

@@ -222,14 +222,30 @@ def preflight_candidate_configuration(state: dict) -> None:
         env_file.unlink(missing_ok=True)
 
 
+def _smtp_preflight_network(state: dict) -> str:
+    """Use only the adopted pool's verified bridge, never Docker's default."""
+    backend = b.o.inspect(b.PROJECT + "-backend-1")
+    assert backend["Id"] == state["old_ids"]["backend-1"]
+    expected = b.PROJECT + "-net"
+    networks = backend.get("NetworkSettings", {}).get("Networks", {})
+    assert set(networks) == {expected}, "Unexpected operating API network"
+    assert backend.get("HostConfig", {}).get("NetworkMode") == expected
+    network = b.o.inspect(expected)
+    assert network["Id"] == networks[expected]["NetworkID"]
+    assert network["Name"] == expected and network["Driver"] == "bridge"
+    assert network.get("Internal") is False and not network.get("Ingress", False)
+    return expected
+
+
 def preflight_candidate_smtp(state: dict) -> None:
     """Prove outbound TLS and authentication before entering maintenance."""
     environment = _candidate_environment(state)
+    network = _smtp_preflight_network(state)
     env_file = b.ROOT / "candidate-smtp-preflight.env"
     m._write_env(env_file,environment)
     try:
         b.o.run(
-            "docker","run","--rm","--pull","never","--network","bridge",
+            "docker","run","--rm","--pull","never","--network",network,
             "--read-only","--cap-drop","ALL","--security-opt","no-new-privileges",
             "--memory","256m","--memory-swap","256m","--cpus","0.5",
             "--pids-limit","64","--user","10001:10001",
