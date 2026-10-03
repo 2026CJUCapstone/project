@@ -31,6 +31,7 @@ b = _load("basic_pool_deploy")
 m = _load("basic_pool_migration_release")
 r = _load("runtime_secrets")
 runtime = _load("basic_pool_runtime_release")
+dependencies = _load("basic_pool_dependency_release")
 # The migration helper loads its own copy of the base module.  Rebind it so
 # every reused helper observes this release's configured ROOT/STATE/SHA.
 m.b = b
@@ -65,9 +66,14 @@ def _runtime_files(root: Path) -> set[str]:
     }
 
 
-def check_application_contracts(previous: Path, candidate: Path, *, runtime_approval=None) -> None:
+def check_application_contracts(previous: Path, candidate: Path, *, runtime_approval=None, dependency_approval=None) -> None:
+    assert not (runtime_approval and dependency_approval), "Separate runtime and dependency approvals required"
+    if dependency_approval:
+        dependencies.validate_changes(previous, candidate)
     for relative in APPLICATION_CONTRACTS:
         if runtime_approval and relative in runtime.ALLOWED_CHANGES:
+            continue
+        if dependency_approval and relative in dependencies.ALLOWED_CHANGES:
             continue
         assert b.contract_bytes(previous / relative) == b.contract_bytes(candidate / relative), (
             "Application-only release contract changed: " + relative
@@ -114,7 +120,12 @@ def prepare() -> None:
     b.extract(b.ROOT / "source.tar")
     runtime_approval = runtime.load_approval(b.PROD, previous, b.ROOT, previous_sha, b.SHA,
                                              old["env"]["SANDBOX_IMAGE"], b.o.inspect)
-    check_application_contracts(previous, b.ROOT, runtime_approval=runtime_approval)
+    dependency_approval = dependencies.load_approval(
+        b.PROD, previous, b.ROOT, previous_sha, b.SHA,
+        {"backend": old["backend_id"], "frontend": old["frontend_id"]}, b.o.inspect,
+    )
+    check_application_contracts(previous, b.ROOT, runtime_approval=runtime_approval,
+                                dependency_approval=dependency_approval)
     # The adopted pool does not source the checkout's env files. Require a
     # complete private SMTP configuration before an application release, then
     # load it again immediately before candidate startup.
@@ -157,12 +168,20 @@ def prepare() -> None:
         "images": {"sandbox": runtime_approval["candidate_image"] if runtime_approval else bases["sandbox"]},
         "sandbox_reused": not bool(runtime_approval),
         "runtime_approval": runtime_approval,
+        "dependency_approval": dependency_approval,
         "postgres_id": b.o.inspect("webcompiler-postgres")["Id"],
         "tags": [],
     }
     b.save(state)
     b.atomic_json(b.PROD / ".deploy/basic-pool-pending.json", {"root": str(b.ROOT)})
-    m.build()
+    if dependency_approval:
+        state["images"].update(dependency_approval["images"])
+        b.save(state)
+        dependencies.verify_candidate(state, b.ROOT, b.o.run)
+        state["phase"] = "built"
+        b.save(state)
+    else:
+        m.build()
 
 
 def _candidate_environment(state: dict) -> dict[str,str]:
@@ -304,6 +323,10 @@ def handle_rollout_failure(*, touched: bool) -> None:
 def rollout() -> None:
     state = json.loads(b.STATE.read_text())
     assert state["phase"] == "built"
+    if state.get("dependency_approval"):
+        # Recheck payloads immediately before maintenance; the approval does
+        # not relax the existing drain/backup/integrity/rollback procedure.
+        dependencies.verify_candidate(state, b.ROOT, b.o.run)
     preflight_candidate_configuration(state)
     preflight_candidate_smtp(state)
     if not state["sandbox_reused"]:

@@ -9,12 +9,11 @@ const fixture = {
 
 for (const theme of ['dark', 'light'] as const) {
   for (const width of [1440, 820, 390, 320]) {
-    test('floating alert: ' + theme + ' / ' + width + 'px, no content shift', async ({ page }) => {
+    test('floating alert: ' + theme + ' / ' + width + 'px, no content shift', async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 1000 });
-      await page.addInitScript(theme => {
+      await page.addInitScript(() => {
         localStorage.clear();
-        localStorage.setItem('bpp-theme', theme);
-      }, theme);
+      });
       // Every API call stays in this fixture; no local/operational data changes.
       await page.route('**/api/v1/**', route => {
         const path = new URL(route.request().url()).pathname;
@@ -29,6 +28,11 @@ for (const theme of ['dark', 'light'] as const) {
       });
       await page.goto('/contests/floating-test');
       await expect(page.getByRole('heading', { name: fixture.title })).toBeVisible();
+      await expect.poll(() => page.locator('html').evaluate(element => element.classList.contains('dark'))).toBe(true);
+      if (theme === 'light') {
+        await page.getByTitle('라이트 테마로 전환').click();
+      }
+      await expect.poll(() => page.locator('html').evaluate(element => element.classList.contains('dark'))).toBe(theme === 'dark');
       await page.evaluate(() => document.fonts.ready);
       const summary = page.locator('.contest-summary');
       const before = await summary.boundingBox();
@@ -49,7 +53,7 @@ for (const theme of ['dark', 'light'] as const) {
       expect(box!.x + box!.width).toBeLessThanOrEqual(width - 16);
       const header = await page.getByTestId('site-header').boundingBox();
       expect(box!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
-      await page.screenshot({ path: '../.deploy/floating-notice-' + theme + '-' + width + '.png' });
+      await page.screenshot({ path: testInfo.outputPath('floating-notice-' + theme + '-' + width + '.png') });
       await page.getByRole('button', { name: '알림 닫기' }).click();
       await expect(alert).toHaveCount(0);
       expect((await summary.boundingBox())!.y).toBeCloseTo(before!.y, 3);
