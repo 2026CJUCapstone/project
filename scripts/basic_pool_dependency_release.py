@@ -19,7 +19,12 @@ import tarfile
 
 ALLOWED_CHANGES = frozenset({
     "backend/requirements.lock", "frontend/package.json", "frontend/package-lock.json",
+    "frontend/Dockerfile",
 })
+PCRE2_PATCH = (
+    b"# Minimal signed Alpine security update for CVE-2026-103111; keep Nginx/base pinned.\n"
+    b"RUN apk add --no-cache pcre2=10.49-r0\n\n"
+)
 TRANSITIONS = {
     "pyjwt[crypto]": (
         "2.13.0", "2.15.1",
@@ -61,6 +66,11 @@ def dependency_digest(root):
 
 
 def validate_changes(previous, candidate):
+    before_docker = _bytes(previous / "frontend/Dockerfile")
+    after_docker = _bytes(candidate / "frontend/Dockerfile")
+    anchor = b"FROM nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6\n\n"
+    if before_docker.count(anchor) != 1 or after_docker != before_docker.replace(anchor, anchor + PCRE2_PATCH, 1):
+        raise ValueError("Only the reviewed PCRE2 security build step is approved")
     old = _bytes(previous / "backend/requirements.lock")
     new = _bytes(candidate / "backend/requirements.lock")
     for name, (before, after, old_hashes, hashes) in TRANSITIONS.items():
@@ -191,6 +201,10 @@ def load_approval(prod, previous, candidate, old_sha, new_sha, old_images, inspe
         report = reports["report.json"]
         if report.get("Metadata", {}).get("ImageID") != image_id or report.get("ArtifactName") != image_id:
             raise ValueError("Security report image mismatch")
+        if role == "frontend":
+            versions = [p["Version"] for r in report["Results"] for p in r["Packages"] if p["Name"] == "pcre2"]
+            if not versions or any(version != "10.49-r0" for version in versions):
+                raise ValueError("Installed PCRE2 security version mismatch")
         # Sanitized reports intentionally omit labels; independently inspected
         # immutable image labels supply provenance, not caller-provided labels.
         report["Metadata"]["ImageConfig"]["config"] = {"Labels": labels}
@@ -260,6 +274,9 @@ def verify_candidate(state, root, run):
     finally:
         run("docker", "rm", container)
     run(*bounded, "--entrypoint", "nginx", state["images"]["frontend"], "-t", timeout=30)
+    packages = run(*bounded, "--entrypoint", "/sbin/apk", state["images"]["frontend"], "info", "-v", timeout=30).decode().splitlines()
+    if "pcre2-10.49-r0" not in packages:
+        raise ValueError("Actual frontend PCRE2 version mismatch")
 
 
 def archive_files(raw):
