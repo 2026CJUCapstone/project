@@ -36,6 +36,8 @@ def trees(tmp_path):
                 content = content.replace(package + "==" + after, package + "==" + before)
                 for old_hash, new_hash in zip(old_hashes, hashes):
                     content = content.replace(new_hash, old_hash)
+        elif name == "frontend/Dockerfile":
+            content = content.replace(module.PCRE2_PATCH.decode(), "")
         else:
             value = json.loads(content)
             if name.endswith("package.json"):
@@ -60,7 +62,7 @@ def test_only_reviewed_artifacts_pass_including_crlf(trees):
     assert module.dependency_digest(new) == original
 
 
-@pytest.mark.parametrize("kind", ["extra_requirement", "hash", "version", "override", "other_package", "lock_extra"])
+@pytest.mark.parametrize("kind", ["extra_requirement", "hash", "version", "override", "other_package", "lock_extra", "docker_extra", "pcre_version"])
 def test_extra_dependency_changes_rejected(trees, kind):
     module, old, new = trees
     backend = new / "backend/requirements.lock"
@@ -78,6 +80,10 @@ def test_extra_dependency_changes_rejected(trees, kind):
         else:
             value["dependencies"]["react"] = "unreviewed"
         path.write_text(json.dumps(value))
+    elif kind in {"docker_extra", "pcre_version"}:
+        path = new / "frontend/Dockerfile"
+        content = path.read_text()
+        path.write_text(content + "RUN unreviewed\n" if kind == "docker_extra" else content.replace("pcre2=10.49-r0", "pcre2=10.50-r0"))
     else:
         path = new / "frontend/package-lock.json"
         value = json.loads(path.read_bytes())
@@ -216,6 +222,8 @@ def test_actual_private_scan_reports_must_substantiate_approval(trees, tmp_path,
         folder = evidence / role
         folder.mkdir(mode=0o700)
         packages = [{"Name": "base", "Version": "1", "Identifier": {"PURL": "pkg:apk/alpine/base@1"}}]
+        if role == "frontend":
+            packages.append({"Name": "pcre2", "Version": "10.49-r0", "Identifier": {"PURL": "pkg:apk/alpine/pcre2@10.49-r0"}})
         results = [{"Class": "os-pkgs", "Packages": packages, "Vulnerabilities": []}]
         if role == "backend":
             results.append({"Class": "lang-pkgs", "Packages": [
@@ -320,6 +328,8 @@ def test_offline_payload_check_and_container_cleanup(tmp_path, mutation):
             expected = json.loads(kwargs["data"])
             assert set(expected) == {"app/main.py", "requirements.lock"}
             assert "version('PyJWT')=='2.15.1'" in args[-1]
+        if args[-2:] == ("info", "-v"):
+            return b"pcre2-10.49-r0\n"
         return b""
 
     if mutation:

@@ -77,7 +77,15 @@ exploration 검증기와 compiler pin만 허용한다. pin 변경은 기존 `2d5
 기존 이미지를 재사용하면 lock 파일만 고쳐도 실제 라이브러리는 바뀌지 않는다. 이번 예외는
 DOMPurify `3.4.13 → 3.4.16`, PyJWT `2.13.0 → 2.15.1`, urllib3 `2.7.0 → 2.8.0`의
 정확한 세 lock/package 파일 및 공식 artifact hash만 허용한다. 다른 의존성 변경,
-schema/config/Compose/Dockerfile/runtime 변경은 여전히 거부한다. 런타임 승인과 동시 적용하지 않는다.
+schema/config/Compose/runtime 변경은 여전히 거부한다. 런타임 승인과 동시 적용하지 않는다.
+
+후속 실제 이미지 검사에서 PCRE2 `10.48-r0`의 HIGH `CVE-2026-103111`이 발견됐다.
+이에 frontend Dockerfile만 추가로 예외를 허용하며, 기존 pinned Nginx base 바로 다음의
+`RUN apk add --no-cache pcre2=10.49-r0` 보안 단계만 정확히 대조한다. 기존 base/Node/Nginx
+버전·digest·모든 다른 build 단계는 동일해야 한다. Alpine의 서명된 패키지로 설치하고,
+실제 scan inventory와 network-none runtime의 `apk info -v`에서도 수정 버전을 확인한다.
+[PCRE2 보안 릴리스](https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.49),
+[Alpine 공식 보안 DB](https://secdb.alpinelinux.org/v3.24/main.json).
 
 별도 제한된 builder에서 정확한 main SHA의 기존 backend/frontend Dockerfile을 **clean build**하고,
 배포할 불변 image ID 자체에 기존 Trivy 정책을 적용한다. source-lock audit와 CI 전체도 통과해야 한다.
