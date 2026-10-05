@@ -38,6 +38,15 @@ vi.mock("./services/problemApi", () => ({
 }));
 
 describe("app routes", () => {
+  it("opens the bottom-linked help page directly without fetching a private problem", async () => {
+    localStorage.clear();
+    vi.mocked(getProblem).mockClear();
+    const router = createMemoryRouter(routeDefinitions, { initialEntries: ["/help/judging"] });
+    render(<RouterProvider router={router} />);
+    expect(await screen.findByRole("heading", { level: 1, name: "도움말·FAQ" })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "도움말" })).getByRole("link", { name: "도움말·FAQ" })).toHaveAttribute("href", "/help/judging");
+    expect(getProblem).not.toHaveBeenCalled();
+  });
   it("opens settings directly with separate editor and display sections", async () => {
     localStorage.clear();
     const router = createMemoryRouter(routeDefinitions, { initialEntries: ["/settings"] });

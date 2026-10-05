@@ -206,9 +206,10 @@ export async function getProblems(): Promise<Problem[]> {
   return (await getProblemsPage()).items;
 }
 
-export async function getProblem(id: string): Promise<Problem> {
+export async function getProblem(id: string, signal?: AbortSignal): Promise<Problem> {
   const res = await fetch(`${API_BASE_URL}/api/v1/problems/${encodeURIComponent(id)}`, {
     headers: authHeaders(),
+    signal,
   });
   if (!res.ok) throw await parseApiError(res, '문제 상세를 불러오지 못했습니다.');
   return res.json();
