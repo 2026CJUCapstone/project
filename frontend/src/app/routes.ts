@@ -24,6 +24,7 @@ const Submissions = lazyRoute(() => import("./pages/Submissions"), "Submissions"
 const Admin = lazyRoute(() => import("./pages/Admin"), "Admin");
 const PasswordReset = lazyRoute(() => import("./pages/PasswordReset"), "PasswordReset");
 const Contests = lazyRoute(() => import("./pages/Contests"), "Contests");
+const JudgingHelp = lazyRoute(() => import("./pages/JudgingHelp"), "JudgingHelp");
 const ContestDetail = lazyRoute(() => import("./pages/ContestDetail"), "ContestDetail");
 const ContestEditor = lazyRoute(() => import("./pages/ContestEditor"), "ContestEditor");
 const ContestProblemPage = lazyRoute(
@@ -45,6 +46,7 @@ export const routeDefinitions = [
     ErrorBoundary: RouteErrorPage,
     children: [
       { index: true, Component: Landing },
+      { path: "help/judging", Component: JudgingHelp },
       { path: "ide", Component: IDE },
       { path: "contests", Component: Contests },
       { path: "contests/new", Component: ContestEditor },

@@ -73,39 +73,49 @@ describe('ChallengePanel judge limits', () => {
   });
 
   it.each([
-    ['python', 'Python 실행 기준', '2.75초', 'CPython 3.13'],
-    ['java', 'Java 실행 기준', '3.5초', 'OpenJDK 21'],
-  ] as const)('uses the selected %s limits instead of a B++ fallback', (language, heading, cpu, runtime) => {
+    ['python', 'Python 채점 제한', '2.75초', '3초'],
+    ['java', 'Java 채점 제한', '3.5초', '3.75초'],
+  ] as const)('uses the selected %s limits instead of a B++ fallback', (language, heading, cpu, wall) => {
     renderPanel();
 
     act(() => useCompilerStore.getState().setLanguage(language));
 
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
-    expect(screen.getAllByText(cpu)).not.toHaveLength(0);
-    expect(screen.getAllByText(runtime)).not.toHaveLength(0);
+    expect(screen.getByText(cpu)).toBeInTheDocument();
+    expect(screen.getByText(wall)).toBeInTheDocument();
+    expect(screen.getByText('256 MiB')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '채점 도움말' })).toHaveAttribute(
+      'href',
+      `/help/judging?problem=p-1&language=${language}`,
+    );
+    expect(screen.queryByRole('table', { name: '언어별 채점 제한' })).not.toBeInTheDocument();
   });
 
-  it('shows the saved legacy warning without manufacturing current shared limits', () => {
+  it('shows the compact missing-policy message without manufacturing current shared limits', () => {
     renderPanel({ judgeLimits: null, judgePolicyLegacy: true });
 
-    expect(screen.getByText('기존 문제 정책')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('현재 공통 제한을 추정해 표시하지 않습니다.');
-    expect(screen.queryByRole('heading', { name: 'B++ 실행 기준' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'B++ 채점 제한' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('채점 제한 정보가 없습니다.');
+    expect(screen.queryByText('기존 문제 정책')).not.toBeInTheDocument();
     expect(screen.queryByText('1.25초')).not.toBeInTheDocument();
   });
 
   it('does not invent limits for a new problem whose policy is still unmeasured', () => {
     renderPanel({ judgeLimits: null, judgePolicyLegacy: false });
 
-    expect(screen.getByRole('status')).toHaveTextContent('확정된 언어별 제한이 아직 없습니다.');
-    expect(screen.queryByRole('heading', { name: 'B++ 실행 기준' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'B++ 채점 제한' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('채점 제한 정보가 없습니다.');
     expect(screen.queryByText('1.25초')).not.toBeInTheDocument();
   });
 
   it('keeps the policy visible in contest problem context alongside contest submission', () => {
     renderPanel({}, contest);
 
-    expect(screen.getByRole('heading', { name: '채점 제한' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'B++ 채점 제한' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '채점 도움말' })).toHaveAttribute(
+      'href',
+      '/help/judging?problem=p-1&language=bpp&contest=contest-1',
+    );
     expect(screen.getByRole('button', { name: '대회 제출' })).toBeInTheDocument();
   });
 });

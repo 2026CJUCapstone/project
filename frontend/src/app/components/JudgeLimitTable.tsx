@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { JUDGE_POLICY_LANGUAGES, type JudgePolicyLanguage, type JudgePolicyStageLimits, type PublicJudgeLimits } from '../services/judgePolicyTypes';
 
 const LANGUAGE_LABELS: Record<JudgePolicyLanguage, string> = {
@@ -14,6 +15,14 @@ export interface JudgeLimitTableProps {
   selectedLanguage: string;
   legacy?: boolean;
   compatibility?: boolean;
+  detailed?: boolean;
+  helpTo?: string;
+}
+
+export function judgeHelpPath(problemId: string, language: string, contestId?: string): string {
+  const query = new URLSearchParams({ problem: problemId, language });
+  if (contestId) query.set('contest', contestId);
+  return `/help/judging?${query}`;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -101,11 +110,28 @@ function StageDetails({ title, stage }: { title: string; stage: UnknownRecord | 
   );
 }
 
-export function JudgeLimitTable({ policy, selectedLanguage, legacy = false, compatibility = false }: JudgeLimitTableProps) {
+export function JudgeLimitTable({ policy, selectedLanguage, legacy = false, compatibility = false, detailed = false, helpTo = '/help/judging' }: JudgeLimitTableProps) {
   const selectedProfile = policy ? profileFor(policy, selectedLanguage) : null;
   const selectedRun = stageFor(selectedProfile, 'run');
   const selectedCompile = stageFor(selectedProfile, 'compile');
   const selectedSupported = selectedProfile !== null;
+
+  if (!detailed) return (
+    <section aria-label={`${languageLabel(selectedLanguage)} 채점 제한`} className="max-w-full rounded-lg border border-gray-200 bg-white px-3 py-3 text-gray-800 dark:border-[#333] dark:bg-[#111] dark:text-gray-100">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{languageLabel(selectedLanguage)} 채점 제한</h3>
+        <Link to={helpTo} className="text-xs text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-blue-400">채점 도움말</Link>
+      </div>
+      {!policy ? <p role="status" className="mt-2 text-xs text-gray-500 dark:text-gray-400">채점 제한 정보가 없습니다.</p>
+        : !selectedSupported ? <p role="status" className="mt-2 text-xs text-gray-500 dark:text-gray-400">선택한 언어({languageLabel(selectedLanguage)})는 이 문제에서 지원하지 않습니다.</p>
+          : <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-xs">
+            <div className="flex items-baseline gap-2"><dt className="text-gray-500 dark:text-gray-400">CPU 시간</dt><dd className="font-mono font-semibold">{millisecondsAsSeconds(stageValue(selectedRun, 'cpuMs'))}</dd></div>
+            <div className="flex items-baseline gap-2"><dt className="text-gray-500 dark:text-gray-400">Wall 시간</dt><dd className="font-mono font-semibold">{millisecondsAsSeconds(stageValue(selectedRun, 'wallMs'))}</dd></div>
+            <div className="flex items-baseline gap-2"><dt className="text-gray-500 dark:text-gray-400">메모리</dt><dd className="font-mono font-semibold">{bytesAsBinaryUnit(stageValue(selectedRun, 'memoryBytes'))}</dd></div>
+          </dl>}
+      {policy?.reviewStatus === 'draft' && <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">검증 전 제한입니다. 제출 기준으로 사용하지 마세요.</p>}
+    </section>
+  );
 
   return (
     <section aria-labelledby="judge-limits-heading" className="max-w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">

@@ -7,7 +7,7 @@ import type { Problem, SubmissionRecord } from '../services/problemApi';
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from '../constants/difficulty';
 import { getProblemTagClass, getProblemTagLabel } from '../constants/problemTags';
 import { useCompilerStore } from '../store/compilerStore';
-import { JudgeLimitTable } from '../components/JudgeLimitTable';
+import { JudgeLimitTable, judgeHelpPath } from '../components/JudgeLimitTable';
 
 type Difficulty = Problem['difficulty'];
 
@@ -195,6 +195,7 @@ export function ChallengeDetail() {
               selectedLanguage={language}
               legacy={challenge.judgePolicyLegacy === true}
               compatibility={challenge.judgePolicyCompatibility === true}
+              helpTo={judgeHelpPath(challenge.id, language)}
             />
           </div>
 

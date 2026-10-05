@@ -15,7 +15,7 @@ import type { PublicJudgeLimits } from "../services/judgePolicyTypes";
 import { DIFFICULTY_LABELS, getDifficultyBadgeClass } from "../constants/difficulty";
 import { getProblemTagClass, getProblemTagLabel } from "../constants/problemTags";
 import { useCompilerStore } from "../store/compilerStore";
-import { JudgeLimitTable } from "./JudgeLimitTable";
+import { JudgeLimitTable, judgeHelpPath } from "./JudgeLimitTable";
 interface Challenge {
   id: string;
   title: string;
@@ -154,6 +154,7 @@ export function ChallengePanel({ challenge, code, onClose, contest }: Props) {
             selectedLanguage={language}
             legacy={challenge.judgePolicyLegacy === true}
             compatibility={challenge.judgePolicyCompatibility === true}
+            helpTo={judgeHelpPath(challenge.id, language, contest?.id)}
           />
         </div>
 
