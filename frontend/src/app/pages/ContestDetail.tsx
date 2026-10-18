@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useParams } from 'react-router';
 import ReactMarkdown from 'react-markdown';
 import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, CheckCircle2, ChevronDown, Clock3, FileCode2, Info, LockKeyhole, Trophy, Users } from 'lucide-react';
@@ -32,6 +32,9 @@ function ContestDetailForScope() {
   const [submissionPage, setSubmissionPage] = useState(0);
   const [submissionTotal, setSubmissionTotal] = useState(0);
   const [selectedSubmission, setSelectedSubmission] = useState<ContestSubmission | null>(null);
+  const codeRequest = useRef(0);
+  const reviewScope = useRef(false);
+  const [codeLoading, setCodeLoading] = useState(false);
   const [tab, setTab] = useState<'problems' | 'scoreboard' | 'submissions'>('problems');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState<{ id: number; message: string } | null>(null);
@@ -46,23 +49,46 @@ function ContestDetailForScope() {
       busy = true;
       try {
         const data = await contestRequest<Contest>(`/${contestId}`, 'GET', undefined, controller.signal);
+        if (controller.signal.aborted) return;
+        const canReview = data.canReviewSubmissions === true;
+        if (reviewScope.current !== canReview) {
+          codeRequest.current += 1;
+          setSelectedSubmission(null);
+          setCodeLoading(false);
+          setSubmissions([]);
+        }
+        reviewScope.current = canReview;
         setContest(data);
         setBoard(await contestRequest<Scoreboard>(`/${contestId}/scoreboard`, 'GET', undefined, controller.signal));
         if (localStorage.getItem('authToken')) {
-          const mine = await contestRequest<{ submissions: ContestSubmission[]; total: number }>(`/${contestId}/submissions?offset=${submissionPage * 50}&limit=50`, 'GET', undefined, controller.signal);
+          const mine = await contestRequest<{ submissions: ContestSubmission[]; total: number }>(`/${contestId}/${canReview ? 'admin/' : ''}submissions?offset=${submissionPage * 50}&limit=50`, 'GET', undefined, controller.signal);
+          if (controller.signal.aborted) return;
           setSubmissions(mine.submissions);
           setSubmissionTotal(mine.total);
         }
         setError('');
-      } catch (e) { if (!controller.signal.aborted) setError((e as Error).message); }
+      } catch (e) { if (!controller.signal.aborted) {
+        codeRequest.current += 1;
+        setSelectedSubmission(null);
+        setCodeLoading(false);
+        setSubmissions([]);
+        setError((e as Error).message);
+      } }
       finally { busy = false; }
     };
     void refresh(); const timer = setInterval(refresh, 5000);
-    return () => { controller.abort(); clearInterval(timer); };
+    return () => { controller.abort(); clearInterval(timer); codeRequest.current += 1; };
   }, [contestId, submissionPage]);
   const viewCode = async (id: string) => {
-    try { setSelectedSubmission(await contestRequest<ContestSubmission>(`/${contestId}/submissions/${id}`)); }
-    catch (e) { setError((e as Error).message); }
+    const request = ++codeRequest.current;
+    const admin = reviewScope.current;
+    setSelectedSubmission(null);
+    setCodeLoading(true);
+    try {
+      const result = await contestRequest<ContestSubmission>(`/${contestId}/${admin ? 'admin/' : ''}submissions/${id}`);
+      if (request === codeRequest.current && admin === reviewScope.current) setSelectedSubmission(result);
+    } catch (e) { if (request === codeRequest.current) setError((e as Error).message); }
+    finally { if (request === codeRequest.current) setCodeLoading(false); }
   };
   const join = async () => {
     setJoining(true);
@@ -119,7 +145,7 @@ function ContestDetailForScope() {
       {contest.canManage && <ContestRejudgeHistory contestId={contest.id} canManage={contest.canManage} finished={contest.state === 'finished'} problems={contest.problems} />}
       <div className="contest-content">
         <nav className="contest-tabs" aria-label="대회 메뉴">{([
-          {id:'problems',label:'문제',icon:BookOpen}, {id:'scoreboard',label:'스코어보드',icon:Trophy}, {id:'submissions',label:'내 제출',icon:FileCode2},
+          {id:'problems',label:'문제',icon:BookOpen}, {id:'scoreboard',label:'스코어보드',icon:Trophy}, {id:'submissions',label:contest.canReviewSubmissions ? '전체 제출' : '내 제출',icon:FileCode2},
         ] as const).map(({id,label,icon:Icon}) => <button key={id} onClick={() => setTab(id)} className="contest-tab" aria-pressed={tab === id}><Icon size={16} />{label}</button>)}</nav>
         <div className="contest-content-body">
           {tab === 'problems' && <section>
@@ -141,11 +167,12 @@ function ContestDetailForScope() {
             {!board.rows.length && <ContestEmpty icon={<Users size={24} />} title="아직 참가자가 없습니다">참가 신청을 하면 이곳에서 순위를 확인할 수 있습니다.</ContestEmpty>}
           </section>}
           {tab === 'submissions' && <section>
-            <div className="contest-content-heading"><h2>내 제출 기록</h2><p>본인의 제출 코드만 확인할 수 있습니다.</p></div>
-            {submissions.map(s => <div key={s.id} className="contest-submission"><span>{contest.problems.find(p => p.id === s.contestProblemId)?.label} · {s.language}</span><span>{VERDICTS[s.verdict] || s.verdict}</span><time dateTime={s.receivedAt}>{contestDate(s.receivedAt)}</time><button className="contest-code-link" onClick={() => void viewCode(s.id)}>코드 보기</button><SubmissionResourceUsage className="basis-full" resourceUsage={s.resourceUsage} /></div>)}
+            <div className="contest-content-heading"><h2>{contest.canReviewSubmissions ? '전체 제출 기록' : '내 제출 기록'}</h2><p>{contest.canReviewSubmissions ? '관리자는 참가자의 제출 코드와 판정을 확인할 수 있습니다.' : '본인의 제출 코드만 확인할 수 있습니다.'}</p></div>
+            {submissions.map(s => <div key={s.id} className="contest-submission"><span>{contest.problems.find(p => p.id === s.contestProblemId || p.label === s.contestProblemId)?.label} · {s.language}</span>{contest.canReviewSubmissions && <span>{s.username}</span>}<span>{VERDICTS[s.verdict] || s.verdict}</span><time dateTime={s.receivedAt}>{contestDate(s.receivedAt)}</time><button className="contest-code-link" onClick={() => void viewCode(s.id)}>코드 보기</button><SubmissionResourceUsage className="basis-full" resourceUsage={s.resourceUsage} /></div>)}
             {!submissions.length && <ContestEmpty icon={<FileCode2 size={24} />} title="아직 제출한 코드가 없습니다">로그인 후 대회 문제를 풀고 제출하면 채점 결과가 표시됩니다.</ContestEmpty>}
             {submissionTotal > 50 && <div className="contest-pagination"><button disabled={submissionPage === 0} onClick={() => setSubmissionPage(p => p - 1)}>이전</button><span>{submissionPage + 1} / {Math.ceil(submissionTotal / 50)}</span><button disabled={(submissionPage + 1) * 50 >= submissionTotal} onClick={() => setSubmissionPage(p => p + 1)}>다음</button></div>}
-            {selectedSubmission && <div className="contest-source"><div><span>내 제출 코드 · {selectedSubmission.language}</span><button onClick={() => setSelectedSubmission(null)}>닫기</button></div><pre>{selectedSubmission.code}</pre></div>}
+            {codeLoading && <p role="status">제출 코드를 불러오는 중입니다.</p>}
+            {selectedSubmission && <div className="contest-source" role="region" aria-label="제출 코드"><div className="flex-wrap gap-2"><span>{contest.canReviewSubmissions ? `${selectedSubmission.username}의 제출 코드` : '내 제출 코드'} · {selectedSubmission.contestProblemId} · {selectedSubmission.language} · {VERDICTS[selectedSubmission.verdict] || selectedSubmission.verdict}</span><button onClick={() => { codeRequest.current += 1; setSelectedSubmission(null); }}>닫기</button></div><pre tabIndex={0}>{selectedSubmission.code}</pre></div>}
           </section>}
         </div>
       </div>

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.api.routes.auth import get_current_user, get_optional_current_user, require_admin
 from app.core.database import get_db
@@ -539,6 +539,33 @@ def submit(contest_id: str, contest_problem_id: str, data: ContestSubmit, http_r
             raise HTTPException(409, "동일 요청 ID에 다른 제출을 사용할 수 없습니다.")
     db.refresh(record)
     return service.submission_read(db, record)
+
+
+@router.get("/{contest_id}/admin/submissions")
+def admin_submissions(contest_id: str, response: Response, limit: int = Query(50, ge=1, le=200),
+                      offset: int = Query(0, ge=0), db: Session = Depends(get_db), user=Depends(require_admin)):
+    response.headers['Cache-Control'] = 'no-store'
+    service.get_contest(db, contest_id, user)
+    query = db.query(m.ContestSubmission).filter_by(contest_id=contest_id)
+    total = query.count()
+    rows = query.options(load_only(
+        m.ContestSubmission.id, m.ContestSubmission.public_id, m.ContestSubmission.user_id,
+        m.ContestSubmission.contest_problem_id, m.ContestSubmission.language,
+        m.ContestSubmission.received_at, m.ContestSubmission.finished_at,
+        m.ContestSubmission.status, m.ContestSubmission.verdict, m.ContestSubmission.resource_report,
+    )).order_by(m.ContestSubmission.received_at.desc(), m.ContestSubmission.id.desc()).offset(offset).limit(limit).all()
+    return {"total": total, "submissions": [service.admin_submission_read(db, row) for row in rows]}
+
+
+@router.get("/{contest_id}/admin/submissions/{submission_id}")
+def admin_submission(contest_id: str, submission_id: str, response: Response,
+                     db: Session = Depends(get_db), user=Depends(require_admin)):
+    response.headers['Cache-Control'] = 'no-store'
+    service.get_contest(db, contest_id, user)
+    record = db.query(m.ContestSubmission).filter_by(contest_id=contest_id, id=submission_id).first()
+    if record is None:
+        raise HTTPException(404, "제출을 찾을 수 없습니다.")
+    return service.admin_submission_read(db, record, include_code=True)
 
 
 @router.get("/{contest_id}/submissions")

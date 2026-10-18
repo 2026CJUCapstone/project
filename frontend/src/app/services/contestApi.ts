@@ -14,6 +14,7 @@ export interface Contest {
   state: ContestState; published: boolean; joined: boolean; canManage: boolean; participantCount: number; problems: ContestProblem[];
   /** Public, audited ranking corrections. Private operator reasons are never included. */
   corrections?: ContestCorrections;
+  canReviewSubmissions?: boolean;
 }
 export interface ContestProblemDetail extends ContestProblem {
   description: string; tags: string[]; testCases: { input: string; expectedOutput: string }[]; contest: Contest;
@@ -27,6 +28,7 @@ export interface ContestProblemDetail extends ContestProblem {
 export interface ContestSubmission {
   id: string; contestProblemId: string; language: CompilerLanguage; receivedAt: string;
   status: 'queued' | 'running' | 'completed'; verdict: string; finishedAt: string | null; code?: string;
+  username?: string;
   /** Null for legacy, queued, or otherwise unrecorded submissions. */
   resourceUsage?: JudgeResourceUsage | null;
 }

@@ -61,6 +61,7 @@ def contest_read(db, contest, user=None):
         "id": contest.id, "title": contest.title, "description": contest.description,
         "startsAt": iso(contest.starts_at), "endsAt": iso(contest.ends_at), "serverTime": iso(at),
         "state": state, "published": contest.published, "joined": joined, "canManage": is_admin,
+        "canReviewSubmissions": is_admin,
         "participantCount": db.query(m.ContestParticipant).filter_by(contest_id=contest.id).count(),
         "corrections": public_corrections(db, contest.id),
         "problems": [problem_read(db, p, public=not is_admin) for p in problem_rows(db, contest.id)] if can_view else [],
@@ -107,6 +108,13 @@ def submission_read(db, submission, include_code=False):
               "resourceUsage":public_usage(submission.resource_report)}
     if include_code:
         result["code"] = submission.code
+    return result
+
+
+def admin_submission_read(db, submission, include_code=False):
+    result = submission_read(db, submission, include_code=include_code)
+    result["id"] = submission.id
+    result["username"] = public_display_name(db.get(m.User, submission.user_id))
     return result
 
 

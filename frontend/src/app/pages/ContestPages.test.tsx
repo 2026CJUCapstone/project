@@ -9,10 +9,23 @@ import { contestPageRequest, contestRequest, VERDICTS, type Contest } from '../s
 vi.mock('../services/contestApi', async importOriginal => ({
   ...await importOriginal<typeof import('../services/contestApi')>(), contestRequest: vi.fn(), contestPageRequest: vi.fn(),
 }));
+vi.mock('../components/ContestRejudgeHistory', () => ({ ContestRejudgeHistory: () => null }));
 const contest: Contest = {id:'c',title:'테스트 대회',description:'규칙',published:true,
   startsAt:'2030-01-01T00:00:00Z',endsAt:'2030-01-01T02:00:00Z',serverTime:'2030-01-01T01:00:00Z',
   state:'running',joined:false,canManage:false,participantCount:2,
   problems:[{id:'cp',problemId:'p',label:'A',title:'문제 A',points:500,difficulty:'iron5'}]};
+type ContestReviewAccess = Contest & { canReviewSubmissions: boolean };
+const contestWithReviewAccess = (canReviewSubmissions: boolean): ContestReviewAccess => ({ ...contest, canReviewSubmissions });
+
+const reviewedSubmission = {
+  id: 'submission-1', contestProblemId: 'cp', language: 'bpp',
+  receivedAt: '2030-01-01T01:10:00Z', status: 'completed', verdict: 'accepted', finishedAt: '2030-01-01T01:10:01Z',
+  username: 'alice',
+};
+
+function renderContestDetail() {
+  render(<MemoryRouter initialEntries={['/contests/c']}><Routes><Route path='/contests/:contestId' element={<ContestDetail />} /></Routes></MemoryRouter>);
+}
 
 describe('contest pages', () => {
   beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
@@ -73,6 +86,81 @@ describe('contest pages', () => {
     expect(await screen.findAllByRole('cell',{name:'1'})).toHaveLength(2);
     expect(screen.getAllByText('00:15:00')).toHaveLength(2);
     expect(screen.queryByText('코드 보기')).not.toBeInTheDocument();
+  });
+
+  it('lets an administrator review every submission through the admin endpoints', async () => {
+    const adminListPath = '/c/admin/submissions?offset=0&limit=50';
+    const adminDetailPath = '/c/admin/submissions/submission-1';
+    vi.mocked(contestRequest).mockImplementation(async path => {
+      if (path?.endsWith('/scoreboard')) return { rows: [], problems: [], pendingCount: 0, state: 'running' } as never;
+      if (path === adminListPath) return { submissions: [reviewedSubmission], total: 1 } as never;
+      if (path === adminDetailPath) return { ...reviewedSubmission, code: 'print(42)' } as never;
+      if (path?.includes('/admin/submissions') || path?.includes('/submissions')) throw new Error(`unexpected submission route: ${path}`);
+      return contestWithReviewAccess(true) as never;
+    });
+    setAuthToken('administrator-session');
+    renderContestDetail();
+
+    expect(await screen.findByRole('heading', { name: '테스트 대회' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '전체 제출' }));
+    expect(await screen.findByRole('heading', { name: '전체 제출 기록' })).toBeInTheDocument();
+    expect(screen.getByText('alice')).toBeInTheDocument();
+    expect(vi.mocked(contestRequest).mock.calls.map(([path]) => path)).toContain(adminListPath);
+    expect(vi.mocked(contestRequest).mock.calls.map(([path]) => path)).not.toContain('/c/submissions?offset=0&limit=50');
+
+    fireEvent.click(screen.getByRole('button', { name: '코드 보기' }));
+    expect(await screen.findByText('print(42)')).toBeInTheDocument();
+    expect(screen.getByText('print(42)').closest('.contest-source')).not.toBeNull();
+    expect(vi.mocked(contestRequest).mock.calls.map(([path]) => path)).toContain(adminDetailPath);
+  });
+
+  it('keeps ordinary users on their own submissions and never calls admin routes', async () => {
+    const ownListPath = '/c/submissions?offset=0&limit=50';
+    const ownDetailPath = '/c/submissions/submission-1';
+    vi.mocked(contestRequest).mockImplementation(async path => {
+      if (path?.endsWith('/scoreboard')) return { rows: [], problems: [], pendingCount: 0, state: 'running' } as never;
+      if (path === ownListPath) return { submissions: [reviewedSubmission], total: 1 } as never;
+      if (path === ownDetailPath) return { ...reviewedSubmission, code: 'print("private")' } as never;
+      if (path?.includes('/admin/submissions')) throw new Error(`ordinary user reached admin route: ${path}`);
+      if (path?.includes('/submissions')) throw new Error(`unexpected own submission route: ${path}`);
+      return contestWithReviewAccess(false) as never;
+    });
+    setAuthToken('ordinary-session');
+    renderContestDetail();
+
+    expect(await screen.findByRole('heading', { name: '테스트 대회' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '내 제출' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '전체 제출' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '내 제출' }));
+    expect(await screen.findByRole('heading', { name: '내 제출 기록' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '코드 보기' }));
+    expect(await screen.findByText('print("private")')).toBeInTheDocument();
+    const requestPaths = vi.mocked(contestRequest).mock.calls.map(([path]) => path);
+    expect(requestPaths).toContain(ownListPath);
+    expect(requestPaths).toContain(ownDetailPath);
+    expect(requestPaths.some(path => path?.includes('/admin/submissions'))).toBe(false);
+  });
+
+  it('clears an administrator source panel when the account identity changes', async () => {
+    const adminListPath = '/c/admin/submissions?offset=0&limit=50';
+    const adminDetailPath = '/c/admin/submissions/submission-1';
+    vi.mocked(contestRequest).mockImplementation(async path => {
+      if (path?.endsWith('/scoreboard')) return { rows: [], problems: [], pendingCount: 0, state: 'running' } as never;
+      if (path === adminListPath) return { submissions: [reviewedSubmission], total: 1 } as never;
+      if (path === adminDetailPath) return { ...reviewedSubmission, code: 'first-account-secret' } as never;
+      return contestWithReviewAccess(true) as never;
+    });
+    setAuthToken('first-administrator-session');
+    renderContestDetail();
+    expect(await screen.findByRole('heading', { name: '테스트 대회' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '전체 제출' }));
+    fireEvent.click(await screen.findByRole('button', { name: '코드 보기' }));
+    expect(await screen.findByText('first-account-secret')).toBeInTheDocument();
+
+    vi.mocked(contestRequest).mockImplementation(() => new Promise(() => {}));
+    act(() => setAuthToken('second-administrator-session'));
+    expect(screen.queryByText('first-account-secret')).not.toBeInTheDocument();
+    expect(screen.getByText('대회를 불러오는 중입니다')).toBeInTheDocument();
   });
 
   it('shows public ranking-correction notes after an ended contest', async () => {
