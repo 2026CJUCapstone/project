@@ -102,7 +102,7 @@ describe('CompileQueue history filters', () => {
       contestOptions: [{ id: 'fall', title: '신입생 대회' }],
     });
     mount();
-    const contest = await screen.findByRole('combobox', { name: '대회', exact: true });
+    const contest = await screen.findByRole('combobox', { name: /^대회$/ });
     expect(screen.getByRole('option', { name: '전체 대회 기록' })).toHaveValue('contest');
     expect(screen.queryByRole('option', { name: 'IDE 기록 (공개)' })).not.toBeInTheDocument();
     fireEvent.change(contest, { target: { value: 'fall' } });
