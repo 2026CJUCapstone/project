@@ -28,7 +28,7 @@ class CompileQueue:
         user_id: str | None = None, problem_id: str | None = None,
         viewer_id: str | None = None, source: str | None = None,
         contest_id: str | None = None, problem_search: str | None = None,
-        language: str | None = None, mine: bool = False,
+        language: str | None = None, mine: bool = False, viewer_is_admin: bool = False,
     ) -> dict:
         return await asyncio.to_thread(
             self._snapshot_sync,
@@ -36,6 +36,7 @@ class CompileQueue:
             kind=kind, username=username, user_id=user_id,
             problem_id=problem_id, viewer_id=viewer_id, source=source,
             contest_id=contest_id, problem_search=problem_search, language=language, mine=mine,
+            viewer_is_admin=viewer_is_admin,
         )
 
     def _snapshot_sync(
@@ -45,7 +46,7 @@ class CompileQueue:
         user_id: str | None = None, problem_id: str | None = None,
         viewer_id: str | None = None, source: str | None = None,
         contest_id: str | None = None, problem_search: str | None = None,
-        language: str | None = None, mine: bool = False,
+        language: str | None = None, mine: bool = False, viewer_is_admin: bool = False,
     ) -> dict:
         # Observation must never claim leases, repair Redis, or alter jobs.
         with SessionLocal() as db:
@@ -54,7 +55,7 @@ class CompileQueue:
                 status=status, verdict=verdict, kind=kind, username=username,
                 user_id=user_id, problem_id=problem_id, viewer_id=viewer_id,
                 source=source, contest_id=contest_id, problem_search=problem_search,
-                language=language, mine=mine,
+                language=language, mine=mine, viewer_is_admin=viewer_is_admin,
             )
 
     @staticmethod

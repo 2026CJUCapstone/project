@@ -11,7 +11,7 @@ from app.services.contest_access import now_utc, private_problem_ids
 OPTION_LIMIT = 200
 
 
-def visible_history(viewer_id: str | None):
+def visible_history(viewer_id: str | None, *, viewer_is_admin: bool = False):
     q, s, p, c = m.CompileQueueRecord, m.ContestSubmission, m.ContestProblem, m.Contest
     at = now_utc()
     fields = [column.name for column in q.__table__.columns]
@@ -22,10 +22,14 @@ def visible_history(viewer_id: str | None):
         cast(null(), String).label('contest_title'),
         cast(null(), String).label('contest_problem_id'),
     ).where(
-        or_(q.problem_id.is_(None), q.problem_id.not_in(private_problem_ids(at))),
         # A misplaced old observation must not publish a contest attempt.
         q.id.not_in(select(s.execution_job_id).where(s.execution_job_id.is_not(None))),
     )
+    # This flag is supplied by authenticated server-side role checks, never a
+    # request filter. Administrators can observe private problem metadata too.
+    is_admin = bool(viewer_id and viewer_is_admin)
+    if not is_admin:
+        public = public.where(or_(q.problem_id.is_(None), q.problem_id.not_in(private_problem_ids(at))))
     if not viewer_id:
         return public.subquery('visible_history')
 
@@ -44,7 +48,9 @@ def visible_history(viewer_id: str | None):
         literal('contest').label('source'), c.id.label('contest_id'),
         c.title.label('contest_title'), p.id.label('contest_problem_id'),
     ).select_from(s).join(p, (p.id == s.contest_problem_id) & (p.contest_id == s.contest_id)) \
-        .join(c, c.id == s.contest_id).join(m.User, m.User.id == s.user_id).where(
+        .join(c, c.id == s.contest_id).join(m.User, m.User.id == s.user_id)
+    if not is_admin:
+        private = private.where(
             s.user_id == viewer_id, c.published.is_(True), c.starts_at <= at,
             or_(c.ends_at <= at, select(m.ContestParticipant.id).where(
                 m.ContestParticipant.contest_id == c.id,
@@ -83,8 +89,8 @@ def _groups(rows: list[dict], by: str):
 def history_snapshot(db, *, history_limit: int, viewer_id=None, limit=100, offset=0,
                      status=None, verdict=None, kind=None, username=None,
                      user_id=None, problem_id=None, source=None, contest_id=None,
-                     problem_search=None, language=None, mine=False):
-    history = visible_history(viewer_id)
+                     problem_search=None, language=None, mine=False, viewer_is_admin=False):
+    history = visible_history(viewer_id, viewer_is_admin=viewer_is_admin)
     c = history.c
     base = db.query(history)
     scope = base

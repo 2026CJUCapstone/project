@@ -95,6 +95,26 @@ describe('CompileQueue history filters', () => {
     }));
   });
 
+  it('labels administrator contest history and combines contest and verdict filters', async () => {
+    setAuthToken(signedToken('admin'));
+    vi.mocked(getCompileQueue).mockResolvedValue({
+      ...emptyQueue, detailScope: 'admin',
+      contestOptions: [{ id: 'fall', title: '신입생 대회' }],
+    });
+    mount();
+    const contest = await screen.findByRole('combobox', { name: '대회', exact: true });
+    expect(screen.getByRole('option', { name: '전체 대회 기록' })).toHaveValue('contest');
+    expect(screen.queryByRole('option', { name: 'IDE 기록 (공개)' })).not.toBeInTheDocument();
+    fireEvent.change(contest, { target: { value: 'fall' } });
+    await waitFor(() => expect(latestQueueFilters()).toMatchObject({ source: 'contest', contestId: 'fall' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '판정' }), { target: { value: 'wrong_answer' } });
+    await waitFor(() => expect(latestQueueFilters()).toMatchObject({
+      source: 'contest', contestId: 'fall', verdict: 'wrong_answer', mine: undefined,
+    }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '내 기록만 보기' }));
+    await waitFor(() => expect(latestQueueFilters()).toMatchObject({ mine: true }));
+  });
+
   it('keeps same-ID public and contest problems in their explicit context', async () => {
     vi.mocked(getCompileQueue).mockResolvedValue({
       ...emptyQueue,

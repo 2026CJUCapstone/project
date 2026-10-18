@@ -111,10 +111,10 @@ async def test_guest_projection_and_facets_cannot_reveal_contest_or_hidden_metad
 
 
 @pytest.mark.asyncio
-async def test_owner_scope_is_not_bypassed_by_user_filter_or_admin_role(history_env):
+async def test_owner_scope_is_not_bypassed_by_user_filter_or_claimed_admin_role(history_env):
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
         for owner, expected in [('alice', {'alice-a', 'alice-b', 'alice-hidden'}),
-                                ('bob', {'bob-a'}), ('admin', set())]:
+                                ('bob', {'bob-a'})]:
             result = await get_history(client, owner, source='contest')
             assert result.status_code == 200, result.text
             body = result.json()
@@ -124,7 +124,7 @@ async def test_owner_scope_is_not_bypassed_by_user_filter_or_admin_role(history_
             assert body['filteredTotal'] == len(expected)
             assert all('SECRET' not in json.dumps(row) for row in body['jobs'])
             assert all(row['sourceSizeBytes'] is None and row['error'] is None for row in body['jobs'])
-        for filters in ({'userId': 'bob'}, {'username': 'bob'}):
+        for filters in ({'userId': 'bob'}, {'username': 'bob'}, {'viewer_is_admin': True}, {'role': 'admin'}):
             body = (await get_history(client, 'alice', source='contest', **filters)).json()
             assert body['filteredTotal'] == 3
             assert {row['id'] for row in body['jobs']} == {
@@ -135,6 +135,36 @@ async def test_owner_scope_is_not_bypassed_by_user_filter_or_admin_role(history_
             body = (await get_history(client, 'alice', source='contest', **filters)).json()
             assert body['filteredTotal'] == 0 and body['jobs'] == []
             assert body['problemOptions'] == []
+
+
+@pytest.mark.asyncio
+async def test_admin_can_observe_all_contest_metadata_and_filter_without_membership(history_env):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
+        response = await get_history(client, 'admin', source='contest')
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body['detailScope'] == 'admin' and body['filteredTotal'] == 6
+        assert {row['id'] for row in body['jobs']} == {
+            f'contest:{value}' for value in ('alice-a', 'alice-b', 'alice-hidden', 'bob-a', 'alice-draft', 'alice-upcoming')
+        }
+        assert {row['id'] for row in body['contestOptions']} == {'a', 'b', 'hidden', 'draft', 'upcoming'}
+        assert {row['userId'] for row in body['userGroups']} == {'alice', 'bob'}
+        for value in ('SECRET_SOURCE', 'SECRET_INPUT', 'SECRET_EXPECTED', 'SECRET_STATEMENT', 'SECRET_OUTPUT'):
+            assert value not in response.text
+        assert all(row['sourceSizeBytes'] is None and row['error'] is None for row in body['jobs'])
+        assert response.headers['cache-control'] == 'no-store'
+        for filters, expected in [({'contestId': 'a'}, 2), ({'username': 'bob'}, 1),
+                                  ({'userId': 'alice'}, 5), ({'verdict': 'wrong_answer'}, 1),
+                                  ({'contestId': 'draft'}, 1), ({'mine': True}, 0)]:
+            filtered = (await get_history(client, 'admin', source='contest', **filters)).json()
+            assert filtered['filteredTotal'] == expected
+        pages = [(await get_history(client, 'admin', source='contest', limit=2, offset=i)).json()
+                 for i in (0, 2, 4)]
+        assert [row['id'] for page in pages for row in page['jobs']] == [row['id'] for row in body['jobs']]
+        all_jobs = (await get_history(client, 'admin')).json()
+        assert all_jobs['filteredTotal'] == 12
+        assert 'leaked-hidden' in {row['id'] for row in all_jobs['jobs']}
+        assert 'contest-job' not in {row['id'] for row in all_jobs['jobs']}  # no duplicate observation
 
 
 @pytest.mark.asyncio
@@ -214,15 +244,16 @@ async def test_options_are_bounded_but_search_reaches_beyond_options(history_env
 
 
 @pytest.mark.asyncio
-async def test_observation_queries_no_private_payload_or_code_and_never_write(history_env):
+@pytest.mark.parametrize('viewer, is_admin, count', [('alice', False, 3), ('admin', True, 6)])
+async def test_observation_queries_no_private_payload_or_code_and_never_write(history_env, viewer, is_admin, count):
     statements = []
     bind = history_env.factory.kw['bind']
     def capture(_connection, _cursor, statement, _parameters, _context, _many):
         statements.append(statement)
     event.listen(bind, 'before_cursor_execute', capture)
     try:
-        result = await queue_module.compile_queue.snapshot(viewer_id='alice', source='contest')
-        assert len(result['jobs']) == 3
+        result = await queue_module.compile_queue.snapshot(viewer_id=viewer, source='contest', viewer_is_admin=is_admin)
+        assert len(result['jobs']) == count
         assert {sql.lstrip().split()[0].upper() for sql in statements} == {'SELECT'}
         combined = '\n'.join(statements).lower()
         assert 'execution_jobs' not in combined and 'contest_submissions.code' not in combined

@@ -192,12 +192,12 @@ function kindOptions() {
   ];
 }
 
-function sourceOptions() {
+function sourceOptions(isAdmin: boolean) {
   return [
     { value: 'all', label: '전체 기록' },
-    { value: 'ide', label: 'IDE 기록 (공개)' },
-    { value: 'practice', label: '연습 기록 (공개)' },
-    { value: 'contest', label: '내 대회 기록' },
+    { value: 'ide', label: 'IDE 기록' },
+    { value: 'practice', label: '연습 기록' },
+    { value: 'contest', label: isAdmin ? '전체 대회 기록' : '내 대회 기록' },
   ] as const;
 }
 
@@ -614,7 +614,7 @@ export function CompileQueue() {
 
           <p className="text-xs leading-5 text-gray-600 dark:text-gray-400">
             {detailScope === 'admin'
-              ? '관리자에게만 사용자·문제별 상세 기록이 표시됩니다.'
+              ? '관리자는 모든 사용자의 IDE·연습·대회 기록을 조회할 수 있습니다. 대회와 판정으로 기록을 좁혀 보세요.'
               : detailScope === 'mine'
                 ? '본인의 실행·제출 기록만 표시됩니다. 다른 사용자의 기록과 내부 식별자는 공개하지 않습니다.'
                 : '전체 대기·실행 건수만 공개합니다. 로그인하면 본인의 상세 기록을 확인할 수 있습니다.'}
@@ -629,21 +629,21 @@ export function CompileQueue() {
                 onChange={(event) => updateSource(event.target.value as CompileQueueSource | 'all')}
                 className={controlClassName}
               >
-                {sourceOptions().map((option) => (
+                {sourceOptions(detailScope === 'admin').map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </label>
             <label className="flex w-full min-w-0 flex-none flex-col gap-1 text-xs font-medium text-gray-600 sm:w-auto sm:min-w-[180px] sm:flex-[1.4] dark:text-gray-300">
-              내 대회
+              {detailScope === 'admin' ? '대회' : '내 대회'}
               <select
-                aria-label="내 대회"
+                aria-label={detailScope === 'admin' ? '대회' : '내 대회'}
                 value={contestIdFilter}
                 disabled={visibleContestOptions.length === 0}
                 onChange={(event) => selectContest(event.target.value)}
                 className={`${controlClassName} disabled:cursor-not-allowed disabled:opacity-60`}
               >
-                <option value="">전체 내 대회</option>
+                <option value="">{detailScope === 'admin' ? '전체 대회' : '전체 내 대회'}</option>
                 {contestIdFilter && !visibleContestOptions.some((option) => option.id === contestIdFilter) && (
                   <option value={contestIdFilter}>선택된 대회 · {contestIdFilter}</option>
                 )}

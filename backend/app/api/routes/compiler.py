@@ -104,6 +104,7 @@ async def get_compile_queue(
         problem_id=problem_id if current_user is not None else None,
         source=source, contest_id=contest_id, problem_search=problem_search,
         language=language, mine=(mine or own_only), viewer_id=current_user.id if current_user else None,
+        viewer_is_admin=is_admin,
     )
     if is_admin:
         result['detail_scope'] = 'admin'
