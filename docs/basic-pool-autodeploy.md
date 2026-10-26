@@ -109,6 +109,23 @@ PostgreSQL/Redis/PgBouncer/proxy·샌드박스·대회 설정과 채점 registry
 소비된 승인은 후속 dependency 변경을 허용하지 않는다. 일반 자동 배포는 패치된 이미지 위에
 동일 dependency 계약의 코드만 올리며, 다음 라이브러리 변경은 새로 검토해야 한다.
 
+## 의존성 보안 갱신 — 2026-10-27
+
+새 CI 감사에서 `certifi`, DOMPurify, KaTeX, PostCSS selector parser,
+source-map-js, Vite, Vitest 취약점이 확인됐다. 이번 갱신은 기존 운영
+`6065432`의 `backend/requirements.lock`, `frontend/package.json`,
+`frontend/package-lock.json` 세 파일에서 검토한 정확한 파일 해시로만 허용한다.
+Dockerfile, 스키마, 런타임과 배포 설정은 바꾸지 않는다. `certifi`는
+`2026.10.19`, DOMPurify는 `3.4.17`, KaTeX는 `0.19.1`, Vite는
+`6.4.5`, Vitest는 `4.1.12`로 고정하고, transitive parser와
+source-map-js도 보안 수정 버전으로 고정한다.
+
+일반 application overlay는 의존성 변경을 거부한다. 위와 동일하게
+exact SHA의 backend/frontend 이미지를 깨끗하게 빌드하고 실제 이미지의
+보안 스캔, 설치 버전과 CI 빌드 산출물 일치 검사를 마친 뒤, 앞 절의
+private dependency approval 파일로만 전환한다. 이 검증이 충족되지
+않으면 운영 배포를 중단한다.
+
 SMTP 사전 확인은 Docker 기본 `bridge`가 아니라 운영 API가 실제 사용 중인 pool bridge를
 사용한다. 컨테이너 ID·단일 network 이름/ID·bridge driver·비 internal/ingress 조건을 확인한다.
 호스트 네트워크를 복구하거나 바꾸지 않으며, 이 임시 검사 컨테이너도 기존 자원·권한 제한을 지킨다.

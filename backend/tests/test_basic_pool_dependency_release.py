@@ -41,8 +41,14 @@ def trees(tmp_path):
         else:
             value = json.loads(content)
             if name.endswith("package.json"):
+                new_value = json.loads(new_path.read_bytes())
+                new_value["overrides"]["dompurify"] = "3.4.16"
+                new_path.write_text(json.dumps(new_value))
                 value["overrides"]["dompurify"] = "3.4.13"
             else:
+                new_value = json.loads(new_path.read_bytes())
+                new_value["packages"]["node_modules/dompurify"].update(module.DOMPURIFY)
+                new_path.write_text(json.dumps(new_value))
                 value["packages"]["node_modules/dompurify"].update(
                     version="3.4.13", resolved="https://registry.npmjs.org/dompurify/-/dompurify-3.4.13.tgz",
                     integrity="sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==")
@@ -60,6 +66,42 @@ def test_only_reviewed_artifacts_pass_including_crlf(trees):
         path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     module.validate_changes(old, new)
     assert module.dependency_digest(new) == original
+
+
+@pytest.mark.parametrize("mutation", [None, "old", "new", "docker"])
+def test_current_security_patch_requires_exact_source_hashes(tmp_path, monkeypatch, mutation):
+    module = helper()
+    old, new = tmp_path / "old", tmp_path / "new"
+    expected = {}
+    for name in module.CURRENT_DEPENDENCY_PATCH:
+        for root, value in ((old, b"before\n"), (new, b"after\n")):
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(value)
+        expected[name] = (hashlib.sha256(b"before\n").hexdigest(),
+                          hashlib.sha256(b"after\n").hexdigest())
+    for root in (old, new):
+        path = root / "frontend/Dockerfile"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"unchanged\n")
+    monkeypatch.setattr(module, "CURRENT_DEPENDENCY_PATCH", expected)
+    if mutation == "old":
+        (old / "backend/requirements.lock").write_bytes(b"other\n")
+    elif mutation == "new":
+        (new / "frontend/package-lock.json").write_bytes(b"other\n")
+    elif mutation == "docker":
+        (new / "frontend/Dockerfile").write_bytes(b"other\n")
+    if mutation:
+        with pytest.raises(ValueError):
+            module.validate_changes(old, new)
+    else:
+        module.validate_changes(old, new)
+
+
+def test_current_security_patch_matches_reviewed_candidate_files():
+    module = helper()
+    for name, (_, expected) in module.CURRENT_DEPENDENCY_PATCH.items():
+        assert hashlib.sha256(module._bytes(ROOT / name)).hexdigest() == expected
 
 
 @pytest.mark.parametrize("kind", ["extra_requirement", "hash", "version", "override", "other_package", "lock_extra", "docker_extra", "pcre_version"])

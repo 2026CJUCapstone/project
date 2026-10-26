@@ -1,4 +1,4 @@
-"""Exact, private approval for the reviewed October dependency security patch.
+"""Exact, private approval for reviewed dependency security patches.
 
 Never overlays new application source onto the vulnerable operating libraries.
 Clean images and fresh installed-image inventories must bind to the same SHA.
@@ -46,6 +46,22 @@ DOMPURIFY = {
     "resolved": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.16.tgz",
     "integrity": "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==",
 }
+CURRENT_DEPENDENCY_PATCH = {
+    # Normalized SHA-256 of the production source at 6065432 and the reviewed
+    # 2026-10-27 security refresh. No unrelated lock or manifest edits pass.
+    "backend/requirements.lock": (
+        "7588248524a4ca199c11dc86994b23fe1220107bb7d942577b07cc9feb9decff",
+        "04c293da3c796b28283d1b9718e852158c6145622cee709f5bdfab55df5d54fb",
+    ),
+    "frontend/package.json": (
+        "773d22b608df07a9c03cc50c2d58fb522c30e92f5244934db3125eb8260237d4",
+        "de20486d5d3e4e04699daa5e1f15cfc9d9bc5005e4dc69d6f32e3914e5044da1",
+    ),
+    "frontend/package-lock.json": (
+        "f7bdd621d7b8481a49a35e450e9f3e35140b17499a94764ff27c7512c6e75558",
+        "be6cd8c7f4eb01a3719193cbfb2dd5e117a2be0a621e4e7fd045a89236be5d7e",
+    ),
+}
 SCANNER_SHA = "d89bcc6510a267f11b773398cbf1be5520ce39f9e8b6633178c4487f05b7d791"
 IMAGE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
@@ -68,6 +84,14 @@ def dependency_digest(root):
 def validate_changes(previous, candidate):
     before_docker = _bytes(previous / "frontend/Dockerfile")
     after_docker = _bytes(candidate / "frontend/Dockerfile")
+    if all(hashlib.sha256(_bytes(previous / name)).hexdigest() == old
+           for name, (old, _) in CURRENT_DEPENDENCY_PATCH.items()):
+        if before_docker != after_docker:
+            raise ValueError("New dependency patch cannot change Dockerfile")
+        for name, (_, expected) in CURRENT_DEPENDENCY_PATCH.items():
+            if hashlib.sha256(_bytes(candidate / name)).hexdigest() != expected:
+                raise ValueError("Unreviewed dependency source: " + name)
+        return
     anchor = b"FROM nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6\n\n"
     if before_docker.count(anchor) != 1 or after_docker != before_docker.replace(anchor, anchor + PCRE2_PATCH, 1):
         raise ValueError("Only the reviewed PCRE2 security build step is approved")
@@ -224,7 +248,7 @@ def verify_candidate(state, root, run):
     expected["requirements.lock"] = hashlib.sha256((root / "backend/requirements.lock").read_bytes()).hexdigest()
     probe = (
         "import hashlib,json,pathlib,sys; from importlib.metadata import version; "
-        "assert version('PyJWT')=='2.15.1' and version('urllib3')=='2.8.0'; "
+        "assert version('PyJWT')=='2.15.1' and version('urllib3')=='2.8.0' and version('certifi')=='2026.10.19'; "
         "root=pathlib.Path('/app'); actual={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in (root/'app').rglob('*.py')}; "
         "actual['requirements.lock']=hashlib.sha256((root/'requirements.lock').read_bytes()).hexdigest(); "
         "assert actual==json.load(sys.stdin)"
