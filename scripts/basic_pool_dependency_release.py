@@ -27,11 +27,14 @@ PCRE2_PATCH = (
 )
 FRONTEND_SECURITY_PATCH = (
     b"# Refresh the exact Alpine packages flagged by the installed-image scan.\n"
-    b"RUN apk add --no-cache \\\n"
-    b"    musl=1.2.6-r3 \\\n"
-    b"    musl-utils=1.2.6-r3 \\\n"
-    b"    nginx=1.30.6-r0 \\\n"
-    b"    zlib=1.3.2-r1\n\n"
+    b"RUN cp /etc/nginx/nginx.conf /tmp/nginx.conf.preserved \\\n"
+    b"    && apk add --no-cache \\\n"
+    b"      musl=1.2.6-r3 \\\n"
+    b"      musl-utils=1.2.6-r3 \\\n"
+    b"      nginx=1.30.6-r0 \\\n"
+    b"      zlib=1.3.2-r1 \\\n"
+    b"    && cp /tmp/nginx.conf.preserved /etc/nginx/nginx.conf \\\n"
+    b"    && rm /tmp/nginx.conf.preserved\n\n"
 )
 FRONTEND_PACKAGE_VERSIONS = {
     "pcre2": "10.49-r0",
@@ -78,7 +81,7 @@ CURRENT_DEPENDENCY_PATCH = {
     ),
     "frontend/Dockerfile": (
         "a4f90a9af903c316d8a6254b205444e8c467dbfb83bb2b2bec6a0d6f038c3610",
-        "35dcf14cade03298fe119473a70ab4dba2e9ad9a5a64071a2dc1f41015c60ac7",
+        "34cb9cec15a44eaf1d60fcf3a53c592bb8ee80279ac3deef8a5390dace6162b4",
     ),
 }
 SCANNER_SHA = "d89bcc6510a267f11b773398cbf1be5520ce39f9e8b6633178c4487f05b7d791"

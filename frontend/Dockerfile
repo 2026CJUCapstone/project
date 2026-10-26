@@ -21,24 +21,26 @@ FROM nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8
 RUN apk add --no-cache pcre2=10.49-r0
 
 # Refresh the exact Alpine packages flagged by the installed-image scan.
-RUN apk add --no-cache \
-    musl=1.2.6-r3 \
-    musl-utils=1.2.6-r3 \
-    nginx=1.30.6-r0 \
-    zlib=1.3.2-r1
+RUN cp /etc/nginx/nginx.conf /tmp/nginx.conf.preserved \
+    && apk add --no-cache \
+      musl=1.2.6-r3 \
+      musl-utils=1.2.6-r3 \
+      nginx=1.30.6-r0 \
+      zlib=1.3.2-r1 \
+    && cp /tmp/nginx.conf.preserved /etc/nginx/nginx.conf \
+    && rm /tmp/nginx.conf.preserved
 
 # The official image writes its PID and logs below /var by default and its
 # entrypoint may try to edit conf.d.  This image runs Nginx directly as an
 # unprivileged user on a read-only root filesystem, so keep every runtime
 # write under the Compose-provided /tmp tmpfs instead.
-RUN ! grep -Eq '^pid[[:space:]]' /etc/nginx/nginx.conf \
-    && sed -i \
-      -e '1i pid /tmp/nginx.pid;' \
-      -e 's!^user nginx;!# user nginx;  # master already runs unprivileged!' \
-      -e 's!^error_log /var/log/nginx/error.log warn;!error_log /dev/stderr warn;!' \
+RUN sed -i \
+      -e 's!^user  nginx;!# user nginx;  # master already runs unprivileged!' \
+      -e 's!^error_log  /var/log/nginx/error.log notice;!error_log  /dev/stderr warn;!' \
+      -e 's!^pid        /run/nginx.pid;!pid        /tmp/nginx.pid;!' \
       /etc/nginx/nginx.conf \
-    && grep -qx 'pid /tmp/nginx.pid;' /etc/nginx/nginx.conf \
-    && grep -qx 'error_log /dev/stderr warn;' /etc/nginx/nginx.conf
+    && grep -qx 'pid        /tmp/nginx.pid;' /etc/nginx/nginx.conf \
+    && grep -qx 'error_log  /dev/stderr warn;' /etc/nginx/nginx.conf
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Only two reviewed routes are supported; never interpolate an arbitrary
