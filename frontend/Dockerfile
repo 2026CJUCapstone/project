@@ -31,13 +31,14 @@ RUN apk add --no-cache \
 # entrypoint may try to edit conf.d.  This image runs Nginx directly as an
 # unprivileged user on a read-only root filesystem, so keep every runtime
 # write under the Compose-provided /tmp tmpfs instead.
-RUN sed -i \
-      -e 's!^user  nginx;!# user nginx;  # master already runs unprivileged!' \
-      -e 's!^error_log  /var/log/nginx/error.log notice;!error_log  /dev/stderr warn;!' \
-      -e 's!^pid        /run/nginx.pid;!pid        /tmp/nginx.pid;!' \
+RUN ! grep -Eq '^pid[[:space:]]' /etc/nginx/nginx.conf \
+    && sed -i \
+      -e '1i pid /tmp/nginx.pid;' \
+      -e 's!^user nginx;!# user nginx;  # master already runs unprivileged!' \
+      -e 's!^error_log /var/log/nginx/error.log warn;!error_log /dev/stderr warn;!' \
       /etc/nginx/nginx.conf \
-    && grep -qx 'pid        /tmp/nginx.pid;' /etc/nginx/nginx.conf \
-    && grep -qx 'error_log  /dev/stderr warn;' /etc/nginx/nginx.conf
+    && grep -qx 'pid /tmp/nginx.pid;' /etc/nginx/nginx.conf \
+    && grep -qx 'error_log /dev/stderr warn;' /etc/nginx/nginx.conf
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Only two reviewed routes are supported; never interpolate an arbitrary
