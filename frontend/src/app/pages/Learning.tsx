@@ -307,7 +307,7 @@ function LearningForScope({ scope }: { scope: string }) {
                   <div className="flex items-start justify-between gap-3"><span className="text-xs font-semibold text-gray-500 dark:text-gray-400">과정 {track.order}</span><ChevronRight size={17} className="shrink-0 text-gray-400" /></div>
                   <h3 className="mt-2 break-words font-bold">{track.title}</h3>
                   <p className="mt-1 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{track.description}</p>
-                  <div className="mt-4"><div className="flex justify-between text-xs text-gray-500 dark:text-gray-400"><span>진행도</span><span>{track.solved}/{track.total}</span></div><div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-[#333]"><div className="h-full rounded-full bg-blue-600" style={{ width: `${progress}%` }} /></div></div>
+                  {track.total === 0 ? <p className="mt-4 text-sm font-semibold text-amber-700 dark:text-amber-300">문제 준비 중</p> : <div className="mt-4"><div className="flex justify-between text-xs text-gray-500 dark:text-gray-400"><span>진행도</span><span>{track.solved}/{track.total}</span></div><div className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-[#333]"><div className="h-full rounded-full bg-blue-600" style={{ width: `${progress}%` }} /></div></div>}
                 </button>;
               })}
             </div>

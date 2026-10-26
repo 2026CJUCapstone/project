@@ -43,8 +43,9 @@ def require_visible(db, problem_id):
 @router.get("/tracks")
 def tracks(db: Session = Depends(get_db), user=Depends(get_optional_current_user)):
     summaries = [service.track_summary(db, t, user.id if user else None) for t in service.TRACKS]
-    return {"tracks": [summary for summary in summaries if summary["total"] > 0],
-        "signedIn": bool(user)}
+    # Course numbers describe the curriculum, including courses awaiting public
+    # problems. Filtering empty courses hides course 5 without renumbering 6/7.
+    return {"tracks": summaries, "signedIn": bool(user)}
 
 
 @router.get("/tracks/{track_id}")

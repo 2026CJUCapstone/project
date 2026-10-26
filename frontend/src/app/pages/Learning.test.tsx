@@ -14,6 +14,20 @@ describe('Learning', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shows course 5 even while its public problems are being prepared', async () => {
+    const track = { id: 'sort', title: '정렬과 탐색', description: '정렬과 탐색 연습', order: 5, total: 0, solved: 0, nextProblemId: null };
+    vi.stubGlobal('fetch', vi.fn((input: string) => Promise.resolve(new Response(JSON.stringify(
+      input.endsWith('/tracks') ? { tracks: [track], signedIn: false }
+        : { track, items: [], total: 0, offset: 0, limit: 24 },
+    ), { status: 200 }))));
+    render(<MemoryRouter><Learning /></MemoryRouter>);
+    expect(await screen.findByText('과정 5')).toBeInTheDocument();
+    expect(screen.getByText('1개 과정')).toBeInTheDocument();
+    expect(screen.getByText('문제 준비 중')).toBeInTheDocument();
+    expect(await screen.findByText('이 문제집의 문제를 아직 준비 중입니다.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /다음 문제 풀기/ })).not.toBeInTheDocument();
+  });
+
   it('does not leave results from the previous review filter visible while the next filter loads', async () => {
     localStorage.setItem('authToken', signedInToken());
     const nextFilter = new Promise<Response>(() => {});

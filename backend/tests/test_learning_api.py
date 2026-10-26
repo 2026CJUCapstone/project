@@ -237,9 +237,14 @@ async def test_tracks_progress_recommendations_deterministic_and_no_awards(fixtu
         assert ids["p0"] not in {p["id"] for p in rec["items"]}
         assert rec == (await client.get("/api/v1/learning/recommendations", headers=a)).json()
         tracks = (await client.get("/api/v1/learning/tracks", headers=a)).json()["tracks"]
-        assert [t["order"] for t in tracks] == [1, 3]
+        assert [t["order"] for t in tracks] == list(range(1, 8))
         assert tracks[0]["solved"] == 1 and tracks[0]["nextProblemId"] == ids["p1"]
-        assert all(track["total"] > 0 for track in tracks)
+        assert tracks[4]["id"] == "sort"
+        assert tracks[4]["total"] == 0 and tracks[4]["nextProblemId"] is None
+        empty = (await client.get("/api/v1/learning/tracks/sort", headers=a)).json()
+        assert empty["track"] == tracks[4] and empty["items"] == [] and empty["total"] == 0
+        guest = (await client.get("/api/v1/learning/tracks")).json()["tracks"]
+        assert [t["order"] for t in guest] == list(range(1, 8))
         detail = (await client.get("/api/v1/learning/tracks/io?limit=1&offset=1", headers=a)).json()
         assert detail["total"] == 4 and detail["items"][0]["id"] == ids["p1"]
         assert "description" not in detail["items"][0] and "testCases" not in detail["items"][0]
