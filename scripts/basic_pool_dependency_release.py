@@ -25,6 +25,21 @@ PCRE2_PATCH = (
     b"# Minimal signed Alpine security update for CVE-2026-103111; keep Nginx/base pinned.\n"
     b"RUN apk add --no-cache pcre2=10.49-r0\n\n"
 )
+FRONTEND_SECURITY_PATCH = (
+    b"# Refresh the exact Alpine packages flagged by the installed-image scan.\n"
+    b"RUN apk add --no-cache \\\n"
+    b"    musl=1.2.6-r3 \\\n"
+    b"    musl-utils=1.2.6-r3 \\\n"
+    b"    nginx=1.30.6-r0 \\\n"
+    b"    zlib=1.3.2-r1\n\n"
+)
+FRONTEND_PACKAGE_VERSIONS = {
+    "pcre2": "10.49-r0",
+    "musl": "1.2.6-r3",
+    "musl-utils": "1.2.6-r3",
+    "nginx": "1.30.6-r0",
+    "zlib": "1.3.2-r1",
+}
 TRANSITIONS = {
     "pyjwt[crypto]": (
         "2.13.0", "2.15.1",
@@ -61,6 +76,10 @@ CURRENT_DEPENDENCY_PATCH = {
         "f7bdd621d7b8481a49a35e450e9f3e35140b17499a94764ff27c7512c6e75558",
         "be6cd8c7f4eb01a3719193cbfb2dd5e117a2be0a621e4e7fd045a89236be5d7e",
     ),
+    "frontend/Dockerfile": (
+        "a4f90a9af903c316d8a6254b205444e8c467dbfb83bb2b2bec6a0d6f038c3610",
+        "89263399c3391dbeb20139364203441fc48ab766c6f634507b1c9929ae2812e1",
+    ),
 }
 SCANNER_SHA = "d89bcc6510a267f11b773398cbf1be5520ce39f9e8b6633178c4487f05b7d791"
 IMAGE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -82,16 +101,14 @@ def dependency_digest(root):
 
 
 def validate_changes(previous, candidate):
-    before_docker = _bytes(previous / "frontend/Dockerfile")
-    after_docker = _bytes(candidate / "frontend/Dockerfile")
     if all(hashlib.sha256(_bytes(previous / name)).hexdigest() == old
            for name, (old, _) in CURRENT_DEPENDENCY_PATCH.items()):
-        if before_docker != after_docker:
-            raise ValueError("New dependency patch cannot change Dockerfile")
         for name, (_, expected) in CURRENT_DEPENDENCY_PATCH.items():
             if hashlib.sha256(_bytes(candidate / name)).hexdigest() != expected:
                 raise ValueError("Unreviewed dependency source: " + name)
         return
+    before_docker = _bytes(previous / "frontend/Dockerfile")
+    after_docker = _bytes(candidate / "frontend/Dockerfile")
     anchor = b"FROM nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6\n\n"
     if before_docker.count(anchor) != 1 or after_docker != before_docker.replace(anchor, anchor + PCRE2_PATCH, 1):
         raise ValueError("Only the reviewed PCRE2 security build step is approved")
@@ -226,9 +243,10 @@ def load_approval(prod, previous, candidate, old_sha, new_sha, old_images, inspe
         if report.get("Metadata", {}).get("ImageID") != image_id or report.get("ArtifactName") != image_id:
             raise ValueError("Security report image mismatch")
         if role == "frontend":
-            versions = [p["Version"] for r in report["Results"] for p in r["Packages"] if p["Name"] == "pcre2"]
-            if not versions or any(version != "10.49-r0" for version in versions):
-                raise ValueError("Installed PCRE2 security version mismatch")
+            for name, expected_version in FRONTEND_PACKAGE_VERSIONS.items():
+                versions = [p["Version"] for r in report["Results"] for p in r["Packages"] if p["Name"] == name]
+                if not versions or any(version != expected_version for version in versions):
+                    raise ValueError("Installed frontend security version mismatch: " + name)
         # Sanitized reports intentionally omit labels; independently inspected
         # immutable image labels supply provenance, not caller-provided labels.
         report["Metadata"]["ImageConfig"]["config"] = {"Labels": labels}
@@ -299,8 +317,9 @@ def verify_candidate(state, root, run):
         run("docker", "rm", container)
     run(*bounded, "--entrypoint", "nginx", state["images"]["frontend"], "-t", timeout=30)
     packages = run(*bounded, "--entrypoint", "/sbin/apk", state["images"]["frontend"], "info", "-v", timeout=30).decode().splitlines()
-    if "pcre2-10.49-r0" not in packages:
-        raise ValueError("Actual frontend PCRE2 version mismatch")
+    for name, version in FRONTEND_PACKAGE_VERSIONS.items():
+        if name + "-" + version not in packages:
+            raise ValueError("Actual frontend security version mismatch: " + name)
 
 
 def archive_files(raw):

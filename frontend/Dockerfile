@@ -20,6 +20,13 @@ FROM nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8
 # Minimal signed Alpine security update for CVE-2026-103111; keep Nginx/base pinned.
 RUN apk add --no-cache pcre2=10.49-r0
 
+# Refresh the exact Alpine packages flagged by the installed-image scan.
+RUN apk add --no-cache \
+    musl=1.2.6-r3 \
+    musl-utils=1.2.6-r3 \
+    nginx=1.30.6-r0 \
+    zlib=1.3.2-r1
+
 # The official image writes its PID and logs below /var by default and its
 # entrypoint may try to edit conf.d.  This image runs Nginx directly as an
 # unprivileged user on a read-only root filesystem, so keep every runtime

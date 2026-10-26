@@ -37,6 +37,8 @@ def trees(tmp_path):
                 for old_hash, new_hash in zip(old_hashes, hashes):
                     content = content.replace(new_hash, old_hash)
         elif name == "frontend/Dockerfile":
+            content = content.replace(module.FRONTEND_SECURITY_PATCH.decode(), "")
+            new_path.write_text(content)
             content = content.replace(module.PCRE2_PATCH.decode(), "")
         else:
             value = json.loads(content)
@@ -80,10 +82,6 @@ def test_current_security_patch_requires_exact_source_hashes(tmp_path, monkeypat
             path.write_bytes(value)
         expected[name] = (hashlib.sha256(b"before\n").hexdigest(),
                           hashlib.sha256(b"after\n").hexdigest())
-    for root in (old, new):
-        path = root / "frontend/Dockerfile"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"unchanged\n")
     monkeypatch.setattr(module, "CURRENT_DEPENDENCY_PATCH", expected)
     if mutation == "old":
         (old / "backend/requirements.lock").write_bytes(b"other\n")
@@ -265,7 +263,9 @@ def test_actual_private_scan_reports_must_substantiate_approval(trees, tmp_path,
         folder.mkdir(mode=0o700)
         packages = [{"Name": "base", "Version": "1", "Identifier": {"PURL": "pkg:apk/alpine/base@1"}}]
         if role == "frontend":
-            packages.append({"Name": "pcre2", "Version": "10.49-r0", "Identifier": {"PURL": "pkg:apk/alpine/pcre2@10.49-r0"}})
+            packages.extend({"Name": name, "Version": version,
+                             "Identifier": {"PURL": f"pkg:apk/alpine/{name}@{version}"}}
+                            for name, version in module.FRONTEND_PACKAGE_VERSIONS.items())
         results = [{"Class": "os-pkgs", "Packages": packages, "Vulnerabilities": []}]
         if role == "backend":
             results.append({"Class": "lang-pkgs", "Packages": [
@@ -371,7 +371,8 @@ def test_offline_payload_check_and_container_cleanup(tmp_path, mutation):
             assert set(expected) == {"app/main.py", "requirements.lock"}
             assert "version('PyJWT')=='2.15.1'" in args[-1]
         if args[-2:] == ("info", "-v"):
-            return b"pcre2-10.49-r0\n"
+            return "".join(name + "-" + version + "\n"
+                           for name, version in module.FRONTEND_PACKAGE_VERSIONS.items()).encode()
         return b""
 
     if mutation:
